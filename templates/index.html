@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Book Organiser</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; padding: 20px; }
+  .container { max-width: 1400px; margin: 0 auto; }
+
+  /* Tabs */
+  .tab-bar { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 1px solid #334155; }
+  .tab-btn { padding: 10px 24px; border: none; background: none; color: #64748b; font-size: 0.9rem; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; }
+  .tab-btn:hover { color: #94a3b8; }
+  .tab-btn.active { color: #38bdf8; border-bottom-color: #38bdf8; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  h1 { font-size: 1.5rem; margin-bottom: 16px; color: #38bdf8; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  h1 small { font-size: 0.75rem; color: #94a3b8; font-weight: normal; }
+  h2 { font-size: 0.85rem; margin-bottom: 10px; color: #94a3b8; }
+  .row { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+  .row input[type=text] { padding: 7px 12px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; font-size: 0.85rem; min-width: 280px; flex: 1; }
+  .row button { padding: 7px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.82rem; background: #1e293b; color: #e2e8f0; transition: all 0.2s; white-space: nowrap; }
+  .row button:hover { background: #334155; }
+  .row button.primary { background: #0ea5e9; color: #0f172a; font-weight: 600; }
+  .row button.primary:hover { background: #38bdf8; }
+  .row button.warn { background: #f59e0b; color: #0f172a; font-weight: 600; }
+  .row button.warn:hover { background: #fbbf24; }
+  .row button.green { background: #22c55e; color: #0f172a; font-weight: 600; }
+  .row button.green:hover { background: #4ade80; }
+  .row button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .phase-badges { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .phase-badge { padding: 3px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; background: #1e293b; border: 1px solid #334155; color: #94a3b8; }
+  .phase-badge.active { border-color: #0ea5e9; color: #38bdf8; }
+  .phase-badge.done { border-color: #22c55e; color: #4ade80; }
+
+  /* Funnel view */
+  .funnel { margin-bottom: 16px; }
+  .funnel-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer; position: relative; }
+  .funnel-row:hover { opacity: 0.85; }
+  .funnel-label { width: 100px; font-size: 0.75rem; color: #94a3b8; font-weight: 600; flex-shrink: 0; }
+  .funnel-bar-wrap { flex: 1; height: 22px; background: #1e293b; border-radius: 4px; overflow: hidden; position: relative; }
+  .funnel-bar { height: 100%; border-radius: 4px; transition: width 0.5s; min-width: 2px; }
+  .funnel-bar.total { background: #334155; }
+  .funnel-bar.arrived { background: #475569; }
+  .funnel-bar.extracted { background: #d97706; }
+  .funnel-bar.cleaned { background: #ca8a04; }
+  .funnel-bar.cataloged { background: #7c3aed; }
+  .funnel-bar.survivor { background: #16a34a; }
+  .funnel-bar.copied { background: #0891b2; }
+  .funnel-info { width: 200px; font-size: 0.72rem; color: #64748b; flex-shrink: 0; text-align: right; }
+  .funnel-info strong { color: #e2e8f0; font-weight: 600; }
+
+  /* Tooltip */
+  .funnel-row .tooltip { display: none; position: absolute; left: 0; top: -44px; background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 6px 10px; font-size: 0.7rem; color: #94a3b8; white-space: nowrap; z-index: 10; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+  .funnel-row:hover .tooltip { display: block; }
+
+  .current { background: #1e293b; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; border: 1px solid #334155; font-size: 0.82rem; }
+  .current .label { color: #64748b; }
+  .current .file { color: #38bdf8; font-weight: 600; }
+  .current .phase { color: #a78bfa; }
+  .current .elapsed { color: #22c55e; font-size: 0.72rem; }
+  .progress-bar { height: 3px; background: #334155; border-radius: 2px; margin-top: 6px; overflow: hidden; }
+  .progress-bar .fill { height: 100%; background: #0ea5e9; width: 0%; transition: width 0.5s; border-radius: 2px; }
+
+  /* Running indicator */
+  .running-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; margin-right: 6px; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 800px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .panel { background: #1e293b; border-radius: 8px; padding: 14px; border: 1px solid #334155; }
+  .panel-scroll { overflow-x: auto; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+  th { text-align: left; padding: 5px 6px; color: #64748b; font-weight: 500; border-bottom: 1px solid #334155; white-space: nowrap; }
+  td { padding: 5px 6px; border-bottom: 1px solid #1a2332; }
+  tr:hover td { background: #1a2332; }
+
+  .tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 0.68rem; font-weight: 600; }
+  .tag.arrived { background: #334155; color: #94a3b8; }
+  .tag.extracted { background: #78350f; color: #fbbf24; }
+  .tag.cleaned { background: #422006; color: #fde047; }
+  .tag.cataloged { background: #2e1065; color: #c4b5fd; }
+  .tag.survivor { background: #052e16; color: #86efac; }
+  .tag.skipped { background: #450a0a; color: #fca5a5; }
+  .tag.copied { background: #164e63; color: #67e8f9; }
+  .tag.quarantined { background: #701a22; color: #fca5a5; }
+  .tag.udc { background: #2e1065; color: #c4b5fd; font-size: 0.65rem; }
+  .tag.custom { background: #064e3b; color: #6ee7b7; font-size: 0.65rem; }
+
+  .badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.62rem; background: #334155; color: #94a3b8; }
+  .badge-purple { background: #2e1065; color: #c4b5fd; }
+
+  .log { max-height: 260px; overflow-y: auto; font-size: 0.72rem; font-family: 'Monaco', 'Menlo', monospace; }
+  .log-sm { max-height: 120px; font-size: 0.68rem; }
+  .log-item { padding: 2px 0; border-bottom: 1px solid #1a2332; color: #94a3b8; white-space: pre; }
+  .log-item .time { color: #4a5568; margin-right: 6px; }
+  .log-item .hl-start { color: #38bdf8; font-weight: 600; }
+  .log-item .hl-done { color: #22c55e; }
+  .log-item .hl-fail { color: #ef4444; }
+  .log-item .hl-skip { color: #f59e0b; }
+  .log-item .hl-milestone { color: #a78bfa; font-weight: 600; }
+
+  .controls { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .controls input { padding: 5px 8px; border-radius: 4px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 0.8rem; }
+  .controls select { padding: 5px 8px; border-radius: 4px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 0.8rem; }
+
+  /* Detail panel */
+  #detailPanel { display: none; }
+  #detailPanel.visible { display: block; }
+  .detail-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 0.82rem; }
+  .detail-grid .dl { color: #64748b; white-space: nowrap; }
+  .detail-grid .dd { color: #e2e8f0; }
+  .tag-list { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0; }
+  .tag-add-row { display: flex; gap: 4px; margin-top: 6px; }
+  .tag-add-row input { padding: 4px 8px; border-radius: 4px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 0.78rem; flex: 1; }
+  .tag-add-row button { padding: 4px 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.78rem; background: #0ea5e9; color: #0f172a; }
+  .tag-remove { cursor: pointer; margin-left: 2px; opacity: 0.6; }
+  .tag-remove:hover { opacity: 1; color: #ef4444; }
+  .source-badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.62rem; font-weight: 600; margin-right: 3px; }
+  .source-embedded { background: #1e3a5f; color: #93c5fd; }
+  .source-filename { background: #422006; color: #fde047; }
+  .source-openlibrary { background: #052e16; color: #86efac; }
+  .source-googlebooks { background: #164e63; color: #67e8f9; }
+  .source-manual { background: #2e1065; color: #c4b5fd; }
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  @media (max-width: 800px) { .summary-grid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 500px) { .summary-grid { grid-template-columns: 1fr; } }
+  .summary-card { background: #1e293b; border-radius: 6px; padding: 10px; border: 1px solid #334155; }
+  .summary-card h3 { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 6px; }
+  .summary-card .total-num { font-size: 2rem; font-weight: 700; color: #38bdf8; }
+  .summary-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 0.75rem; }
+  .summary-row .sk { color: #94a3b8; }
+  .summary-row .sv { font-weight: 600; }
+  .summary-row .sv.arrived { color: #94a3b8; }
+  .summary-row .sv.extracted { color: #f59e0b; }
+  .summary-row .sv.cleaned { color: #facc15; }
+  .summary-row .sv.cataloged { color: #a78bfa; }
+  .summary-row .sv.survivor { color: #22c55e; }
+  .summary-row .sv.skipped { color: #ef4444; }
+  .summary-row .sv.copied { color: #06b6d4; }
+  .summary-row .sv.master { color: #22c55e; }
+  .summary-row .sv.dup { color: #ef4444; }
+  .cover-thumb { width: 30px; height: 42px; object-fit: cover; border-radius: 2px; display: block; }
+  .cover-placeholder { width: 30px; height: 42px; background: #1e293b; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; color: #475569; }
+  .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .gallery-item { background: #1e293b; border-radius: 6px; border: 1px solid #334155; overflow: hidden; cursor: pointer; transition: transform 0.15s, border-color 0.15s; }
+  .gallery-item:hover { transform: translateY(-2px); border-color: #0ea5e9; }
+  .gallery-item img { width: 100%; height: 180px; object-fit: cover; display: block; background: #0f172a; }
+  .gallery-item .info { padding: 6px 8px; }
+  .gallery-item .info .gt { font-size: 0.75rem; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gallery-item .info .ga { font-size: 0.68rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gallery-item .info .gmeta { font-size: 0.62rem; color: #475569; margin-top: 2px; }
+  .gallery-item .cover-missing { width: 100%; height: 180px; background: #0f172a; display: flex; align-items: center; justify-content: center; color: #334155; font-size: 0.7rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Book Organiser <small id="statusLabel">idle</small></h1>
+
+  <!-- Global search bar -->
+  <div class="search-bar" style="display:flex;gap:8px;margin-bottom:12px;align-items:center;position:relative">
+    <input type="text" id="quickSearch" placeholder="Search any book by title, author, or filename..."
+           style="flex:1;padding:8px 12px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.85rem"
+           onkeydown="if(event.key==='Enter')doQuickSearch()">
+    <button onclick="doQuickSearch()" style="padding:8px 20px;border:none;border-radius:6px;background:#0ea5e9;color:#0f172a;font-weight:600;cursor:pointer;font-size:0.85rem;white-space:nowrap">Search</button>
+    <button onclick="exportExcel()" style="padding:8px 16px;border:none;border-radius:6px;background:#22c55e;color:#0f172a;font-weight:600;cursor:pointer;font-size:0.82rem;white-space:nowrap">Export Excel</button>
+    <div id="searchResults" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:100;background:#1e293b;border:1px solid #334155;border-radius:8px;margin-top:4px;max-height:400px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.4)"></div>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('pipeline')">Pipeline</button>
+    <button class="tab-btn" onclick="switchTab('quarantine')" id="quarantineTabBtn">Quarantine <span id="quarantineBadge" style="display:none;background:#701a22;color:#fca5a5;padding:1px 6px;border-radius:8px;font-size:0.65rem;margin-left:4px"></span></button>
+    <button class="tab-btn" onclick="switchTab('library')">Library</button>
+    <button class="tab-btn" onclick="switchTab('gallery')">Gallery</button>
+  </div>
+
+  <!-- ════ PIPELINE TAB ════ -->
+  <div class="tab-panel active" id="tab-pipeline">
+    <div class="row">
+      <input type="text" id="sourcePath" value="Z:\books" placeholder="Source path (e.g. Z:\books)">
+      <button class="primary" onclick="runAll()">A+B: Metadata + Dedup</button>
+      <button onclick="phaseMetadata()">A: Metadata</button>
+      <button onclick="phaseDedup()">B: Dedup</button>
+      <button class="green" onclick="runAllWithCopy()">A+B+C: Full</button>
+      <button class="warn" onclick="phaseCopy()">C: Copy</button>
+    </div>
+
+    <div class="phase-badges" id="phaseBadges">
+      <span class="phase-badge" id="phaseBadgeA">Phase A: Metadata</span>
+      <span class="phase-badge" id="phaseBadgeB">Phase B: Dedup</span>
+      <span class="phase-badge" id="phaseBadgeC">Phase C: Copy</span>
+    </div>
+
+    <div class="funnel" id="funnelView"></div>
+
+    <div class="current" id="currentStatus">
+      <span class="label">Waiting for action...</span>
+      <span class="elapsed" id="elapsedDisplay"></span>
+      <div class="progress-bar"><div class="fill" id="progressFill"></div></div>
+    </div>
+
+    <div class="panel">
+      <h2>Pipeline Log</h2>
+      <div class="log" id="logPanel"></div>
+    </div>
+  </div>
+
+  <!-- ════ QUARANTINE TAB ════ -->
+  <div class="tab-panel" id="tab-quarantine">
+    <div class="row">
+      <span style="color:#fca5a5;font-size:0.9rem;font-weight:600"><span id="quarantineTotal">0</span> files need review</span>
+      <button onclick="loadQuarantine()" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">Refresh</button>
+      <span style="color:#64748b;font-size:0.72rem;margin-left:8px">
+        <span id="quarReviewed" style="color:#22c55e">0</span> reviewed,
+        <span id="quarDismissed" style="color:#64748b">0</span> dismissed
+      </span>
+    </div>
+    <h2 style="margin-top:16px;color:#f59e0b">Dedup Ambiguity <span id="ambigCount" style="color:#64748b;font-size:0.75rem"></span></h2>
+    <div id="ambigPairs"></div>
+    <div id="quarantineList" class="panel" style="padding:0;margin-top:12px">
+      <h2 style="padding:10px 0 0 10px;color:#94a3b8">Other Quarantined Files</h2>
+      <table id="quarantineTable" style="width:100%">
+        <tr><th>ID</th><th>Error</th><th>Detail</th><th>File</th><th>Format</th><th>Stage</th><th>Title</th><th>Author</th><th>Created</th><th>Action</th></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ════ LIBRARY TAB ════ -->
+  <div class="tab-panel" id="tab-library">
+    <div class="row" style="flex-wrap:wrap">
+      <input type="text" id="libSearch" placeholder="FTS query (title / author / desc)..." oninput="loadLibrary()" style="flex:1;min-width:180px">
+      <button onclick="toggleAdvancedSearch()" id="advToggleBtn" style="padding:5px 12px;font-size:0.78rem;background:#334155;border:none;border-radius:4px;color:#e2e8f0;cursor:pointer">&#x25BC; Advanced</button>
+      <button onclick="loadLibrary(); return false" style="padding:5px 12px">Search</button>
+      <span id="libTotal" style="color:#64748b;font-size:0.75rem;align-self:center"></span>
+    </div>
+
+    <!-- Advanced filters (hidden by default) -->
+    <div id="advancedSearch" style="display:none;margin:6px 0 10px 0;padding:10px;background:#0f172a;border-radius:6px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:end">
+        <div>
+          <label style="font-size:0.7rem;color:#64748b">Stage</label>
+          <select id="libStageFilter" onchange="loadLibrary()" style="display:block">
+            <option value="">All</option>
+            <option value="arrived">Arrived</option>
+            <option value="extracted">Extracted</option>
+            <option value="cleaned">Cleaned</option>
+            <option value="cataloged">Cataloged</option>
+            <option value="survivor">Survivor</option>
+            <option value="skipped">Skipped</option>
+            <option value="copied">Copied</option>
+            <option value="quarantined">Quarantined</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:0.7rem;color:#64748b">UDC</label>
+          <select id="libUdcFilter" onchange="loadLibrary()" style="display:block">
+            <option value="">All</option>
+            <option value="000">000 Generalities</option>
+            <option value="100">100 Philosophy</option>
+            <option value="200">200 Religion</option>
+            <option value="300">300 Social Sciences</option>
+            <option value="500">500 Natural Sciences</option>
+            <option value="600">600 Applied Sciences</option>
+            <option value="700">700 Arts</option>
+            <option value="800">800 Literature</option>
+            <option value="900">900 History</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:0.7rem;color:#64748b">Format</label>
+          <select id="libFormatFilter" onchange="loadLibrary()" style="display:block">
+            <option value="">All</option>
+            <option value=".epub">EPUB</option>
+            <option value=".pdf">PDF</option>
+            <option value=".mobi">MOBI</option>
+            <option value=".azw3">AZW3</option>
+            <option value=".cbz">CBZ</option>
+            <option value=".cbr">CBR</option>
+            <option value=".djvu">DJVU</option>
+            <option value=".fb2">FB2</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:0.7rem;color:#64748b">Custom Tag</label>
+          <input type="text" id="libTagFilter" placeholder="tag name" oninput="loadLibrary()" style="width:100px;padding:4px 6px;font-size:0.78rem">
+        </div>
+        <div>
+          <label style="font-size:0.7rem;color:#64748b">Year Min</label>
+          <input type="number" id="libYearMin" placeholder="e.g. 1900" oninput="loadLibrary()" style="width:70px;padding:4px 6px;font-size:0.78rem">
+        </div>
+        <div>
+          <label style="font-size:0.7rem;color:#64748b">Year Max</label>
+          <input type="number" id="libYearMax" placeholder="e.g. 2025" oninput="loadLibrary()" style="width:70px;padding:4px 6px;font-size:0.78rem">
+        </div>
+        <div>
+          <label style="font-size:0.7rem;color:#64748b">Min Size (MB)</label>
+          <input type="number" id="libMinSize" placeholder="0" oninput="loadLibrary()" style="width:60px;padding:4px 6px;font-size:0.78rem">
+        </div>
+        <div>
+          <label style="font-size:0.7rem;color:#64748b">Max Size (MB)</label>
+          <input type="number" id="libMaxSize" placeholder="999" oninput="loadLibrary()" style="width:60px;padding:4px 6px;font-size:0.78rem">
+        </div>
+        <label style="font-size:0.78rem;color:#64748b"><input type="checkbox" id="libMasterOnly" onchange="loadLibrary()"> Masters only</label>
+        <div>
+          <label style="font-size:0.7rem;color:#64748b">Source</label>
+          <select id="libSourceFilter" onchange="loadLibrary()" style="width:120px;padding:4px 6px;font-size:0.78rem"></select>
+        </div>
+      </div>
+      <div style="margin-top:8px;font-size:0.72rem;color:#64748b">
+        FTS syntax: <code style="background:#1a2332;padding:1px 5px;border-radius:3px">term</code> <code style="background:#1a2332;padding:1px 5px;border-radius:3px">term1 AND term2</code> <code style="background:#1a2332;padding:1px 5px;border-radius:3px">term OR term</code> <code style="background:#1a2332;padding:1px 5px;border-radius:3px">"exact phrase"</code> <code style="background:#1a2332;padding:1px 5px;border-radius:3px">-exclude</code>
+        <button onclick="rebuildFTS()" style="margin-left:12px;padding:3px 10px;font-size:0.7rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">Rebuild FTS index</button>
+      </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div id="summaryArea" style="display:none">
+      <div class="summary-grid" id="summaryGrid"></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="panel panel-scroll">
+        <h2>Books</h2>
+        <div id="bulkToolbar" style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;align-items:center">
+          <span id="bulkCount" style="color:#64748b;font-size:0.75rem">0 selected</span>
+          <button onclick="bulkTagAdd()" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">+ Add Tag</button>
+          <button onclick="bulkTagRemove()" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">- Remove Tag</button>
+          <button onclick="bulkClassify()" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">Re-classify UDC</button>
+        </div>
+        <table id="libTable">
+          <tr><th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th><th style="width:34px">Cover</th><th>ID</th><th>UUID</th><th>Title</th><th>Author</th><th>UDC</th><th>Format</th><th>Stage</th></tr>
+        </table>
+      </div>
+      <div>
+        <div class="panel visible" id="detailPanel">
+          <h2>Book Detail <span id="detailId" style="color:#64748b;font-size:0.7rem"></span></h2>
+          <div id="detailBody">
+            <div style="color:#64748b;padding:12px 0;text-align:center">Click a book row to view details</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ GALLERY TAB ════ -->
+  <div class="tab-panel" id="tab-gallery">
+    <div class="row">
+      <span style="color:#94a3b8;font-size:0.85rem;font-weight:600">Cover Gallery</span>
+      <select id="galleryUdcFilter" onchange="loadGallery()" style="padding:5px 8px;border-radius:4px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.8rem">
+        <option value="">All UDC</option>
+        <option value="000">000 Generalities</option>
+        <option value="100">100 Philosophy</option>
+        <option value="200">200 Religion</option>
+        <option value="300">300 Social Sciences</option>
+        <option value="500">500 Natural Sciences</option>
+        <option value="600">600 Applied Sciences</option>
+        <option value="700">700 Arts</option>
+        <option value="800">800 Literature</option>
+        <option value="900">900 History</option>
+      </select>
+      <select id="galleryStageFilter" onchange="loadGallery()" style="padding:5px 8px;border-radius:4px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.8rem">
+        <option value="">All Stages</option>
+        <option value="cataloged">Cataloged</option>
+        <option value="survivor">Survivor</option>
+        <option value="copied">Copied</option>
+      </select>
+      <span id="galleryCount" style="color:#64748b;font-size:0.78rem"></span>
+    </div>
+    <div class="gallery-grid" id="galleryGrid"></div>
+  </div>
+
+</div>
+
+<script>
+const API = "";
+
+// ── Tab switching ──
+function switchTab(name, filters) {
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+  document.querySelector(`.tab-btn[onclick*="${name}"]`).classList.add("active");
+  document.getElementById("tab-" + name).classList.add("active");
+  if (name === "library") {
+    if (!filters) {
+      document.getElementById("libStageFilter").value = "";
+      document.getElementById("libUdcFilter").value = "";
+      document.getElementById("libFormatFilter").value = "";
+      document.getElementById("libTagFilter").value = "";
+      document.getElementById("libYearMin").value = "";
+      document.getElementById("libYearMax").value = "";
+      document.getElementById("libMinSize").value = "";
+      document.getElementById("libMaxSize").value = "";
+      document.getElementById("libMasterOnly").checked = false;
+      document.getElementById("libSourceFilter").value = "";
+    }
+    loadLibrary(filters);
+    loadSummary();
+    loadSources();
+  }
+  if (name === "quarantine") { loadQuarantine(); }
+  if (name === "gallery") { loadGallery(); }
+}
+
+// ── Pipeline tab ──
+const FUNNEL_TOOLTIPS = {
+  arrived: "File discovered in source directory and registered in the database",
+  extracted: "Metadata extractor ran on the file (title, author, format-specific fields)",
+  cleaned: "Filename stripped of noise. Year extracted from filename",
+  cataloged: "Fully processed in DB with inline dedup check passed. Ready for global dedup",
+  survivor: "Passed global dedup (hash + title similarity). Confirmed unique",
+  copied: "File copied to output with cleaned filename",
+  skipped: "Identified as duplicate (same SHA-256 hash or similar title)",
+};
+
+function renderFunnel(f) {
+  const el = document.getElementById("funnelView");
+  if (!f || !f.stages) { el.innerHTML = ""; return; }
+  const total = f.total || 1;
+  let html = '<div style="font-size:0.75rem;color:#64748b;margin-bottom:6px">Total: <strong style="color:#e2e8f0">' + total + '</strong> files</div>';
+  f.stages.forEach(s => {
+    if (s.stage === "skipped") return; // skip shown separately
+    const pct = s.pct;
+    const stuck = s.stuck;
+    const drop = total - s.cumulative;
+    const tip = FUNNEL_TOOLTIPS[s.stage] || "";
+    html += '<div class="funnel-row" onclick="filterLibraryByStage(\'' + s.stage + '\')" style="cursor:pointer">';
+    html += '<span class="funnel-label">' + s.stage.charAt(0).toUpperCase() + s.stage.slice(1) + '</span>';
+    html += '<div class="funnel-bar-wrap">';
+    html += '<div class="funnel-bar ' + s.stage + '" style="width:' + pct + '%"></div>';
+    html += '<span class="tooltip">' + tip + '</span>';
+    html += '</div>';
+    html += '<span class="funnel-info">';
+    html += '<strong>' + s.cumulative + '</strong> (' + pct + '%)';
+    if (drop > 0) html += ' <span style="color:#ef4444">\u2212' + drop + '</span>';
+    html += ' <span style="color:#475569">| stuck: ' + stuck + '</span>';
+    html += '</span>';
+    html += '</div>';
+  });
+  // Skipped row
+  const skippedCount = f.stages.find(s => s.stage === "skipped");
+  const sc = skippedCount ? skippedCount.stuck : 0;
+  if (sc > 0) {
+    html += '<div class="funnel-row" onclick="filterLibraryByStage(\'skipped\')" style="cursor:pointer">';
+    html += '<span class="funnel-label">Skipped</span>';
+    html += '<div class="funnel-bar-wrap">';
+    const spct = Math.round(sc / total * 100);
+    html += '<div class="funnel-bar arrived" style="width:' + spct + '%;background:#ef4444"></div>';
+    html += '<span class="tooltip">' + FUNNEL_TOOLTIPS.skipped + '</span>';
+    html += '</div>';
+    html += '<span class="funnel-info"><strong>' + sc + '</strong> (' + spct + '%)</span>';
+    html += '</div>';
+  }
+  el.innerHTML = html;
+}
+
+function filterLibraryByStage(stage) {
+  document.getElementById("libStageFilter").value = stage;
+  if (document.getElementById("tab-library").classList.contains("active")) {
+    loadLibrary({stage: stage});
+  } else {
+    switchTab("library", {stage: stage});
+  }
+}
+
+function filterLibraryByUdc(udc) {
+  document.getElementById("libUdcFilter").value = udc;
+  if (document.getElementById("tab-library").classList.contains("active")) {
+    loadLibrary({udc: udc});
+  } else {
+    switchTab("library", {udc: udc});
+  }
+}
+
+function filterLibraryByFormat(fmt) {
+  document.getElementById("libFormatFilter").value = fmt;
+  if (document.getElementById("tab-library").classList.contains("active")) {
+    loadLibrary({format: fmt});
+  } else {
+    switchTab("library", {format: fmt});
+  }
+}
+
+// ── Sources ──
+function loadSources() {
+  fetch(API + "/api/sources").then(r => r.json()).then(sources => {
+    const sel = document.getElementById("libSourceFilter");
+    if (!sel) return;
+    sel.innerHTML = '<option value="">All sources</option>';
+    sources.forEach(s => {
+      sel.innerHTML += '<option value="' + esc(s.source_group) + '">' + esc(s.source_group) + ' (' + s.count + ')</option>';
+    });
+  }).catch(() => {});
+}
+
+function phaseBadges(p) {
+  const ph = p && p.current_phase || "";
+  ["A","B","C"].forEach((l, i) => {
+    const el = document.getElementById("phaseBadge" + l);
+    if (!el) return;
+    const names = ["metadata","dedup","copy"];
+    el.className = "phase-badge";
+    if (ph.startsWith(names[i])) el.classList.add("active");
+    else if (ph === names[i] + "_done") el.classList.add("done");
+  });
+}
+
+function fmtDur(seconds) {
+  if (seconds == null || seconds === 0) return "";
+  if (seconds < 60) return seconds.toFixed(1) + "s";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return m + "m " + s + "s";
+}
+
+const _timer = { interval: null, clientStart: null, serverElapsed: 0 };
+
+function updateCurrent(p) {
+  const el = document.getElementById("currentStatus");
+  const fill = document.getElementById("progressFill");
+  const elapsedEl = document.getElementById("elapsedDisplay");
+  if (!p || !p.running) {
+    const dot = '<span class="running-dot"></span>';
+    const disc = (p && p.total_discovered) ? ' <span style="color:#64748b;font-size:0.72rem">discovered: ' + p.total_discovered + "</span>" : "";
+    el.innerHTML = dot + '<span class="label">Idle</span>' + disc;
+    if (fill) fill.style.width = "0%";
+    document.getElementById("statusLabel").textContent = "idle";
+    if (elapsedEl) elapsedEl.textContent = "";
+    if (_timer.interval) { clearInterval(_timer.interval); _timer.interval = null; _timer.clientStart = null; }
+    return;
+  }
+  const phase = p.current_phase || "";
+  const stage = p.current_stage || "";
+  const file = p.current_file || "";
+  const prog = p.phase_progress || [0,0];
+  const totalDisc = p.total_discovered || 0;
+  const pct = prog[1] > 0 ? Math.round(prog[0]/prog[1]*100) : 0;
+  document.getElementById("statusLabel").textContent = phase + (file ? " \xb7 " + file : "");
+
+  // Sync server elapsed for the client timer
+  _timer.serverElapsed = p.elapsed || 0;
+  if (!_timer.clientStart) _timer.clientStart = Date.now();
+
+  const runningDot = '<span class="running-dot"></span>';
+  const elapsedText = p.elapsed ? fmtDur(p.elapsed) : "";
+  const stageTime = p.stage_elapsed ? "stage: " + fmtDur(p.stage_elapsed) : "";
+  const discInfo = totalDisc ? "discovered: " + totalDisc : "";
+  const globInfo = (totalDisc && totalDisc > 0) ? (discInfo + " | " + prog[0] + "/" + totalDisc + " (" + Math.round(prog[0]/totalDisc*100) + "%)") : "";
+  el.innerHTML = runningDot
+    + '<span class="label">' + phase + '</span> '
+    + '<span class="phase">' + stage + '</span> '
+    + '<span class="file">' + esc(file) + '</span> '
+    + '<span class="badge">' + prog[0] + "/" + prog[1] + "</span>"
+    + (globInfo ? ' <span style="color:#64748b;font-size:0.72rem">' + globInfo + "</span>" : "");
+  if (elapsedEl) {
+    elapsedEl.textContent = elapsedText ? (elapsedText + (stageTime ? " \xb7 " + stageTime : "")) : "";
+  }
+  if (fill) fill.style.width = pct + "%";
+
+  // Client-side tick for live elapsed
+  if (!_timer.interval) {
+    _timer.interval = setInterval(function() {
+      if (!p || !p.running) return;
+      const secs = _timer.serverElapsed + (Date.now() - _timer.clientStart) / 1000;
+      const el2 = document.getElementById("elapsedDisplay");
+      if (el2) el2.textContent = fmtDur(secs);
+    }, 1000);
+  }
+}
+
+function renderLog(log) {
+  const el = document.getElementById("logPanel");
+  if (!log || !log.length) { el.innerHTML = '<div class="log-item">No entries</div>'; return; }
+  el.innerHTML = log.slice().reverse().map(l => {
+    const msg = l.msg || l.message || "";
+    const t = (l.time || "").slice(11, 19);
+    let cls = "";
+    if (msg.startsWith("\u25b6")) cls = "hl-start";
+    else if (msg.startsWith("\u2713")) cls = "hl-done";
+    else if (msg.startsWith("\u2717")) cls = "hl-fail";
+    else if (msg.startsWith("~")) cls = "hl-skip";
+    else if (msg.startsWith("\u2501")) cls = "hl-milestone";
+    return `<div class="log-item"><span class="time">${t}</span><span class="${cls}">${esc(msg)}</span></div>`;
+  }).join("");
+}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, function(m) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]; }); }
+
+function getSource() { return document.getElementById("sourcePath").value.trim() || "Z:\\books"; }
+
+// ── Quick Search ──
+let searchHideTimer = null;
+
+function doQuickSearch() {
+  const q = document.getElementById("quickSearch").value.trim();
+  const panel = document.getElementById("searchResults");
+  if (!q) { panel.style.display = "none"; return; }
+  fetch(API + "/api/search?q=" + encodeURIComponent(q) + "&limit=20")
+    .then(r => r.json())
+    .then(d => {
+      const results = d.results || [];
+      if (!results.length) {
+        panel.innerHTML = '<div style="padding:12px;color:#64748b;text-align:center">No matches found</div>';
+        panel.style.display = "block";
+        return;
+      }
+      let html = results.map(b => {
+        const t = b.title || b.filename || "?";
+        const a = b.authors || "\u2014";
+        const s = b.stage || "?";
+        return `<div onclick="showDetail(${b.id});switchTab('library');document.getElementById('searchResults').style.display='none'" style="padding:8px 12px;border-bottom:1px solid #1a2332;cursor:pointer;display:flex;gap:8px;align-items:center">
+          <span style="flex:1"><strong style="color:#e2e8f0">${esc(t)}</strong> <span style="color:#64748b;font-size:0.75rem">${esc(a)}</span></span>
+          <span class="badge badge-purple">${esc(b.udc_code || "")}</span>
+          <span class="tag ${s}">${s}</span>
+        </div>`;
+      }).join("");
+      panel.innerHTML = html;
+      panel.style.display = "block";
+    });
+}
+
+document.addEventListener("click", function(e) {
+  const panel = document.getElementById("searchResults");
+  const bar = document.querySelector(".search-bar");
+  if (panel && bar && !bar.contains(e.target)) panel.style.display = "none";
+});
+
+// ── Excel Export ──
+function exportExcel() {
+  const btn = event.target;
+  btn.textContent = "Exporting...";
+  btn.disabled = true;
+  fetch(API + "/api/export/excel")
+    .then(r => r.blob())
+    .then(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "book_catalog.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+      btn.textContent = "Export Excel";
+      btn.disabled = false;
+    })
+    .catch(() => { btn.textContent = "Export Excel"; btn.disabled = false; });
+}
+
+function runAll() {
+  document.getElementById("statusLabel").textContent = "A+B: metadata + dedup...";
+  fetch(API + "/api/scan?source=" + encodeURIComponent(getSource()));
+}
+function runAllWithCopy() {
+  document.getElementById("statusLabel").textContent = "A+B+C: full pipeline...";
+  fetch(API + "/api/scan_all?source=" + encodeURIComponent(getSource()));
+}
+function phaseMetadata() {
+  document.getElementById("statusLabel").textContent = "phase A: metadata...";
+  fetch(API + "/api/phase/metadata?source=" + encodeURIComponent(getSource()));
+}
+function phaseDedup() {
+  document.getElementById("statusLabel").textContent = "phase B: dedup...";
+  fetch(API + "/api/phase/dedup");
+}
+function phaseCopy() {
+  document.getElementById("statusLabel").textContent = "phase C: copy...";
+  fetch(API + "/api/phase/copy");
+}
+
+function fetchStatus() {
+  Promise.all([
+    fetch(API + "/api/status").then(r => r.json()),
+    fetch(API + "/api/funnel").then(r => r.json()),
+    fetch(API + "/api/quarantine?reviewed=0&limit=0").then(r => r.json()).catch(() => ({total:0}))
+  ]).then(([d, f, q]) => {
+    renderFunnel(f);
+    updateCurrent(d.pipeline);
+    phaseBadges(d.pipeline);
+    renderLog(d.log);
+    // Update quarantine badge
+    const badge = document.getElementById("quarantineBadge");
+    if (badge) {
+      const cnt = q.total || 0;
+      badge.textContent = cnt;
+      badge.style.display = cnt > 0 ? "inline" : "none";
+    }
+  }).catch(() => {});
+}
+
+// ── Summary ──
+function loadSummary() {
+  Promise.all([
+    fetch(API + "/api/summary").then(r => r.json()),
+    fetch(API + "/api/quarantine?reviewed=0&limit=0").then(r => r.json())
+  ]).then(([s, q]) => {
+      const area = document.getElementById("summaryArea");
+      area.style.display = "block";
+      const grid = document.getElementById("summaryGrid");
+
+      // Stage breakdown (clickable → filter library)
+      let stageRows = "";
+      ["survivor","cataloged","copied","cleaned","extracted","arrived","skipped","quarantined"].forEach(k => {
+        const v = s.by_stage[k] || 0;
+        if (v > 0) stageRows += `<div class="summary-row" onclick="filterLibraryByStage('${k}')" style="cursor:pointer;transition:opacity 0.2s" onmouseover="this.style.opacity=0.7" onmouseout="this.style.opacity=1"><span class="sk">${k}</span><span class="sv ${k}">${v}</span></div>`;
+      });
+
+      // UDC breakdown
+      let udcRows = "";
+      const udcLabels = {"000":"General","100":"Philo","200":"Religion","300":"Social","500":"Science","600":"Applied","700":"Arts","800":"Lit","900":"Hist","?":"?"};
+      Object.entries(s.by_udc).slice(0, 10).forEach(([k, v]) => {
+        udcRows += `<div class="summary-row" onclick="filterLibraryByUdc('${k}')" style="cursor:pointer;transition:opacity 0.2s" onmouseover="this.style.opacity=0.7" onmouseout="this.style.opacity=1"><span class="sk">${k} ${udcLabels[k]||""}</span><span class="sv">${v}</span></div>`;
+      });
+
+      // Format breakdown (clickable → filter library)
+      let fmtRows = "";
+      Object.entries(s.by_format).slice(0, 8).forEach(([k, v]) => {
+        fmtRows += `<div class="summary-row" onclick="filterLibraryByFormat('${k}')" style="cursor:pointer;transition:opacity 0.2s" onmouseover="this.style.opacity=0.7" onmouseout="this.style.opacity=1"><span class="sk">${k.toUpperCase()}</span><span class="sv">${v}</span></div>`;
+      });
+
+      const quarantinedTotal = q.total || 0;
+      grid.innerHTML = `
+        <div class="summary-card">
+          <h3>Total Books</h3>
+          <div class="total-num">${s.total}</div>
+          <div style="margin-top:8px;font-size:0.7rem;color:#64748b">
+            Masters: ${(s.by_stage.survivor||0)+(s.by_stage.copied||0)}
+            <span style="margin:0 6px">|</span>
+            Dups: ${s.by_stage.skipped||0}
+          </div>
+        </div>
+        <div class="summary-card">
+          <h3>By Stage</h3>
+          ${stageRows}
+        </div>
+        <div class="summary-card">
+          <h3>By UDC</h3>
+          ${udcRows}
+        </div>
+        <div class="summary-card">
+          <h3>By Format <span style="float:right" class="tag quarantined">${quarantinedTotal} quarantined</span></h3>
+          ${fmtRows}
+        </div>
+      `;
+    })
+    .catch(() => {});
+}
+
+// ── Advanced search ──
+function toggleAdvancedSearch() {
+  const panel = document.getElementById("advancedSearch");
+  const btn = document.getElementById("advToggleBtn");
+  const shown = panel.style.display !== "none";
+  panel.style.display = shown ? "none" : "block";
+  btn.innerHTML = shown ? "\u25BC Advanced" : "\u25B2 Advanced";
+}
+
+function rebuildFTS() {
+  fetch(API + "/api/rebuild-fts", {method:"POST"})
+    .then(r => r.json())
+    .then(d => { alert("FTS rebuilt: " + d.indexed + " docs indexed"); loadLibrary(); })
+    .catch(() => {});
+}
+
+// ── Gallery tab ──
+function loadGallery() {
+  const grid = document.getElementById("galleryGrid");
+  const countEl = document.getElementById("galleryCount");
+  const udc = document.getElementById("galleryUdcFilter").value;
+  const stage = document.getElementById("galleryStageFilter").value;
+  let url = API + "/api/covers?limit=500";
+  if (udc) url += "&udc=" + udc;
+  if (stage) url += "&stage=" + stage;
+  fetch(url).then(r => r.json()).then(books => {
+    if (!books || !books.length) {
+      grid.innerHTML = '<div style="color:#64748b;grid-column:1/-1;text-align:center;padding:40px;font-size:0.85rem">No covers found</div>';
+      countEl.textContent = "0 covers";
+      return;
+    }
+    countEl.textContent = books.length + " covers";
+    const html = books.map(b => {
+      const coverUrl = `/api/cover/${b.id}`;
+      const meta = [];
+      if (b.authors) meta.push(esc(b.authors));
+      if (b.year) meta.push(b.year);
+      if (b.format) meta.push(b.format.replace('.','').toUpperCase());
+      return `<div class="gallery-item" onclick="showDetail(${b.id});switchTab('library')">
+        <img src="${coverUrl}" alt="${esc(b.title || '')}" loading="lazy"
+             onerror="this.outerHTML='<div class=cover-missing>${(b.format||'?').replace('.','').toUpperCase()}</div>'">
+        <div class="info">
+          <div class="gt" title="${esc(b.title || '')}">${esc(b.title || b.filename || '?')}</div>
+          <div class="ga">${esc(b.authors || '')}</div>
+          <div class="gmeta">${meta.join(' · ')}</div>
+        </div>
+      </div>`;
+    }).join("");
+    grid.innerHTML = html;
+  }).catch(() => {
+    grid.innerHTML = '<div style="color:#ef4444;grid-column:1/-1;text-align:center;padding:40px">Error loading gallery</div>';
+  });
+}
+
+// ── Quarantine tab ──
+function loadQuarantine() {
+  const tbl = document.getElementById("quarantineTable");
+  const totalEl = document.getElementById("quarantineTotal");
+  Promise.all([
+    fetch(API + "/api/quarantine?reviewed=0&limit=500").then(r => r.json()),
+    fetch(API + "/api/quarantine?reviewed=1&limit=0").then(r => r.json()),
+    fetch(API + "/api/quarantine?reviewed=2&limit=0").then(r => r.json()),
+    fetch(API + "/api/quarantine/ambiguous").then(r => r.json())
+  ]).then(([pending, reviewed, dismissed, ambiguous]) => {
+    const pendingCount = pending.total || 0;
+    totalEl.textContent = pendingCount;
+    document.getElementById("quarReviewed").textContent = reviewed.total || 0;
+    document.getElementById("quarDismissed").textContent = dismissed.total || 0;
+    // Update badge on tab
+    const badge = document.getElementById("quarantineBadge");
+    if (badge) {
+      badge.textContent = pendingCount;
+      badge.style.display = pendingCount > 0 ? "inline" : "none";
+    }
+
+    // Render ambiguous dedup pairs
+    const ambigIds = new Set();
+    renderAmbiguousPairs(ambiguous, ambigIds);
+    document.getElementById("ambigCount").textContent = ambiguous && ambiguous.length ? "(" + ambiguous.length + " pairs)" : "";
+
+    // Filter out DEDUP_AMBIGUOUS from the main table
+    const others = (pending.results || []).filter(q => !ambigIds.has(q.file_id));
+    if (!others.length) {
+      tbl.innerHTML = "<tr><th>ID</th><th>Error</th><th>Detail</th><th>File</th><th>Format</th><th>Stage</th><th>Title</th><th>Author</th><th>Created</th><th>Action</th></tr><tr><td colspan=10 style='color:#64748b;text-align:center;padding:20px'>No other quarantined files</td></tr>";
+    } else {
+      const rows = others.map(q => {
+        const stageTag = q.stage === "quarantined" ? 'quarantined' : (q.stage || '?');
+        return `<tr>
+          <td>${q.file_id}</td>
+          <td><span class="tag quarantined" style="font-size:0.7rem">${esc(q.error_code)}</span></td>
+          <td style="font-size:0.72rem;color:#94a3b8;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(q.detail || '')}">${esc((q.detail||'').substring(0,80))}</td>
+          <td style="font-size:0.7rem;color:#64748b;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(q.filename || '')}">${esc(q.filename || '')}</td>
+          <td>${q.format || '?'}</td>
+          <td><span class="tag ${stageTag}">${q.stage || '?'}</span></td>
+          <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(q.title || '—')}</td>
+          <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(q.authors || '—')}</td>
+          <td style="font-size:0.7rem;color:#64748b">${(q.created_at||'').slice(11,19)}</td>
+          <td style="white-space:nowrap">
+            <button onclick="resolveQuarantine(${q.file_id}, 1)" style="padding:3px 8px;border:none;border-radius:3px;cursor:pointer;font-size:0.7rem;background:#22c55e;color:#0f172a;font-weight:600">Resolve</button>
+            <button onclick="resolveQuarantine(${q.file_id}, 2)" style="padding:3px 8px;border:none;border-radius:3px;cursor:pointer;font-size:0.7rem;background:#334155;color:#e2e8f0">Dismiss</button>
+          </td>
+        </tr>`;
+      }).join("");
+      tbl.innerHTML = "<tr><th>ID</th><th>Error</th><th>Detail</th><th>File</th><th>Format</th><th>Stage</th><th>Title</th><th>Author</th><th>Created</th><th>Action</th></tr>" + rows;
+    }
+  }).catch(() => {
+    tbl.innerHTML = "<tr><td colspan=10 style='color:#ef4444;text-align:center;padding:20px'>Error loading quarantine data</td></tr>";
+  });
+}
+
+function renderAmbiguousPairs(pairs, ambigIds) {
+  const el = document.getElementById("ambigPairs");
+  if (!pairs || !pairs.length) {
+    el.innerHTML = '<div style="color:#64748b;padding:12px;font-size:0.78rem">No ambiguous dedup cases</div>';
+    return;
+  }
+  let html = "";
+  pairs.forEach((pair, idx) => {
+    const a = pair[0], b = pair[1];
+    ambigIds.add(a.file_id);
+    ambigIds.add(b.file_id);
+    html += '<div style="margin-bottom:12px;background:#1e293b;border:1px solid #334155;border-radius:8px;overflow:hidden">';
+    html += '<div style="padding:8px 12px;background:#2e1065;color:#c4b5fd;font-size:0.78rem;font-weight:600">Pair #' + (idx+1) + ': ' + esc(a.detail || '') + '</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:0">';
+    // File A
+    html += renderAmbiguousFile(a, 'A');
+    // VS divider
+    html += '<div style="display:flex;align-items:center;justify-content:center;padding:12px;color:#64748b;font-size:0.8rem;font-weight:600">VS</div>';
+    // File B
+    html += renderAmbiguousFile(b, 'B');
+    html += '</div>';
+    // Action buttons
+    html += '<div style="padding:8px 12px;border-top:1px solid #334155;display:flex;gap:6px;flex-wrap:wrap;justify-content:center">';
+    html += '<button onclick="resolveAmbiguous(' + a.file_id + ',' + b.file_id + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a;font-weight:600">Keep A (' + a.file_id + '), Skip B</button>';
+    html += '<button onclick="resolveAmbiguous(' + b.file_id + ',' + a.file_id + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#0ea5e9;color:#0f172a;font-weight:600">Keep B (' + b.file_id + '), Skip A</button>';
+    html += '<button onclick="resolveAmbiguousDismissBoth(' + a.file_id + ',' + b.file_id + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">Dismiss Both</button>';
+    html += '</div></div>';
+  });
+  el.innerHTML = html;
+}
+
+function renderAmbiguousFile(f, label) {
+  const coverImg = f.cover_path
+    ? '<img src="/api/cover/' + f.file_id + '" style="width:60px;height:84px;object-fit:cover;border-radius:4px" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
+    : '<div style="width:60px;height:84px;background:#0f172a;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.6rem;color:#475569">' + (f.format||'?').replace('.','').toUpperCase() + '</div>';
+  return `<div style="padding:10px">
+    <div style="margin-bottom:6px">${coverImg}</div>
+    <div style="font-size:0.82rem"><strong>#${f.file_id}</strong> <span style="color:#64748b;font-size:0.7rem">${esc(f.filename||'')}</span></div>
+    <div style="margin-top:6px;font-size:0.78rem">
+      <div><span style="color:#64748b">Title:</span> ${esc(f.title || '—')}</div>
+      <div><span style="color:#64748b">Author:</span> ${esc(f.authors || '—')}</div>
+      <div><span style="color:#64748b">Year:</span> ${f.year || '—'}</div>
+      <div><span style="color:#64748b">Format:</span> ${f.format || '?'}</div>
+      <div><span style="color:#64748b">Size:</span> ${f.file_size ? (f.file_size/1024/1024).toFixed(1) + ' MB' : '—'}</div>
+      <div><span style="color:#64748b">UDC:</span> ${f.udc_code || '—'}</div>
+    </div>
+  </div>`;
+}
+
+function resolveAmbiguous(keepId, skipId) {
+  if (!confirm("Keep #" + keepId + " and mark #" + skipId + " as duplicate?")) return;
+  fetch(API + "/api/quarantine/resolve-ambiguous", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({keep_id: keepId, skip_id: skipId})
+  }).then(r => r.json()).then(d => {
+    loadQuarantine(); loadLibrary(); loadSummary();
+  }).catch(() => {});
+}
+
+function resolveAmbiguousDismissBoth(aId, bId) {
+  if (!confirm("Dismiss both #" + aId + " and #" + bId + "?")) return;
+  Promise.all([
+    fetch(API + "/api/quarantine/resolve", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({file_id: aId, reviewed: 2})
+    }),
+    fetch(API + "/api/quarantine/resolve", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({file_id: bId, reviewed: 2})
+    })
+  ]).then(() => { loadQuarantine(); }).catch(() => {});
+}
+
+// ── Library tab ──
+let selectedLibId = null;
+
+function loadLibrary(filters) {
+  filters = filters || {};
+  const q = document.getElementById("libSearch").value.trim();
+  const stage = filters.stage || document.getElementById("libStageFilter").value;
+  const udc = filters.udc || document.getElementById("libUdcFilter").value;
+  const fmt = filters.format || document.getElementById("libFormatFilter").value;
+  const tag = document.getElementById("libTagFilter").value.trim();
+  const yearMin = document.getElementById("libYearMin").value;
+  const yearMax = document.getElementById("libYearMax").value;
+  const minSize = document.getElementById("libMinSize").value;
+  const maxSize = document.getElementById("libMaxSize").value;
+  const masterOnly = document.getElementById("libMasterOnly").checked;
+  const source = document.getElementById("libSourceFilter").value;
+  let url = API + "/api/search?limit=200";
+  if (q) url += "&q=" + encodeURIComponent(q);
+  if (stage) url += "&stage=" + stage;
+  if (udc) url += "&udc=" + udc;
+  if (fmt) url += "&format=" + fmt;
+  if (tag) url += "&tag=" + encodeURIComponent(tag);
+  if (yearMin) url += "&year_min=" + yearMin;
+  if (yearMax) url += "&year_max=" + yearMax;
+  if (minSize) url += "&min_size=" + (parseFloat(minSize) * 1024 * 1024);
+  if (maxSize) url += "&max_size=" + (parseFloat(maxSize) * 1024 * 1024);
+  if (masterOnly) url += "&masters_only=1";
+  if (source) url += "&source=" + encodeURIComponent(source);
+  fetch(url).then(r => r.json()).then(d => {
+    document.getElementById("libTotal").textContent = d.total + " results" + (d.query ? " for \"" + d.query + "\"" : "");
+    renderLibrary(d.results);
+  }).catch(() => {});
+}
+
+let _selectedIds = {};
+
+function renderLibrary(books) {
+  const tbl = document.getElementById("libTable");
+  document.getElementById("selectAll").checked = false;
+  if (!books || !books.length) {
+    tbl.innerHTML = "<tr><th style='width:30px'><input type='checkbox' disabled></th><th style='width:34px'>Cover</th><th>ID</th><th>UUID</th><th>Title</th><th>Author</th><th>UDC</th><th>Format</th><th>Stage</th></tr><tr><td colspan=9 style='color:#64748b;text-align:center;padding:20px'>No books found</td></tr>";
+    return;
+  }
+  const rows = books.map(b => {
+    const checked = _selectedIds[b.id] ? "checked" : "";
+    const coverImg = b.cover_path
+      ? `<img class="cover-thumb" src="/api/cover/${b.id}" alt="" loading="lazy" onerror="this.parentNode.innerHTML='<div class=cover-placeholder>'+(b.format||'?').replace('.','').toUpperCase()+'</div>'">`
+      : `<div class="cover-placeholder">${(b.format||'?').replace('.','').toUpperCase()}</div>`;
+    return `<tr style="cursor:pointer">`
+    + `<td><input type="checkbox" class="book-check" data-id="${b.id}" ${checked} onchange="toggleBook(${b.id})"></td>`
+    + `<td onclick="showDetail(${b.id})">${coverImg}</td>`
+    + `<td onclick="showDetail(${b.id})">${b.id}</td>`
+    + `<td onclick="showDetail(${b.id})" style="font-size:0.65rem;color:#64748b;font-family:monospace">${esc(b.uuid || "")}</td>`
+    + `<td onclick="showDetail(${b.id})">${esc(b.title || b.filename || "?")}${b.enrich_source ? ' <span class="source-badge source-' + b.enrich_source + '">' + b.enrich_source + '</span>' : ""}</td>`
+    + `<td onclick="showDetail(${b.id})">${esc(b.authors || "\u2014")}</td>`
+    + `<td onclick="showDetail(${b.id})"><span class="badge badge-purple">${esc(b.udc_code || "\u2014")}</span></td>`
+    + `<td onclick="showDetail(${b.id})">${esc(b.format || "")}</td>`
+    + `<td onclick="showDetail(${b.id})"><span class="tag ${b.stage}">${b.stage}</span></td>`
+    + `</tr>`;
+  }).join("");
+  tbl.innerHTML = "<tr><th style='width:30px'><input type='checkbox' id='selectAll' onchange='toggleSelectAll()'></th><th style='width:34px'>Cover</th><th>ID</th><th>UUID</th><th>Title</th><th>Author</th><th>UDC</th><th>Format</th><th>Stage</th></tr>" + rows;
+  updateBulkCount();
+  if (selectedLibId && books.some(b => b.id === selectedLibId)) showDetail(selectedLibId);
+}
+
+function toggleBook(id) {
+  if (_selectedIds[id]) delete _selectedIds[id];
+  else _selectedIds[id] = true;
+  updateBulkCount();
+}
+
+function toggleSelectAll() {
+  const checked = document.getElementById("selectAll").checked;
+  document.querySelectorAll(".book-check").forEach(cb => {
+    const id = parseInt(cb.getAttribute("data-id"));
+    if (checked) _selectedIds[id] = true;
+    else delete _selectedIds[id];
+    cb.checked = checked;
+  });
+  updateBulkCount();
+}
+
+function updateBulkCount() {
+  const ids = Object.keys(_selectedIds);
+  document.getElementById("bulkCount").textContent = ids.length + " selected";
+}
+
+function getSelectedIds() { return Object.keys(_selectedIds).map(Number); }
+
+function bulkTagAdd() {
+  const ids = getSelectedIds();
+  if (!ids.length) return alert("No books selected");
+  const tag = prompt("Enter tag name to add:");
+  if (!tag) return;
+  fetch(API + "/api/bulk/tags/add", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({book_ids: ids, tag: tag})
+  }).then(r => r.json()).then(d => { alert(d.status + " — " + d.added + " book(s)"); loadLibrary(); }).catch(() => {});
+}
+
+function bulkTagRemove() {
+  const ids = getSelectedIds();
+  if (!ids.length) return alert("No books selected");
+  const tag = prompt("Enter tag name to remove:");
+  if (!tag) return;
+  fetch(API + "/api/bulk/tags/remove", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({book_ids: ids, tag: tag})
+  }).then(r => r.json()).then(d => { alert(d.status + " — " + d.removed + " book(s)"); loadLibrary(); }).catch(() => {});
+}
+
+function bulkClassify() {
+  const ids = getSelectedIds();
+  if (!ids.length) return alert("No books selected");
+  const udc = prompt("Enter UDC code (e.g. 800):");
+  if (!udc) return;
+  fetch(API + "/api/bulk/classify", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({book_ids: ids, udc_code: udc})
+  }).then(r => r.json()).then(d => { alert(d.status + " — " + d.reclassified + " book(s)"); loadLibrary(); }).catch(() => {});
+}
+
+function showDetail(bookId) {
+  selectedLibId = bookId;
+  const panel = document.getElementById("detailPanel");
+  const body = document.getElementById("detailBody");
+  document.getElementById("detailId").textContent = "#" + bookId;
+  panel.classList.add("visible");
+  body.innerHTML = '<div style="color:#64748b;padding:12px 0">Loading...</div>';
+
+  Promise.all([
+    fetch(API + "/api/book/" + bookId).then(r => r.json()),
+    fetch(API + "/api/book/" + bookId + "/log").then(r => r.json()),
+    fetch(API + "/api/quarantine?reviewed=0&limit=1000").then(r => r.json()).catch(() => ({results:[]}))
+  ]).then(([b, plog, qdata]) => {
+      if (b.error) { body.innerHTML = '<div style="color:#ef4444">Not found</div>'; return; }
+      const tags = b.tags || [];
+      const udcTags = tags.filter(t => t.tag_type === "udc");
+      const customTags = tags.filter(t => t.tag_type === "custom");
+
+      let html = '<div class="detail-grid" id="detailGrid">';
+      html += `<span class="dl">UUID</span><span class="dd" style="font-family:monospace;font-size:0.7rem">${esc(b.uuid || "\u2014")}</span>`;
+      html += `<span class="dl">Title</span><span class="dd" id="dv_title">${esc(b.title || "\u2014")}</span>`;
+      html += `<span class="dl">Author</span><span class="dd" id="dv_author">${esc(b.authors || "\u2014")}</span>`;
+      html += `<span class="dl">Year</span><span class="dd" id="dv_year">${b.year || "\u2014"}</span>`;
+      html += `<span class="dl">Format</span><span class="dd">${b.format || "\u2014"}</span>`;
+      html += `<span class="dl">Size</span><span class="dd">${b.file_size ? (b.file_size/1024/1024).toFixed(1) + " MB" : "\u2014"}</span>`;
+      html += `<span class="dl">Publisher</span><span class="dd" id="dv_publisher">${esc(b.publisher || "\u2014")}</span>`;
+      html += `<span class="dl">ISBN</span><span class="dd" id="dv_isbn">${esc(b.isbn || "\u2014")}</span>`;
+      html += `<span class="dl">Language</span><span class="dd" id="dv_language">${esc(b.language || "\u2014")}</span>`;
+      html += `<span class="dl">Pages</span><span class="dd" id="dv_pages">${b.pages || "\u2014"}</span>`;
+      html += `<span class="dl">Description</span><span class="dd" id="dv_description" style="max-height:80px;overflow-y:auto">${esc((b.description||"").substring(0,500)) || "\u2014"}</span>`;
+      html += `<span class="dl">Source</span><span class="dd" style="font-size:0.7rem;word-break:break-all">${esc(b.source_path || "")}</span>`;
+      html += `<span class="dl">Stage</span><span class="dd"><span class="tag ${b.stage}">${b.stage}</span>${b.stage_error ? " <span style='color:#ef4444;font-size:0.75rem'>" + esc(b.stage_error) + "</span>" : ""}`;
+      html += `<span class="dl">Enrichment</span><span class="dd">${b.enrich_source ? '<span class="source-badge source-' + b.enrich_source + '">' + b.enrich_source + "</span>" : "\u2014"}</span>`;
+      if (b.is_master === 1) html += ' <span class="tag survivor">Master</span>';
+      else if (b.is_master === 0) html += ' <span class="tag skipped">Duplicate</span>';
+      html += '</span>';
+      html += '</div>';
+
+      // Action buttons
+      html += '<div id="detailActions" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">';
+      html += '<button onclick="editBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#0ea5e9;color:#0f172a">Edit</button>';
+      html += '<button onclick="reExtractBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f59e0b;color:#0f172a">Re-extract</button>';
+      html += '<button onclick="reDedupBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#8b5cf6;color:#0f172a">Re-dedup</button>';
+      html += '<button onclick="reCopyBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a">Re-copy</button>';
+      html += '</div>';
+
+      // UDC tags
+      html += '<div style="margin-top:10px"><strong style="color:#94a3b8;font-size:0.78rem">UDC Tags</strong><div class="tag-list">';
+      if (udcTags.length) {
+        udcTags.forEach(t => { html += `<span class="tag udc">${esc(t.tag)} ${esc(t.tag_label||"")}</span>`; });
+      } else {
+        html += '<span style="color:#64748b;font-size:0.75rem">None</span>';
+      }
+      html += '</div></div>';
+
+      // Custom tags
+      html += '<div style="margin-top:8px"><strong style="color:#94a3b8;font-size:0.78rem">Custom Tags</strong><div class="tag-list" id="customTagList">';
+      if (customTags.length) {
+        customTags.forEach(t => {
+          html += `<span class="tag custom">${esc(t.tag)}<span class="tag-remove" onclick="removeTag(${bookId},'${esc(t.tag)}')"> \u2716</span></span>`;
+        });
+      } else {
+        html += '<span style="color:#64748b;font-size:0.75rem">None</span>';
+      }
+      html += '</div></div>';
+
+      // Tag add form
+      html += '<div class="tag-add-row">';
+      html += '<input type="text" id="newTagInput" placeholder="Add custom tag..." onkeydown="if(event.key===\'Enter\')addTag()">';
+      html += '<button onclick="addTag()">+ Add</button>';
+      html += '</div>';
+
+      // Pipeline history
+      html += '<div style="margin-top:12px"><strong style="color:#94a3b8;font-size:0.78rem">Pipeline History</strong>';
+      if (plog && plog.length) {
+        html += '<div class="log log-sm" style="margin-top:4px">';
+        plog.forEach(l => {
+          const st = l.status === "done" ? "\u2713" : l.status === "failed" ? "\u2717" : "~";
+          html += `<div class="log-item"><span class="time">${(l.timestamp||"").slice(11,19)}</span>${st} ${esc(l.stage)}${l.message ? " \u2014 " + esc(l.message) : ""}</div>`;
+        });
+        html += '</div>';
+      } else {
+        html += '<div style="color:#64748b;font-size:0.75rem;margin-top:4px">No history recorded</div>';
+      }
+      html += '</div>';
+
+      // Quarantine info (if applicable)
+      const qEntry = (qdata.results || []).find(q => q.file_id === bookId);
+      if (qEntry) {
+        html += '<div style="margin-top:12px;padding:10px;background:#701a22;border:1px solid #991b1b;border-radius:6px">';
+        html += '<strong style="color:#fca5a5;font-size:0.82rem">Quarantined</strong>';
+        html += '<div style="margin-top:4px;font-size:0.78rem;color:#fca5a5">Error code: <strong>' + esc(qEntry.error_code) + '</strong></div>';
+        if (qEntry.detail) html += '<div style="font-size:0.78rem;color:#fca5a5;margin-top:2px">' + esc(qEntry.detail) + '</div>';
+        html += '<div style="margin-top:8px;display:flex;gap:6px">';
+        html += '<button onclick="resolveQuarantine(' + bookId + ', 1)" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a;font-weight:600">Resolve &amp; Re-process</button>';
+        html += '<button onclick="resolveQuarantine(' + bookId + ', 2)" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">Dismiss</button>';
+        html += '</div></div>';
+      }
+
+      body.innerHTML = html;
+    }).catch(() => { body.innerHTML = '<div style="color:#ef4444">Error loading book</div>'; });
+}
+
+function addTag() {
+  const input = document.getElementById("newTagInput");
+  const tag = input.value.trim();
+  if (!tag || !selectedLibId) return;
+  fetch(API + "/api/tags/" + selectedLibId + "/add", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({tag: tag})
+  }).then(r => r.json()).then(() => { input.value = ""; showDetail(selectedLibId); });
+}
+
+function removeTag(bookId, tag) {
+  fetch(API + "/api/tags/" + bookId + "/remove", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({tag: tag})
+  }).then(r => r.json()).then(() => { showDetail(selectedLibId); });
+}
+
+// ── Manual metadata edit ──
+function editBook(bookId) {
+  const grid = document.getElementById("detailGrid");
+  const fields = ["title","author","publisher","isbn","language","pages","year","description"];
+  fields.forEach(f => {
+    const el = document.getElementById("dv_" + f);
+    if (!el) return;
+    const val = el.textContent === "\u2014" ? "" : el.textContent;
+    const input = f === "description"
+      ? '<textarea id="inp_' + f + '" style="width:100%;padding:4px 6px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.78rem;font-family:inherit" rows="3">' + esc(val) + '</textarea>'
+      : '<input type="text" id="inp_' + f + '" value="' + esc(val) + '" style="width:100%;padding:4px 6px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.78rem">';
+    el.innerHTML = input;
+  });
+  const btnDiv = document.getElementById("detailActions");
+  if (btnDiv) {
+    btnDiv.innerHTML = '<button onclick="saveBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a;font-weight:600">Save</button>'
+      + ' <button onclick="showDetail(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">Cancel</button>';
+  }
+}
+
+function saveBook(bookId) {
+  const payload = {};
+  const fields = ["title","author","publisher","isbn","language","pages","year","description"];
+  fields.forEach(f => {
+    const el = document.getElementById("inp_" + f);
+    if (el) payload[f] = el.value.trim() || null;
+  });
+  const btnDiv = document.getElementById("detailActions");
+  if (btnDiv) btnDiv.innerHTML = '<span style="color:#22c55e;font-size:0.78rem">Saving...</span>';
+  fetch(API + "/api/book/" + bookId + "/update", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload)
+  }).then(r => r.json()).then(resp => {
+    showDetail(bookId);
+  }).catch(() => { showDetail(bookId); });
+}
+
+// ── Quarantine resolve ──
+function resolveQuarantine(fileId, reviewed) {
+  if (reviewed === 1 && !confirm("Apply manual metadata corrections before resolving?")) return;
+  if (reviewed === 2 && !confirm("Dismiss quarantine for this file?")) return;
+  const payload = {file_id: fileId, reviewed: reviewed};
+  fetch(API + "/api/quarantine/resolve", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload)
+  }).then(r => r.json()).then(d => {
+    showDetail(fileId);
+    loadLibrary();
+    loadSummary();
+  }).catch(() => {});
+}
+
+// ── Per-book re-processing ──
+function reExtractBook(bookId) {
+  if (!confirm("Re-extract metadata for book #" + bookId + "?")) return;
+  fetch(API + "/api/book/" + bookId + "/re-extract", {method:"POST"})
+    .then(r => r.json()).then(d => { showDetail(bookId); loadLibrary(); })
+    .catch(() => { showDetail(bookId); });
+}
+
+function reDedupBook(bookId) {
+  if (!confirm("Re-check dedup for book #" + bookId + "?")) return;
+  fetch(API + "/api/book/" + bookId + "/re-dedup", {method:"POST"})
+    .then(r => r.json()).then(d => { showDetail(bookId); loadLibrary(); })
+    .catch(() => { showDetail(bookId); });
+}
+
+function reCopyBook(bookId) {
+  if (!confirm("Re-copy book #" + bookId + " to output?")) return;
+  fetch(API + "/api/book/" + bookId + "/re-copy", {method:"POST"})
+    .then(r => r.json()).then(d => { showDetail(bookId); loadLibrary(); })
+    .catch(() => { showDetail(bookId); });
+}
+
+// ── SSE events ──
+if (typeof EventSource !== "undefined") {
+  const evt = new EventSource(API + "/api/events");
+  evt.onmessage = function(e) {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.funnel) renderFunnel(d.funnel);
+      updateCurrent(d.pipeline);
+      phaseBadges(d.pipeline);
+      if (d.pipeline && d.pipeline.log) renderLog(d.pipeline.log);
+    } catch(ex) {}
+  };
+}
+
+fetchStatus();
+setInterval(fetchStatus, 5000);
+</script>
+</body>
+</html>

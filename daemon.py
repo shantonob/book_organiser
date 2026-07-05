@@ -1,0 +1,164 @@
+"""Headless Pipeline Daemon
+
+Runs the book pipeline as a standalone process, writing status to the
+daemon_status table for the Flask API/UI to read.
+
+Usage:
+    python daemon.py --status           # Check daemon status
+    python daemon.py --run metadata     # Run metadata phase (blocks)
+    python daemon.py --run dedup        # Run dedup phase
+    python daemon.py --run copy         # Run copy phase
+    python daemon.py --run all          # Run all phases
+    python daemon.py --run all --source "Z:\books"  # With custom source
+"""
+
+import os
+import sys
+import argparse
+import time
+import json
+from datetime import datetime
+
+import config
+from config import DB_PATH
+from db import get_connection, init_db, daemon_heartbeat, get_daemon_status
+from pipeline import run_phase_metadata, run_phase_dedup, run_phase_copy, run_all_phases, state
+
+
+def _run_with_daemon_status(phase_func, job_type, source=None):
+    """Run a pipeline phase while writing status to daemon_status table."""
+    pid = os.getpid()
+    daemon_heartbeat(DB_PATH, job_type, "running", pid=pid)
+    progress = [0, 0]
+    error = None
+    try:
+        def progress_cb(done, total):
+            nonlocal progress
+            progress = [done, total]
+            daemon_heartbeat(DB_PATH, job_type, "running", pid=pid,
+                             current_file=state.current_file,
+                             current_stage=state.current_stage,
+                             current_phase=state.current_phase,
+                             progress=progress)
+        phase_func(source=source)
+        daemon_heartbeat(DB_PATH, job_type, "done", pid=pid,
+                         current_phase=state.current_phase,
+                         progress=progress)
+    except Exception as e:
+        error = str(e)
+        daemon_heartbeat(DB_PATH, job_type, "failed", pid=pid, error=error,
+                         progress=progress)
+        print(f"Daemon failed: {error}", file=sys.stderr)
+        return False
+    return True
+
+
+def cmd_status():
+    """Print daemon status to stdout."""
+    status = get_daemon_status(DB_PATH)
+    print(f"Status:     {status.get('status', 'unknown')}")
+    print(f"Job type:   {status.get('job_type', '-')}")
+    print(f"PID:        {status.get('pid', '-')}")
+    print(f"Phase:      {status.get('current_phase', '-')}")
+    print(f"Stage:      {status.get('current_stage', '-')}")
+    print(f"File:       {status.get('current_file', '-')}")
+    if status.get("progress"):
+        p = status["progress"]
+        print(f"Progress:   {p[0]}/{p[1]} ({p[1]-p[0]} remaining)")
+    if status.get("error"):
+        print(f"Error:      {status['error']}")
+    print(f"Updated:    {status.get('updated_at', '-')}")
+    return 0 if status.get("status") in ("idle", "done") else 1
+
+
+def cmd_reset():
+    """Reset daemon status to idle."""
+    conn = get_connection(DB_PATH)
+    try:
+        conn.execute("DELETE FROM daemon_status")
+        conn.commit()
+        print("Daemon status reset to idle.")
+    finally:
+        conn.close()
+
+
+def cmd_run(args):
+    """Run a pipeline phase."""
+    init_db(DB_PATH)
+    os.makedirs(config.FLAT_DIR, exist_ok=True)
+
+    source = args.source
+    phase = args.run
+
+    print(f"Daemon starting phase: {phase} (source: {source})")
+    sys.stdout.flush()
+
+    if phase == "all":
+        ok = _run_with_daemon_status(run_all_phases, "full_pipeline", source=source)
+    elif phase == "metadata":
+        ok = _run_with_daemon_status(run_phase_metadata, "metadata", source=source)
+    elif phase == "dedup":
+        ok = _run_with_daemon_status(run_phase_dedup, "dedup")
+    elif phase == "copy":
+        ok = _run_with_daemon_status(run_phase_copy, "copy")
+    else:
+        print(f"Unknown phase: {phase}")
+        return 1
+
+    if ok:
+        print(f"Daemon: phase '{phase}' completed successfully.")
+    else:
+        print(f"Daemon: phase '{phase}' FAILED.", file=sys.stderr)
+    return 0 if ok else 1
+
+
+def cmd_watch(args):
+    """Watch inbox directory and auto-trigger pipeline."""
+    from watcher import start_watcher
+    init_db(DB_PATH)
+    os.makedirs(config.FLAT_DIR, exist_ok=True)
+    print(f"Daemon watching inbox: {config.INBOX_DIR}")
+    print("Press Ctrl+C to stop.")
+    daemon_heartbeat(DB_PATH, "watch", "running", pid=os.getpid(),
+                     current_phase="watch", current_stage="watching")
+    observer = start_watcher(config.INBOX_DIR)
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        observer.stop()
+        observer.join()
+        daemon_heartbeat(DB_PATH, "watch", "done")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Book Organiser Headless Daemon")
+    parser.add_argument("--status", action="store_true", help="Check daemon status")
+    parser.add_argument("--reset", action="store_true", help="Reset daemon status to idle")
+    parser.add_argument("--run", choices=["metadata", "dedup", "copy", "all"],
+                        help="Run a specific pipeline phase")
+    parser.add_argument("--watch", action="store_true",
+                        help="Watch inbox directory and auto-trigger pipeline")
+    parser.add_argument("--source", "-s", default=r"Z:\books",
+                        help="Source path(s); semicolon-separated for multiple (default: Z:\\books)")
+    parser.add_argument("--db", default=DB_PATH, help="Path to SQLite database")
+
+    args = parser.parse_args()
+
+    sources = [s.strip() for s in args.source.split(";") if s.strip()]
+    config.SOURCE_DIR = sources[0] if sources else r"Z:\books"
+    config.SOURCE_DIRS = sources
+    config.DB_PATH = args.db
+
+    if args.status:
+        sys.exit(cmd_status())
+    elif args.reset:
+        cmd_reset()
+    elif args.run:
+        sys.exit(cmd_run(args))
+    elif args.watch:
+        cmd_watch(args)
+    else:
+        parser.print_help()

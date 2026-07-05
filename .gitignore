@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+data/
+flask_*.log
+flask_*.txt
+flask_pid*.txt
+test.html
+test_check.js
+.env
+venv/
+.venv/

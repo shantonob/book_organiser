@@ -6,6 +6,9 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import config
 from pipeline import run_all_phases
+from log_utils import setup_logger
+
+logger = setup_logger("watcher", also_stdout=False)
 
 
 class InboxHandler(FileSystemEventHandler):
@@ -33,10 +36,10 @@ class InboxHandler(FileSystemEventHandler):
             return
         self._last_trigger = now
         fname = os.path.basename(path)
-        print(f"[watcher] New ebook detected: {fname}")
-        print(f"[watcher] Running pipeline (source={self.inbox_dir}) ...")
+        logger.info(f"New ebook detected: {fname}")
+        logger.info(f"Running pipeline (source={self.inbox_dir}) ...")
         run_all_phases(source=self.inbox_dir)
-        print(f"[watcher] Pipeline complete for {fname}")
+        logger.info(f"Pipeline complete for {fname}")
 
 
 def start_watcher(inbox_dir):
@@ -45,5 +48,5 @@ def start_watcher(inbox_dir):
     observer = Observer()
     observer.schedule(event_handler, inbox_dir, recursive=False)
     observer.start()
-    print(f"[watcher] Watching {inbox_dir} for new ebooks (debounce=5s)...")
+    logger.info(f"Watching {inbox_dir} for new ebooks (debounce=5s)...")
     return observer

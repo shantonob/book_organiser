@@ -91,6 +91,10 @@
   .tag.copied { background: #164e63; color: #67e8f9; }
   .tag.quarantined { background: #701a22; color: #fca5a5; }
   .tag.udc { background: #2e1065; color: #c4b5fd; font-size: 0.65rem; }
+  /* Global status dot */
+  #globalStatusDot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; transition: background 0.3s; }
+  #globalStatusDot.idle { background: #22c55e; }
+  #globalStatusDot.running { background: #f59e0b; animation: pulse 1.2s ease-in-out infinite; }
   .tag.custom { background: #064e3b; color: #6ee7b7; font-size: 0.65rem; }
 
   .badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.62rem; background: #334155; color: #94a3b8; }
@@ -157,11 +161,21 @@
   .gallery-item .info .ga { font-size: 0.68rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .gallery-item .info .gmeta { font-size: 0.62rem; color: #475569; margin-top: 2px; }
   .gallery-item .cover-missing { width: 100%; height: 180px; background: #0f172a; display: flex; align-items: center; justify-content: center; color: #334155; font-size: 0.7rem; }
+  /* UDC tree */
+  .udc-tree-node { cursor: pointer; padding: 3px 4px; border-radius: 3px; transition: background 0.15s; display: flex; justify-content: space-between; }
+  .udc-tree-node:hover { background: #1a2332; }
+  .udc-tree-node.active { background: #0ea5e9; color: #0f172a; font-weight: 600; }
+  .udc-tree-node .utc { color: #64748b; }
+  .udc-tree-node.active .utc { color: #0f172a; }
+  .udc-tree-node .utcnt { color: #94a3b8; font-weight: 600; }
+  .udc-tree-node.active .utcnt { color: #0f172a; }
+  .udc-sub-list { margin-left: 12px; border-left: 1px solid #334155; padding-left: 6px; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.88/epub.min.js"></script>
 </head>
 <body>
 <div class="container">
-  <h1>Book Organiser <small id="statusLabel">idle</small></h1>
+  <h1><span id="globalStatusDot" class="idle" title="Server idle"></span>Book Organiser <small id="statusLabel">idle</small></h1>
 
   <!-- Global search bar -->
   <div class="search-bar" style="display:flex;gap:8px;margin-bottom:12px;align-items:center;position:relative">
@@ -178,6 +192,7 @@
     <button class="tab-btn" onclick="switchTab('quarantine')" id="quarantineTabBtn">Quarantine <span id="quarantineBadge" style="display:none;background:#701a22;color:#fca5a5;padding:1px 6px;border-radius:8px;font-size:0.65rem;margin-left:4px"></span></button>
     <button class="tab-btn" onclick="switchTab('library')">Library</button>
     <button class="tab-btn" onclick="switchTab('gallery')">Gallery</button>
+    <button class="tab-btn" onclick="switchTab('reader')">Reader</button>
   </div>
 
   <!-- ════ PIPELINE TAB ════ -->
@@ -209,6 +224,11 @@
       <h2>Pipeline Log</h2>
       <div class="log" id="logPanel"></div>
     </div>
+
+    <!-- Summary cards moved from Library tab -->
+    <div id="summaryArea" style="display:none;margin-top:14px">
+      <div class="summary-grid" id="summaryGrid"></div>
+    </div>
   </div>
 
   <!-- ════ QUARANTINE TAB ════ -->
@@ -226,7 +246,7 @@
     <div id="quarantineList" class="panel" style="padding:0;margin-top:12px">
       <h2 style="padding:10px 0 0 10px;color:#94a3b8">Other Quarantined Files</h2>
       <table id="quarantineTable" style="width:100%">
-        <tr><th>ID</th><th>Error</th><th>Detail</th><th>File</th><th>Format</th><th>Stage</th><th>Title</th><th>Author</th><th>Created</th><th>Action</th></tr>
+        <tr><th>ID</th><th>Error</th><th>Detail</th><th>File</th><th>UDC</th><th>Format</th><th>Stage</th><th>Title</th><th>Author</th><th>Created</th><th>Action</th></tr>
       </table>
     </div>
   </div>
@@ -237,6 +257,7 @@
       <input type="text" id="libSearch" placeholder="FTS query (title / author / desc)..." oninput="loadLibrary()" style="flex:1;min-width:180px">
       <button onclick="toggleAdvancedSearch()" id="advToggleBtn" style="padding:5px 12px;font-size:0.78rem;background:#334155;border:none;border-radius:4px;color:#e2e8f0;cursor:pointer">&#x25BC; Advanced</button>
       <button onclick="loadLibrary(); return false" style="padding:5px 12px">Search</button>
+      <button onclick="resetLibrary()" style="padding:5px 12px;background:#334155;color:#e2e8f0;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem">Reset</button>
       <span id="libTotal" style="color:#64748b;font-size:0.75rem;align-self:center"></span>
     </div>
 
@@ -318,13 +339,13 @@
       </div>
     </div>
 
-    <!-- Summary cards -->
-    <div id="summaryArea" style="display:none">
-      <div class="summary-grid" id="summaryGrid"></div>
-    </div>
-
-    <div class="grid-2">
-      <div class="panel panel-scroll">
+    <div style="display:flex;gap:14px">
+      <div id="udcTreePanel" class="panel" style="width:200px;flex-shrink:0;max-height:80vh;overflow-y:auto;font-size:0.75rem">
+        <h2 style="margin-bottom:6px">Tag Tree</h2>
+        <div id="udcTree"></div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div class="panel panel-scroll">
         <h2>Books</h2>
         <div id="bulkToolbar" style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;align-items:center">
           <span id="bulkCount" style="color:#64748b;font-size:0.75rem">0 selected</span>
@@ -336,7 +357,8 @@
           <tr><th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th><th style="width:34px">Cover</th><th>ID</th><th>UUID</th><th>Title</th><th>Author</th><th>UDC</th><th>Format</th><th>Stage</th></tr>
         </table>
       </div>
-      <div>
+      </div>
+      <div style="width:320px;flex-shrink:0">
         <div class="panel visible" id="detailPanel">
           <h2>Book Detail <span id="detailId" style="color:#64748b;font-size:0.7rem"></span></h2>
           <div id="detailBody">
@@ -353,15 +375,6 @@
       <span style="color:#94a3b8;font-size:0.85rem;font-weight:600">Cover Gallery</span>
       <select id="galleryUdcFilter" onchange="loadGallery()" style="padding:5px 8px;border-radius:4px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.8rem">
         <option value="">All UDC</option>
-        <option value="000">000 Generalities</option>
-        <option value="100">100 Philosophy</option>
-        <option value="200">200 Religion</option>
-        <option value="300">300 Social Sciences</option>
-        <option value="500">500 Natural Sciences</option>
-        <option value="600">600 Applied Sciences</option>
-        <option value="700">700 Arts</option>
-        <option value="800">800 Literature</option>
-        <option value="900">900 History</option>
       </select>
       <select id="galleryStageFilter" onchange="loadGallery()" style="padding:5px 8px;border-radius:4px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.8rem">
         <option value="">All Stages</option>
@@ -374,6 +387,24 @@
     <div class="gallery-grid" id="galleryGrid"></div>
   </div>
 
+  <!-- ════ READER TAB ════ -->
+  <div class="tab-panel" id="tab-reader">
+    <div id="readerToolbar" style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+      <button onclick="closeReader()" style="padding:5px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">&#x2190; Back to Library</button>
+      <span id="readerTitle" style="color:#e2e8f0;font-weight:600;font-size:0.9rem;flex:1"></span>
+      <span id="readerFormat" style="color:#64748b;font-size:0.75rem"></span>
+      <button id="readerPrev" onclick="readerPrev()" style="padding:4px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">&#x2190; Prev</button>
+      <span id="readerLocation" style="color:#64748b;font-size:0.78rem"></span>
+      <button id="readerNext" onclick="readerNext()" style="padding:4px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">Next &#x2192;</button>
+    </div>
+    <div id="readerFallback" style="display:none;text-align:center;padding:40px;color:#64748b">
+      <div style="font-size:1.1rem;margin-bottom:12px">Cannot preview this format in the browser</div>
+      <p style="font-size:0.85rem;margin-bottom:16px">Use the <strong>Download</strong> button on the detail page to open it in your ebook reader.</p>
+      <button onclick="switchTab('library')" style="padding:8px 20px;border:none;border-radius:6px;background:#0ea5e9;color:#0f172a;font-weight:600;cursor:pointer">Back to Library</button>
+    </div>
+    <div id="readerArea" style="max-width:850px;margin:0 auto;min-height:70vh;border:1px solid #334155;border-radius:6px;background:#f8fafc;overflow-y:auto"></div>
+  </div>
+
 </div>
 
 <script>
@@ -381,10 +412,19 @@ const API = "";
 
 // ── Tab switching ──
 function switchTab(name, filters) {
+  // Destroy reader when leaving reader tab
+  if (name !== "reader" && readerRendition) {
+    if (readerRendition) { try { readerRendition.destroy(); } catch(e) {} readerRendition = null; }
+    if (readerBook) { try { readerBook.destroy(); } catch(e) {} readerBook = null; }
+    document.removeEventListener("keydown", readerKeyHandler);
+  }
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
   document.querySelector(`.tab-btn[onclick*="${name}"]`).classList.add("active");
   document.getElementById("tab-" + name).classList.add("active");
+  if (name === "pipeline") {
+    loadSummary();
+  }
   if (name === "library") {
     if (!filters) {
       document.getElementById("libStageFilter").value = "";
@@ -401,6 +441,7 @@ function switchTab(name, filters) {
     loadLibrary(filters);
     loadSummary();
     loadSources();
+    renderUdcTree();
   }
   if (name === "quarantine") { loadQuarantine(); }
   if (name === "gallery") { loadGallery(); }
@@ -469,11 +510,28 @@ function filterLibraryByStage(stage) {
 
 function filterLibraryByUdc(udc) {
   document.getElementById("libUdcFilter").value = udc;
+  renderUdcTree();
   if (document.getElementById("tab-library").classList.contains("active")) {
     loadLibrary({udc: udc});
   } else {
     switchTab("library", {udc: udc});
   }
+}
+
+function resetLibrary() {
+  document.getElementById("libSearch").value = "";
+  document.getElementById("libStageFilter").value = "";
+  document.getElementById("libUdcFilter").value = "";
+  document.getElementById("libFormatFilter").value = "";
+  document.getElementById("libTagFilter").value = "";
+  document.getElementById("libYearMin").value = "";
+  document.getElementById("libYearMax").value = "";
+  document.getElementById("libMinSize").value = "";
+  document.getElementById("libMaxSize").value = "";
+  document.getElementById("libMasterOnly").checked = false;
+  document.getElementById("libSourceFilter").value = "";
+  renderUdcTree();
+  loadLibrary();
 }
 
 function filterLibraryByFormat(fmt) {
@@ -614,7 +672,7 @@ function doQuickSearch() {
         const s = b.stage || "?";
         return `<div onclick="showDetail(${b.id});switchTab('library');document.getElementById('searchResults').style.display='none'" style="padding:8px 12px;border-bottom:1px solid #1a2332;cursor:pointer;display:flex;gap:8px;align-items:center">
           <span style="flex:1"><strong style="color:#e2e8f0">${esc(t)}</strong> <span style="color:#64748b;font-size:0.75rem">${esc(a)}</span></span>
-          <span class="badge badge-purple">${esc(b.udc_code || "")}</span>
+          <span class="badge badge-purple">${esc(b.udc_code || "")} ${b.udc_label ? "- " + esc(b.udc_label) : ""}</span>
           <span class="tag ${s}">${s}</span>
         </div>`;
       }).join("");
@@ -670,6 +728,18 @@ function phaseCopy() {
   fetch(API + "/api/phase/copy");
 }
 
+function updateGlobalStatus(p) {
+  const dot = document.getElementById("globalStatusDot");
+  if (!dot) return;
+  if (p && p.running) {
+    dot.className = "running";
+    dot.title = "Running: " + (p.current_phase || "") + (p.current_file ? " - " + p.current_file : "");
+  } else {
+    dot.className = "idle";
+    dot.title = "Server idle";
+  }
+}
+
 function fetchStatus() {
   Promise.all([
     fetch(API + "/api/status").then(r => r.json()),
@@ -678,6 +748,7 @@ function fetchStatus() {
   ]).then(([d, f, q]) => {
     renderFunnel(f);
     updateCurrent(d.pipeline);
+    updateGlobalStatus(d.pipeline);
     phaseBadges(d.pipeline);
     renderLog(d.log);
     // Update quarantine badge
@@ -697,8 +768,10 @@ function loadSummary() {
     fetch(API + "/api/quarantine?reviewed=0&limit=0").then(r => r.json())
   ]).then(([s, q]) => {
       const area = document.getElementById("summaryArea");
-      area.style.display = "block";
+      if (area) area.style.display = "block";
+      renderUdcTree(s.by_udc || {}, s.udc_labels || {});
       const grid = document.getElementById("summaryGrid");
+      const udcLabels = s.udc_labels || {};
 
       // Stage breakdown (clickable → filter library)
       let stageRows = "";
@@ -709,9 +782,9 @@ function loadSummary() {
 
       // UDC breakdown
       let udcRows = "";
-      const udcLabels = {"000":"General","100":"Philo","200":"Religion","300":"Social","500":"Science","600":"Applied","700":"Arts","800":"Lit","900":"Hist","?":"?"};
       Object.entries(s.by_udc).slice(0, 10).forEach(([k, v]) => {
-        udcRows += `<div class="summary-row" onclick="filterLibraryByUdc('${k}')" style="cursor:pointer;transition:opacity 0.2s" onmouseover="this.style.opacity=0.7" onmouseout="this.style.opacity=1"><span class="sk">${k} ${udcLabels[k]||""}</span><span class="sv">${v}</span></div>`;
+        const label = udcLabels[k] || "";
+        udcRows += `<div class="summary-row" onclick="filterLibraryByUdc('${k}')" style="cursor:pointer;transition:opacity 0.2s" onmouseover="this.style.opacity=0.7" onmouseout="this.style.opacity=1"><span class="sk">${k} ${label ? "- " + esc(label) : ""}</span><span class="sv">${v}</span></div>`;
       });
 
       // Format breakdown (clickable → filter library)
@@ -764,11 +837,63 @@ function rebuildFTS() {
     .catch(() => {});
 }
 
+// ── UDC Tree ──
+const UDC_TREE = [
+  {code:"000", label:"Generalities", subs:[{code:"004", label:"Computer Science"},{code:"005", label:"Programming"},{code:"006", label:"AI / Data Science"}]},
+  {code:"100", label:"Philosophy", subs:[{code:"150", label:"Psychology"},{code:"170", label:"Ethics"}]},
+  {code:"200", label:"Religion", subs:[]},
+  {code:"300", label:"Social Sciences", subs:[{code:"330", label:"Economics"},{code:"340", label:"Law"},{code:"370", label:"Education"}]},
+  {code:"500", label:"Natural Sciences", subs:[{code:"510", label:"Mathematics"},{code:"530", label:"Physics"},{code:"540", label:"Chemistry"},{code:"570", label:"Biology"}]},
+  {code:"600", label:"Applied Sciences", subs:[{code:"610", label:"Medicine"},{code:"620", label:"Engineering"},{code:"630", label:"Agriculture"}]},
+  {code:"700", label:"Arts", subs:[{code:"720", label:"Architecture"},{code:"780", label:"Music"}]},
+  {code:"800", label:"Literature", subs:[{code:"810", label:"American Lit."},{code:"820", label:"English Lit."},{code:"830", label:"German Lit."},{code:"840", label:"French Lit."},{code:"860", label:"Spanish Lit."}]},
+  {code:"900", label:"History", subs:[{code:"910", label:"Geography"},{code:"920", label:"Biography"}]},
+];
+
+function renderUdcTree(byUdc, udcLabels) {
+  const el = document.getElementById("udcTree");
+  if (!el) return;
+  // Lazily fetch counts if not provided
+  if (!byUdc) {
+    fetch(API + "/api/summary").then(r => r.json()).then(s => {
+      renderUdcTree(s.by_udc || {}, s.udc_labels || {});
+    }).catch(() => {});
+    return;
+  }
+  const currentFilter = document.getElementById("libUdcFilter").value;
+  let html = "";
+  UDC_TREE.forEach(group => {
+    const cnt = byUdc[group.code] || 0;
+    const active = currentFilter === group.code ? " active" : "";
+    html += '<div class="udc-tree-node' + active + '" onclick="filterLibraryByUdc(\'' + group.code + '\')"><span>' + group.code + ' ' + esc(group.label) + '</span><span class="utcnt">' + cnt + '</span></div>';
+    if (group.subs.length > 0) {
+      html += '<div class="udc-sub-list">';
+      group.subs.forEach(sub => {
+        const subCnt = byUdc[sub.code] || 0;
+        const subActive = currentFilter === sub.code ? " active" : "";
+        html += '<div class="udc-tree-node' + subActive + '" onclick="filterLibraryByUdc(\'' + sub.code + '\')"><span>' + sub.code + ' ' + esc(sub.label) + '</span><span class="utcnt">' + subCnt + '</span></div>';
+      });
+      html += '</div>';
+    }
+  });
+  el.innerHTML = html;
+}
+
 // ── Gallery tab ──
 function loadGallery() {
+  const sel = document.getElementById("galleryUdcFilter");
+  if (sel.options.length <= 1) {
+    fetch(API + "/api/udc-labels").then(r => r.json()).then(labels => {
+      Object.entries(labels).sort(([a],[b]) => a.localeCompare(b)).forEach(([code, label]) => {
+        const opt = document.createElement("option");
+        opt.value = code; opt.textContent = code + " - " + label;
+        sel.appendChild(opt);
+      });
+    }).catch(() => {});
+  }
   const grid = document.getElementById("galleryGrid");
   const countEl = document.getElementById("galleryCount");
-  const udc = document.getElementById("galleryUdcFilter").value;
+  const udc = sel.value;
   const stage = document.getElementById("galleryStageFilter").value;
   let url = API + "/api/covers?limit=500";
   if (udc) url += "&udc=" + udc;
@@ -786,6 +911,7 @@ function loadGallery() {
       if (b.authors) meta.push(esc(b.authors));
       if (b.year) meta.push(b.year);
       if (b.format) meta.push(b.format.replace('.','').toUpperCase());
+      if (b.udc_code) meta.push(b.udc_code + (b.udc_label ? " " + esc(b.udc_label) : ""));
       return `<div class="gallery-item" onclick="showDetail(${b.id});switchTab('library')">
         <img src="${coverUrl}" alt="${esc(b.title || '')}" loading="lazy"
              onerror="this.outerHTML='<div class=cover-missing>${(b.format||'?').replace('.','').toUpperCase()}</div>'">
@@ -831,7 +957,7 @@ function loadQuarantine() {
     // Filter out DEDUP_AMBIGUOUS from the main table
     const others = (pending.results || []).filter(q => !ambigIds.has(q.file_id));
     if (!others.length) {
-      tbl.innerHTML = "<tr><th>ID</th><th>Error</th><th>Detail</th><th>File</th><th>Format</th><th>Stage</th><th>Title</th><th>Author</th><th>Created</th><th>Action</th></tr><tr><td colspan=10 style='color:#64748b;text-align:center;padding:20px'>No other quarantined files</td></tr>";
+      tbl.innerHTML = "<tr><th>ID</th><th>Error</th><th>Detail</th><th>File</th><th>UDC</th><th>Format</th><th>Stage</th><th>Title</th><th>Author</th><th>Created</th><th>Action</th></tr><tr><td colspan=11 style='color:#64748b;text-align:center;padding:20px'>No other quarantined files</td></tr>";
     } else {
       const rows = others.map(q => {
         const stageTag = q.stage === "quarantined" ? 'quarantined' : (q.stage || '?');
@@ -840,6 +966,7 @@ function loadQuarantine() {
           <td><span class="tag quarantined" style="font-size:0.7rem">${esc(q.error_code)}</span></td>
           <td style="font-size:0.72rem;color:#94a3b8;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(q.detail || '')}">${esc((q.detail||'').substring(0,80))}</td>
           <td style="font-size:0.7rem;color:#64748b;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(q.filename || '')}">${esc(q.filename || '')}</td>
+          <td>${esc(q.udc_code || '—')} ${q.udc_label ? '- ' + esc(q.udc_label) : ''}</td>
           <td>${q.format || '?'}</td>
           <td><span class="tag ${stageTag}">${q.stage || '?'}</span></td>
           <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(q.title || '—')}</td>
@@ -884,6 +1011,7 @@ function renderAmbiguousPairs(pairs, ambigIds) {
     html += '<button onclick="resolveAmbiguous(' + a.file_id + ',' + b.file_id + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a;font-weight:600">Keep A (' + a.file_id + '), Skip B</button>';
     html += '<button onclick="resolveAmbiguous(' + b.file_id + ',' + a.file_id + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#0ea5e9;color:#0f172a;font-weight:600">Keep B (' + b.file_id + '), Skip A</button>';
     html += '<button onclick="resolveAmbiguousDismissBoth(' + a.file_id + ',' + b.file_id + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">Dismiss Both</button>';
+    html += '<button onclick="resolveAmbiguousKeepBoth(' + a.file_id + ',' + b.file_id + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#a855f7;color:#0f172a;font-weight:600">Keep Both</button>';
     html += '</div></div>';
   });
   el.innerHTML = html;
@@ -902,7 +1030,7 @@ function renderAmbiguousFile(f, label) {
       <div><span style="color:#64748b">Year:</span> ${f.year || '—'}</div>
       <div><span style="color:#64748b">Format:</span> ${f.format || '?'}</div>
       <div><span style="color:#64748b">Size:</span> ${f.file_size ? (f.file_size/1024/1024).toFixed(1) + ' MB' : '—'}</div>
-      <div><span style="color:#64748b">UDC:</span> ${f.udc_code || '—'}</div>
+      <div><span style="color:#64748b">UDC:</span> ${esc(f.udc_code || '—')} ${f.udc_label ? "- " + esc(f.udc_label) : ""}</div>
     </div>
   </div>`;
 }
@@ -931,11 +1059,22 @@ function resolveAmbiguousDismissBoth(aId, bId) {
   ]).then(() => { loadQuarantine(); }).catch(() => {});
 }
 
+function resolveAmbiguousKeepBoth(aId, bId) {
+  if (!confirm("Keep both #" + aId + " and #" + bId + " as survivors?")) return;
+  fetch(API + "/api/quarantine/keep-both", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({id_a: aId, id_b: bId})
+  }).then(r => r.json()).then(d => {
+    loadQuarantine(); loadLibrary(); loadSummary();
+  }).catch(() => {});
+}
+
 // ── Library tab ──
 let selectedLibId = null;
 
 function loadLibrary(filters) {
   filters = filters || {};
+  renderUdcTree();
   const q = document.getElementById("libSearch").value.trim();
   const stage = filters.stage || document.getElementById("libStageFilter").value;
   const udc = filters.udc || document.getElementById("libUdcFilter").value;
@@ -986,7 +1125,7 @@ function renderLibrary(books) {
     + `<td onclick="showDetail(${b.id})" style="font-size:0.65rem;color:#64748b;font-family:monospace">${esc(b.uuid || "")}</td>`
     + `<td onclick="showDetail(${b.id})">${esc(b.title || b.filename || "?")}${b.enrich_source ? ' <span class="source-badge source-' + b.enrich_source + '">' + b.enrich_source + '</span>' : ""}</td>`
     + `<td onclick="showDetail(${b.id})">${esc(b.authors || "\u2014")}</td>`
-    + `<td onclick="showDetail(${b.id})"><span class="badge badge-purple">${esc(b.udc_code || "\u2014")}</span></td>`
+    + `<td onclick="showDetail(${b.id})"><span class="badge badge-purple">${esc(b.udc_code || "\u2014")} ${b.udc_label ? esc(b.udc_label) : ""}</span></td>`
     + `<td onclick="showDetail(${b.id})">${esc(b.format || "")}</td>`
     + `<td onclick="showDetail(${b.id})"><span class="tag ${b.stage}">${b.stage}</span></td>`
     + `</tr>`;
@@ -1076,6 +1215,7 @@ function showDetail(bookId) {
       html += `<span class="dl">Title</span><span class="dd" id="dv_title">${esc(b.title || "\u2014")}</span>`;
       html += `<span class="dl">Author</span><span class="dd" id="dv_author">${esc(b.authors || "\u2014")}</span>`;
       html += `<span class="dl">Year</span><span class="dd" id="dv_year">${b.year || "\u2014"}</span>`;
+      html += `<span class="dl">UDC</span><span class="dd">${esc(b.udc_code || "\u2014")} ${b.udc_label ? "- " + esc(b.udc_label) : ""}</span>`;
       html += `<span class="dl">Format</span><span class="dd">${b.format || "\u2014"}</span>`;
       html += `<span class="dl">Size</span><span class="dd">${b.file_size ? (b.file_size/1024/1024).toFixed(1) + " MB" : "\u2014"}</span>`;
       html += `<span class="dl">Publisher</span><span class="dd" id="dv_publisher">${esc(b.publisher || "\u2014")}</span>`;
@@ -1097,6 +1237,8 @@ function showDetail(bookId) {
       html += '<button onclick="reExtractBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f59e0b;color:#0f172a">Re-extract</button>';
       html += '<button onclick="reDedupBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#8b5cf6;color:#0f172a">Re-dedup</button>';
       html += '<button onclick="reCopyBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a">Re-copy</button>';
+      html += '<button onclick="window.location.href=API+\'/api/book/' + bookId + '/download\'" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#6366f1;color:#f8fafc;font-weight:600">Download</button>';
+      html += '<button onclick="openReader(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f97316;color:#0f172a;font-weight:600">Read Online</button>';
       html += '</div>';
 
       // UDC tags
@@ -1156,6 +1298,141 @@ function showDetail(bookId) {
     }).catch(() => { body.innerHTML = '<div style="color:#ef4444">Error loading book</div>'; });
 }
 
+// ── In-browser reader ──
+let readerBook = null;
+let readerRendition = null;
+let readerFormat = null;
+let readerPage = 0;
+let readerPages = [];
+let readerBookId = null;
+
+function openReader(bookId) {
+  fetch(API + "/api/book/" + bookId).then(r => r.json()).then(b => {
+    const ext = ((b.source_path || "").split(".").pop() || "").toLowerCase();
+    readerFormat = ext;
+    readerBookId = bookId;
+    document.getElementById("readerArea").style.display = "block";
+    document.getElementById("readerFallback").style.display = "none";
+    document.getElementById("readerPrev").style.display = "";
+    document.getElementById("readerNext").style.display = "";
+    switchTab("reader");
+    if (ext === "epub") {
+      loadReader(bookId, b);
+    } else if (ext === "pdf") {
+      loadPdfReader(bookId, b);
+    } else if (ext === "cbz" || ext === "cbr") {
+      loadComicReader(bookId, b);
+    } else {
+      document.getElementById("readerArea").style.display = "none";
+      document.getElementById("readerFallback").style.display = "block";
+      document.getElementById("readerPrev").style.display = "none";
+      document.getElementById("readerNext").style.display = "none";
+    }
+  }).catch(() => alert("Could not load book info"));
+}
+
+function loadReader(bookId, book) {
+  const area = document.getElementById("readerArea");
+  const title = document.getElementById("readerTitle");
+  const fmt = document.getElementById("readerFormat");
+  title.textContent = book.title || "Book #" + bookId;
+  fmt.textContent = book.format || "";
+  area.innerHTML = '<div style="color:#64748b;text-align:center;padding:40px">Loading book...</div>';
+
+  if (readerBook) { try { readerBook.destroy(); } catch(e) {} readerBook = null; readerRendition = null; }
+
+  readerBook = ePub(API + "/api/book/" + bookId + "/read");
+  readerRendition = readerBook.renderTo("readerArea", { width: "100%", height: window.innerHeight - 200, spread: "none" });
+  readerRendition.display();
+  document.getElementById("readerPrev").onclick = function() { readerPrev(); };
+  document.getElementById("readerNext").onclick = function() { readerNext(); };
+  document.addEventListener("keydown", readerKeyHandler);
+  readerRendition.on("relocated", function(loc) {
+    var pct = loc && loc.start ? (loc.start.percentage * 100).toFixed(0) : 0;
+    document.getElementById("readerLocation").textContent = pct + "%";
+  });
+}
+
+function loadPdfReader(bookId, book) {
+  const area = document.getElementById("readerArea");
+  const title = document.getElementById("readerTitle");
+  const fmt = document.getElementById("readerFormat");
+  title.textContent = book.title || "Book #" + bookId;
+  fmt.textContent = book.format || "";
+  document.getElementById("readerLocation").textContent = "";
+  document.getElementById("readerPrev").style.display = "none";
+  document.getElementById("readerNext").style.display = "none";
+  document.removeEventListener("keydown", readerKeyHandler);
+  area.innerHTML = '<iframe src="' + API + '/api/book/' + bookId + '/read" style="width:100%;height:' + (window.innerHeight - 200) + 'px;border:none;border-radius:4px"></iframe>';
+}
+
+function loadComicReader(bookId, book) {
+  const area = document.getElementById("readerArea");
+  const title = document.getElementById("readerTitle");
+  const fmt = document.getElementById("readerFormat");
+  title.textContent = book.title || "Book #" + bookId;
+  fmt.textContent = book.format || "";
+  readerPage = 0;
+  readerPages = [];
+  document.getElementById("readerLocation").textContent = "Loading pages...";
+  document.getElementById("readerPrev").onclick = function() { readerPrev(); };
+  document.getElementById("readerNext").onclick = function() { readerNext(); };
+  document.addEventListener("keydown", readerKeyHandler);
+
+  fetch(API + "/api/book/" + bookId + "/read").then(r => r.json()).then(data => {
+    readerPages = data.pages || [];
+    if (readerPages.length === 0) {
+      area.innerHTML = '<div style="color:#f59e0b;text-align:center;padding:40px"><div style="font-size:1.1rem;margin-bottom:12px">Could not extract this comic archive</div><p style="font-size:0.85rem;color:#64748b">This format needs external tools to extract. Use the <strong>Download</strong> button instead.</p></div>';
+      document.getElementById("readerLocation").textContent = "Unavailable";
+      document.getElementById("readerPrev").style.display = "none";
+      document.getElementById("readerNext").style.display = "none";
+    } else {
+      showComicPage(bookId, 0);
+    }
+  }).catch(function() {
+    area.innerHTML = '<div style="color:#ef4444;text-align:center;padding:40px">Failed to load comic</div>';
+  });
+}
+
+function showComicPage(bookId, idx) {
+  if (idx < 0 || idx >= readerPages.length) return;
+  readerPage = idx;
+  const area = document.getElementById("readerArea");
+  area.innerHTML = '<div style="text-align:center;padding:10px"><img src="' + API + '/api/book/' + bookId + '/read/page/' + idx + '" style="max-width:100%;max-height:' + (window.innerHeight - 220) + 'px;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.3)"></div>';
+  document.getElementById("readerLocation").textContent = (idx + 1) + " / " + readerPages.length;
+}
+
+function readerPrev() {
+  if (readerFormat === "epub" && readerRendition) { readerRendition.prev(); }
+  else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPage > 0) {
+    showComicPage(null, readerPage - 1);
+  }
+}
+
+function readerNext() {
+  if (readerFormat === "epub" && readerRendition) { readerRendition.next(); }
+  else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPage < readerPages.length - 1) {
+    showComicPage(null, readerPage + 1);
+  }
+}
+
+function readerKeyHandler(e) {
+  if (e.key === "ArrowLeft" || e.key === "ArrowUp") { readerPrev(); e.preventDefault(); }
+  if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === " ") { readerNext(); e.preventDefault(); }
+}
+
+function closeReader() {
+  if (readerRendition) { try { readerRendition.destroy(); } catch(e) {} readerRendition = null; }
+  if (readerBook) { try { readerBook.destroy(); } catch(e) {} readerBook = null; }
+  readerBook = null; readerRendition = null; readerPages = []; readerPage = 0;
+  document.removeEventListener("keydown", readerKeyHandler);
+  var bid = readerBookId; readerBookId = null;
+  if (bid && (readerFormat === "cbz" || readerFormat === "cbr")) {
+    fetch(API + "/api/book/" + bid + "/read/cache", {method: "DELETE"}).catch(function(){});
+  }
+  switchTab("library");
+}
+
 function addTag() {
   const input = document.getElementById("newTagInput");
   const tag = input.value.trim();
@@ -1186,6 +1463,19 @@ function editBook(bookId) {
       : '<input type="text" id="inp_' + f + '" value="' + esc(val) + '" style="width:100%;padding:4px 6px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.78rem">';
     el.innerHTML = input;
   });
+  // Add UDC selector row
+  const udcRow = grid.querySelector(".dl:nth-last-child(2), .dl"); // approximate
+  const udcCodes = ["","000","100","200","300","500","600","700","800","900"];
+  const udcLabels = {"000":"Generalities","100":"Philosophy","200":"Religion","300":"Social Sciences","500":"Natural Sciences","600":"Applied Sciences","700":"Arts","800":"Literature","900":"History"};
+  const curUdc = document.querySelector("#detailGrid .dd:nth-child(12)")?.textContent?.trim()?.split(" ")[0] || "";
+  grid.innerHTML += '<span class="dl">UDC</span><span class="dd"><select id="inp_udc_code" style="width:100%;padding:4px 6px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.78rem"><option value="">None</option>';
+  udcCodes.forEach(c => {
+    if (!c) return;
+    grid.innerHTML += '<option value="' + c + '"' + (curUdc === c ? ' selected' : '') + '>' + c + ' ' + (udcLabels[c]||"") + '</option>';
+  });
+  grid.innerHTML += '</select></span>';
+  // Add custom tag input row
+  grid.innerHTML += '<span class="dl">Add Tag</span><span class="dd"><input type="text" id="inp_add_tag" placeholder="tag name" style="width:100%;padding:4px 6px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.78rem"></span>';
   const btnDiv = document.getElementById("detailActions");
   if (btnDiv) {
     btnDiv.innerHTML = '<button onclick="saveBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a;font-weight:600">Save</button>'
@@ -1200,6 +1490,10 @@ function saveBook(bookId) {
     const el = document.getElementById("inp_" + f);
     if (el) payload[f] = el.value.trim() || null;
   });
+  const udcEl = document.getElementById("inp_udc_code");
+  if (udcEl && udcEl.value) payload.udc_code = udcEl.value;
+  const tagEl = document.getElementById("inp_add_tag");
+  if (tagEl && tagEl.value.trim()) payload.add_tags = [tagEl.value.trim()];
   const btnDiv = document.getElementById("detailActions");
   if (btnDiv) btnDiv.innerHTML = '<span style="color:#22c55e;font-size:0.78rem">Saving...</span>';
   fetch(API + "/api/book/" + bookId + "/update", {

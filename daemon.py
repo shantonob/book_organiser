@@ -23,6 +23,9 @@ import config
 from config import DB_PATH
 from db import get_connection, init_db, daemon_heartbeat, get_daemon_status
 from pipeline import run_phase_metadata, run_phase_dedup, run_phase_copy, run_all_phases, state
+from log_utils import setup_logger
+
+logger = setup_logger("daemon", also_stdout=False)
 
 
 def _run_with_daemon_status(phase_func, job_type, source=None):
@@ -48,7 +51,7 @@ def _run_with_daemon_status(phase_func, job_type, source=None):
         error = str(e)
         daemon_heartbeat(DB_PATH, job_type, "failed", pid=pid, error=error,
                          progress=progress)
-        print(f"Daemon failed: {error}", file=sys.stderr)
+        logger.error(f"Daemon failed: {error}")
         return False
     return True
 
@@ -56,18 +59,18 @@ def _run_with_daemon_status(phase_func, job_type, source=None):
 def cmd_status():
     """Print daemon status to stdout."""
     status = get_daemon_status(DB_PATH)
-    print(f"Status:     {status.get('status', 'unknown')}")
-    print(f"Job type:   {status.get('job_type', '-')}")
-    print(f"PID:        {status.get('pid', '-')}")
-    print(f"Phase:      {status.get('current_phase', '-')}")
-    print(f"Stage:      {status.get('current_stage', '-')}")
-    print(f"File:       {status.get('current_file', '-')}")
+    logger.info(f"Status:     {status.get('status', 'unknown')}")
+    logger.info(f"Job type:   {status.get('job_type', '-')}")
+    logger.info(f"PID:        {status.get('pid', '-')}")
+    logger.info(f"Phase:      {status.get('current_phase', '-')}")
+    logger.info(f"Stage:      {status.get('current_stage', '-')}")
+    logger.info(f"File:       {status.get('current_file', '-')}")
     if status.get("progress"):
         p = status["progress"]
-        print(f"Progress:   {p[0]}/{p[1]} ({p[1]-p[0]} remaining)")
+        logger.info(f"Progress:   {p[0]}/{p[1]} ({p[1]-p[0]} remaining)")
     if status.get("error"):
-        print(f"Error:      {status['error']}")
-    print(f"Updated:    {status.get('updated_at', '-')}")
+        logger.info(f"Error:      {status['error']}")
+    logger.info(f"Updated:    {status.get('updated_at', '-')}")
     return 0 if status.get("status") in ("idle", "done") else 1
 
 
@@ -77,7 +80,7 @@ def cmd_reset():
     try:
         conn.execute("DELETE FROM daemon_status")
         conn.commit()
-        print("Daemon status reset to idle.")
+        logger.info("Daemon status reset to idle.")
     finally:
         conn.close()
 
@@ -90,8 +93,7 @@ def cmd_run(args):
     source = args.source
     phase = args.run
 
-    print(f"Daemon starting phase: {phase} (source: {source})")
-    sys.stdout.flush()
+    logger.info(f"Daemon starting phase: {phase} (source: {source})")
 
     if phase == "all":
         ok = _run_with_daemon_status(run_all_phases, "full_pipeline", source=source)
@@ -102,13 +104,13 @@ def cmd_run(args):
     elif phase == "copy":
         ok = _run_with_daemon_status(run_phase_copy, "copy")
     else:
-        print(f"Unknown phase: {phase}")
+        logger.error(f"Unknown phase: {phase}")
         return 1
 
     if ok:
-        print(f"Daemon: phase '{phase}' completed successfully.")
+        logger.info(f"Daemon: phase '{phase}' completed successfully.")
     else:
-        print(f"Daemon: phase '{phase}' FAILED.", file=sys.stderr)
+        logger.error(f"Daemon: phase '{phase}' FAILED.")
     return 0 if ok else 1
 
 
@@ -117,8 +119,8 @@ def cmd_watch(args):
     from watcher import start_watcher
     init_db(DB_PATH)
     os.makedirs(config.FLAT_DIR, exist_ok=True)
-    print(f"Daemon watching inbox: {config.INBOX_DIR}")
-    print("Press Ctrl+C to stop.")
+    logger.info(f"Daemon watching inbox: {config.INBOX_DIR}")
+    logger.info("Press Ctrl+C to stop.")
     daemon_heartbeat(DB_PATH, "watch", "running", pid=os.getpid(),
                      current_phase="watch", current_stage="watching")
     observer = start_watcher(config.INBOX_DIR)

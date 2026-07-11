@@ -4,11 +4,21 @@ import threading
 import time
 import argparse
 import io
+import logging
 from flask import Flask, render_template, jsonify, Response, request, send_file
 import pandas as pd
 
 import config
 from config import DB_PATH, EBOOK_EXTS, EXCLUDE_EXTS
+from log_utils import setup_logger
+
+logger = setup_logger("app", also_stdout=False)
+
+# Silence noisy loggers
+for noisy in ("werkzeug", "flask"):
+    log = logging.getLogger(noisy)
+    log.setLevel(logging.WARNING)
+    log.handlers.clear()
 from db import get_connection, init_db, get_pipeline_summary, get_recent_books, get_pipeline_log, get_book_by_id
 from db import get_phase_counts, get_survivors, get_tags, add_custom_tag, remove_custom_tag, search_tags
 from db import get_summary, get_book_pipeline_log, rebuild_fts, search_books, get_funnel, get_daemon_status
@@ -17,6 +27,20 @@ from pipeline import state, run_pipeline, run_all_phases, run_phase_metadata, ru
 
 app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
+
+# Ensure log directory exists
+os.makedirs(config.LOG_DIR, exist_ok=True)
+
+# Route all server output to app.log
+log_handler = logging.FileHandler(os.path.join(config.LOG_DIR, "app.log"), encoding="utf-8")
+log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+werkz = logging.getLogger("werkzeug")
+werkz.setLevel(logging.INFO)
+werkz.addHandler(log_handler)
+werkz.propagate = False
+flask_log = logging.getLogger("flask")
+flask_log.addHandler(log_handler)
+flask_log.setLevel(logging.INFO)
 
 
 @app.route("/")
@@ -229,9 +253,18 @@ def api_search_tags():
 def api_summary():
     conn = get_connection(DB_PATH)
     try:
-        return jsonify(get_summary(conn))
+        result = get_summary(conn)
+        from classifier import UDC_LABELS
+        result["udc_labels"] = {k: UDC_LABELS.get(k, "") for k in result["by_udc"]}
+        return jsonify(result)
     finally:
         conn.close()
+
+
+@app.route("/api/udc-labels")
+def api_udc_labels():
+    from classifier import UDC_LABELS
+    return jsonify(UDC_LABELS)
 
 
 # ── Pipeline funnel ──────────────────────────────────────────
@@ -338,12 +371,25 @@ def api_book_update(book_id):
         for key in ("title", "authors", "publisher", "isbn", "language", "pages", "year", "description"):
             if key in data:
                 fields[key] = data[key]
-        if not fields:
+        udc_code = data.get("udc_code")
+        if udc_code:
+            fields["udc_code"] = udc_code
+            from classifier import UDC_LABELS
+            fields["udc_label"] = UDC_LABELS.get(udc_code, "")
+        if not fields and not data.get("add_tags"):
             return jsonify({"error": "no fields to update"}), 400
         from datetime import datetime
-        from db import upsert_metadata
-        upsert_metadata(conn, book_id, enrich_source="manual",
-                        enriched_at=datetime.utcnow().isoformat(), **fields)
+        from db import upsert_metadata, set_tags
+        if fields:
+            upsert_metadata(conn, book_id, enrich_source="manual",
+                            enriched_at=datetime.utcnow().isoformat(), **fields)
+            if udc_code:
+                set_tags(conn, book_id, [{"tag": udc_code, "tag_label": fields.get("udc_label", "")}], tag_type="udc")
+        add_tags = data.get("add_tags")
+        if add_tags:
+            for tag in add_tags:
+                from db import add_custom_tag
+                add_custom_tag(conn, book_id, tag)
         conn.commit()
         return jsonify({"status": "updated", "fields": list(fields.keys())})
     finally:
@@ -400,7 +446,7 @@ def api_quarantine_ambiguous():
         rows = conn.execute("""
             SELECT q.file_id, q.detail, q.created_at,
                    f.filename, f.format, f.stage, f.file_size, f.source_path,
-                   m.title, m.authors, m.year, m.udc_code, m.cover_path
+                    m.title, m.authors, m.year, m.udc_code, m.udc_label, m.cover_path
             FROM quarantined q
             JOIN files f ON f.id = q.file_id
             LEFT JOIN metadata m ON m.file_id = q.file_id
@@ -432,6 +478,26 @@ def api_quarantine_resolve_ambiguous():
                      (keep_id, skip_id))
         conn.commit()
         return jsonify({"status": "resolved", "keep": keep_id, "skip": skip_id})
+    finally:
+        conn.close()
+
+
+@app.route("/api/quarantine/keep-both", methods=["POST"])
+def api_quarantine_keep_both():
+    data = request.json or {}
+    id_a = data.get("id_a")
+    id_b = data.get("id_b")
+    if not id_a or not id_b:
+        return jsonify({"error": "id_a and id_b required"}), 400
+    conn = get_connection(DB_PATH)
+    try:
+        from db import mark_survivor
+        mark_survivor(conn, id_a)
+        mark_survivor(conn, id_b)
+        conn.execute("UPDATE quarantined SET reviewed=1 WHERE file_id IN (?, ?)",
+                     (id_a, id_b))
+        conn.commit()
+        return jsonify({"status": "kept_both", "files": [id_a, id_b]})
     finally:
         conn.close()
 
@@ -684,6 +750,113 @@ def api_book_re_copy(book_id):
         conn.close()
 
 
+@app.route("/api/book/<int:book_id>/download")
+def api_book_download(book_id):
+    conn = get_connection(DB_PATH)
+    try:
+        book = get_book_by_id(conn, book_id)
+        if not book:
+            return jsonify({"error": "not found"}), 404
+
+        from filename_cleaner import clean_filename
+        import mimetypes
+
+        filepath = book["source_path"]
+        if filepath and os.path.isfile(filepath):
+            fname = clean_filename(os.path.basename(filepath))
+        else:
+            fname_orig = book["filename"] or f"book_{book_id}"
+            dest = os.path.join(config.FLAT_DIR, clean_filename(os.path.basename(fname_orig)))
+            if os.path.isfile(dest):
+                filepath = dest
+                fname = os.path.basename(dest)
+            else:
+                return jsonify({"error": "file not found on disk"}), 404
+
+        mt, _ = mimetypes.guess_type(filepath)
+        return send_file(filepath, as_attachment=True, download_name=fname, mimetype=mt or "application/octet-stream")
+    finally:
+        conn.close()
+
+
+COMIC_CACHE = os.path.join(config.BASE_DIR, "data", "cache", "comic")
+
+def _extract_comic(book_id, filepath):
+    """Extract a comic archive (CBZ/CBR) to cache and return sorted image list."""
+    cache_dir = os.path.join(COMIC_CACHE, str(book_id))
+    os.makedirs(cache_dir, exist_ok=True)
+    if not os.listdir(cache_dir):
+        if not filepath:
+            return []
+        ext = os.path.splitext(filepath)[1].lower()
+        try:
+            if ext == ".cbz":
+                import zipfile
+                with zipfile.ZipFile(filepath) as zf:
+                    zf.extractall(cache_dir)
+            elif ext == ".cbr":
+                import rarfile
+                with rarfile.RarFile(filepath) as rf:
+                    rf.extractall(cache_dir)
+        except Exception:
+            return []
+    img_exts = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+    pages = []
+    for root, dirs, files in os.walk(cache_dir):
+        for f in sorted(files):
+            if os.path.splitext(f)[1].lower() in img_exts:
+                pages.append(os.path.join(root, f))
+    return pages
+
+
+@app.route("/api/book/<int:book_id>/read")
+def api_book_read(book_id):
+    conn = get_connection(DB_PATH)
+    try:
+        book = get_book_by_id(conn, book_id)
+        if not book:
+            return jsonify({"error": "not found"}), 404
+
+        filepath = book["source_path"]
+        if not filepath or not os.path.isfile(filepath):
+            return jsonify({"error": "file not found on disk"}), 404
+
+        ext = os.path.splitext(filepath)[1].lower()
+        if ext not in config.EBOOK_EXTS:
+            return jsonify({"error": "unsupported format for in-browser reading"}), 400
+
+        if ext == ".epub":
+            return send_file(filepath, mimetype="application/epub+zip")
+        elif ext == ".pdf":
+            return send_file(filepath, mimetype="application/pdf")
+        elif ext in (".cbz", ".cbr"):
+            pages = _extract_comic(book_id, filepath)
+            return jsonify({"format": ext, "total": len(pages), "book_id": book_id})
+        else:
+            return jsonify({"error": "format not supported for in-browser reading, use Download instead"}), 400
+    finally:
+        conn.close()
+
+
+@app.route("/api/book/<int:book_id>/read/page/<int:page_num>")
+def api_book_read_page(book_id, page_num):
+    pages = _extract_comic(book_id, None)
+    if not pages or page_num < 0 or page_num >= len(pages):
+        return jsonify({"error": "page not found"}), 404
+    import mimetypes
+    mt, _ = mimetypes.guess_type(pages[page_num])
+    return send_file(pages[page_num], mimetype=mt or "image/jpeg")
+
+
+@app.route("/api/book/<int:book_id>/read/cache", methods=["DELETE"])
+def api_book_clear_reader_cache(book_id):
+    cache_dir = os.path.join(COMIC_CACHE, str(book_id))
+    if os.path.isdir(cache_dir):
+        import shutil
+        shutil.rmtree(cache_dir, ignore_errors=True)
+    return jsonify({"status": "cleared"})
+
+
 # ── FTS5 Search ──────────────────────────────────────────────
 
 @app.route("/api/search")
@@ -776,8 +949,8 @@ def api_bulk_classify():
     conn = get_connection(DB_PATH)
     try:
         from db import upsert_metadata, set_tags
-        from classifier import UDC_MAP
-        udc_label = UDC_MAP.get(udc_code, "")
+        from classifier import UDC_LABELS
+        udc_label = UDC_LABELS.get(udc_code, "")
         for bid in book_ids:
             upsert_metadata(conn, bid, udc_code=udc_code, udc_label=udc_label)
             set_tags(conn, bid, [{"tag": udc_code, "tag_label": udc_label}], tag_type="udc")

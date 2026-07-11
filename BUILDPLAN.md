@@ -745,7 +745,7 @@ _Show a persistent visual indicator in the page header when the server is active
 - Reuse the existing SSE `pipeline.running` flag or `/api/status` polling
 - Current behaviour: only visible inside the Pipeline tab; P2.21 makes it always-visible in the header
 
-**Status**: ⏳ Pending
+**Status**: ✅ Done
 
 ---
 
@@ -759,4 +759,169 @@ _Add a "Reset" button to the Library tab that clears all filters and shows all b
 - Essentially the same behaviour as `switchTab('library')` when called without filters
 - Improves UX when users have drilled into a filtered view and want to go back to full catalog
 
-**Status**: ⏳ Pending
+**Status**: ✅ Done
+
+### 2026-07-11 — UDC/Tag Tree, 3-Panel Layout, Download, Reader, Edit Enhancements
+
+- Summary tiles moved from Library tab to Pipeline tab (below funnel view)
+- UDC Tree panel added as left sidebar in Library tab (collapsible, sub-classifications, click-to-filter)
+- Renamed "UDC" heading to "Tag Tree" in left panel
+- Restored 3-panel layout: UDC Tree (200px left) | Book List (flex:1 center) | Book Detail (320px right)
+- Dedup ambiguity view: added "Dismiss Both" (calls resolve with reviewed=2 for both) and "Keep Both" (marks both as survivors, reviewed=1)
+- Download button on book detail panel (GET /api/book/<id>/download) with source_path + FLAT_DIR fallback
+- In-browser reader tab: EPUB (ePub.js via CDN), PDF (iframe), CBZ/CBR (image page viewer with cache), fallback for unsupported formats
+- Reader keyboard shortcuts: arrow keys, space for prev/next; cache cleanup on tab close
+- Edit mode enhanced: UDC dropdown selector + custom tag input in edit form
+- Backend /update endpoint now accepts udc_code and add_tags
+
+---
+
+### P2.23 — UDC/Tag Tree Panel in Library
+
+Collapsible tree sidebar on the Library tab showing all UDC classes with counts.
+
+**What:**
+- Left sidebar in Library tab (200px width)
+- Shows major UDC classes (000-900) as root nodes with their labels
+- Sub-classifications indented below (e.g. 510, 520 under 500)
+- Each node shows code + label + book count
+- Clicking any node filters the library by that UDC code and highlights the active node
+- Panel labelled "Tag Tree" (renamed from "UDC")
+
+**Status**: Done
+
+---
+
+### P2.24 — Dedup Ambiguity Enhanced Actions
+
+Additional resolution options for the side-by-side dedup ambiguity view.
+
+**What:**
+- "Dismiss Both" button: resolves both files with reviewed=2 (dismissed)
+- "Keep Both" button: calls mark_survivor() on both files and sets quarantine.reviewed=1
+- Purple styling for Keep Both to distinguish from other actions
+
+**Status**: Done
+
+---
+
+### P2.25 — Book Download Endpoint
+
+Download a book file directly from the detail panel.
+
+**What:**
+- GET /api/book/<id>/download returns the source file as a download attachment
+- Tries source_path first; falls back to FLAT_DIR if source is missing
+- Uses clean_filename() for the download filename
+- Detects MIME type via mimetypes.guess_type()
+
+**Status**: Done
+
+---
+
+### P2.26 — In-Browser Reader
+
+Read books directly in the browser without downloading.
+
+**Supported formats:**
+- EPUB: Rendered via ePub.js (loaded from CDN) with navigation, prev/next, location tracking
+- PDF: Embedded via iframe with full-page view
+- CBZ/CBR: Extracted to data/cache/comic/<id>, displayed as image pages with prev/next navigation
+- Other formats: Fallback message suggesting Download
+
+**Features:**
+- Keyboard shortcuts: ArrowLeft/Up for prev, ArrowRight/Down/Space for next
+- Format badge showing current book type
+- Cache cleanup on tab close (DELETE /api/book/<id>/read/cache)
+- "Back to Library" button in toolbar
+
+**Status**: Done
+
+---
+
+### P2.27 — Enhanced Book Edit (UDC + Tags)
+
+Extend the manual edit form to support UDC re-classification and tag management.
+
+**What:**
+- Edit form now includes UDC dropdown selector (all 10 major classes) alongside existing fields
+- Custom tag input field in edit form (comma-separated or individual)
+- Backend /api/book/<id>/update accepts udc_code and add_tags arrays
+- On save: UDC tags are replaced, custom tags are appended
+
+**Status**: Done
+
+---
+
+## Phase 3 - Backlog (Planned)
+
+### P3.1 - Enhanced Reader (Reading List, Bookmarks, Notes, Highlights)
+
+Turn the basic reader into a full-featured reading experience.
+
+**Backlog items:**
+
+| Item | Description |
+|------|-------------|
+| R1 | Reading List sidebar - Persistent sidebar listing all books grouped by status (Reading, To Read, Finished) |
+| R2 | Bookmarking - Save reading position per book in DB (reader_state table: book_id, cfi/page, timestamp). Auto-restore on open |
+| R3 | Annotations - Highlight text + add notes in EPUB reader. Store in annotations table with book_id, cfi_range, text, note, color, created_at |
+| R4 | Reading progress tracking - Visual progress indicator per book. Estimated time remaining based on reading speed |
+| R5 | Export highlights - Export all annotations/highlights for a book as Markdown or plain text. "My Clippings" style |
+
+**Status**: Planned
+
+---
+
+### P3.2 - Infrastructure & Deployment
+
+Production-hardening and deployment tooling.
+
+**Backlog items:**
+
+| Item | Description |
+|------|-------------|
+| I1 | Docker Compose - Dockerfile + docker-compose.yml for the 3-process architecture (web, api, daemon). Single docker compose up |
+| I2 | Dual-mode config - Docker mode uses volume mounts for DB + data; native mode unchanged. AUTO_DETECT env var |
+| I3 | Dashboard page - Public status page at / showing system health, recent scans, library stats, daemon status. Links to Library tab |
+| I4 | Basic auth - Simple password gate for the UI. Configurable via AUTH_PASSWORD env var or config.py |
+| I5 | Raspberry Pi deployment - ARM64 Docker builds, low-memory mode (sqlite WAL tuning), SD card wear optimisation, headless boot. Script: tools/deploy_pi.sh |
+
+**Status**: Planned
+
+---
+
+### P3.3 - Quarantine Bulk Operations
+
+Bulk-resolve large numbers of quarantined files without manual one-by-one intervention.
+
+**Problem:** 800+ files in quarantine (DEDUP_AMBIGUOUS, NO_METADATA_EMPTY, etc.) cannot be resolved individually.
+
+**Proposed hybrid approach:**
+
+**Q1 - Smart Filters (Phase 1):**
+- Quarantine tab gets filter bar: Error Code dropdown, Date Range, File Name search, Format filter
+- Count badge on each filter option showing how many files match
+- Filter results update the table instantly (client-side or server-side)
+
+**Q2 - Hybrid Bulk Selection (Phase 2):**
+- "All N filtered" checkbox + individual row checkboxes coexist
+- When "Select All" is checked, actions apply to ALL filtered items (even beyond scroll)
+- Individual checkbox selection overrides for targeted actions on visible subset
+- Clear selection button
+
+**Q3 - Bulk Actions (Phase 3):**
+- Bulk Dismiss - mark reviewed=2 for all selected. Optional: with reason
+- Bulk Keep Both - mark_survivor() + reviewed=1 for all selected ambiguous pairs
+- Bulk Keep A / Skip B - for ambiguous pairs: keep the left/first file as survivor
+- Bulk Delete - remove from DB + optional source file deletion
+- Bulk Re-process - re-run metadata extraction + classification
+- Confirmation modal before destructive actions
+
+**Q4 - Smart Defaults (Phase 4):**
+- "Auto-dismiss NO_METADATA_EMPTY" toggle - these are hopeless without manual input
+- "Auto-keep ALL DEDUP_AMBIGUOUS" toggle - keep both as survivors automatically
+- Background job that applies rules to newly quarantined files
+- Configurable rules saved in DB
+
+**Status**: Planned (Q1-Q4)

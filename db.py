@@ -625,7 +625,7 @@ def get_quarantined(conn, reviewed=None, limit=100, offset=0):
     """, params).fetchone()[0]
     rows = conn.execute(f"""
         SELECT q.*, f.filename, f.stage, f.source_path, f.format, f.file_size,
-               m.title, m.authors, m.year, m.udc_code
+               m.title, m.authors, m.year, m.udc_code, m.udc_label
         FROM quarantined q
         JOIN files f ON f.id = q.file_id
         LEFT JOIN metadata m ON m.file_id = q.file_id

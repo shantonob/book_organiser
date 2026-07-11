@@ -2,10 +2,14 @@ import os
 import shutil
 import json
 import threading
+import logging
 from datetime import datetime
 
 import config
 from db import get_connection, init_db, upsert_file, upsert_metadata, set_stage
+from log_utils import setup_logger
+
+logger = setup_logger("pipeline", also_stdout=False)
 from db import find_duplicate_by_hash, find_duplicate_by_title, get_pipeline_summary
 from db import get_cataloged_files, mark_duplicate, mark_survivor, get_survivors, get_phase_counts
 from db import set_tags, quarantine_file, QUARANTINE_ERRORS
@@ -67,6 +71,7 @@ class PipelineState:
                 self._record_phase_end(now)
                 self.current_phase = phase
                 self.phase_start_time = now
+                logger.info(f"[phase] {phase}")
             if stage:
                 self._record_stage_end(now)
                 self.current_stage = stage
@@ -84,6 +89,9 @@ class PipelineState:
                 })
                 if len(self.log) > 500:
                     self.log = self.log[-500:]
+                # Mirror important log messages to file
+                if log_msg.startswith("▶") or log_msg.startswith("✓") or log_msg.startswith("✗") or log_msg.startswith("  ⚠"):
+                    logger.info(log_msg)
 
     def get_snapshot(self):
         with self.lock:

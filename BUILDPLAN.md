@@ -925,3 +925,22 @@ Bulk-resolve large numbers of quarantined files without manual one-by-one interv
 - Configurable rules saved in DB
 
 **Status**: Planned (Q1-Q4)
+
+---
+
+### P3.4 - In-App Configuration UI
+
+Visualise and edit all application settings directly from the web interface.
+
+**What:**
+- New "Settings" tab or modal in the UI
+- Displays all config.py attributes: source paths, ebook extensions, exclude rules, flat dir, log dir, DB path, inbox path, enrichment settings, etc.
+- Editable fields with validation: path existence checks, extension format validation, numeric bounds
+- Underlying SQLite database connection string and WAL/pragma settings visible
+- Changes written back to config.py (or a separate settings table in DB) and applied on save
+- Optional: restart-required banner for settings that need app restart
+- Optional: config backup/restore (export/import JSON of all settings)
+
+**Why:** Eliminates the need to SSH in and edit config.py by hand for routine configuration changes.
+
+**Status**: Planned

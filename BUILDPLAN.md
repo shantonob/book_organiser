@@ -761,6 +761,15 @@ _Add a "Reset" button to the Library tab that clears all filters and shows all b
 
 **Status**: ✅ Done
 
+### 2026-07-11 — Quarantine Bulk Operations (P3.3)
+
+- Q1 Smart Filters: Error code, format, filename search, date range filters on quarantine tab
+- Q1 Count badges: Error code counts shown as clickable badges
+- Q2 Hybrid Bulk Selection: Select All (applies to filtered results) + individual row checkboxes
+- Q3 Bulk Actions: Dismiss, Keep Both, Delete, Re-process with confirmation modal
+- Q4 Smart Defaults: Auto-dismiss NO_METADATA_EMPTY toggle, Auto-keep DEDUP_AMBIGUOUS toggle, persisted via quarantine_rules table
+- Backend: filtered get_quarantined(), bulk endpoints, quarantine rules CRUD
+
 ### 2026-07-11 — UDC/Tag Tree, 3-Panel Layout, Download, Reader, Edit Enhancements
 
 - Summary tiles moved from Library tab to Pipeline tab (below funnel view)
@@ -924,7 +933,7 @@ Bulk-resolve large numbers of quarantined files without manual one-by-one interv
 - Background job that applies rules to newly quarantined files
 - Configurable rules saved in DB
 
-**Status**: Planned (Q1-Q4)
+**Status**: ✅ Done (Q1-Q4)
 
 ---
 

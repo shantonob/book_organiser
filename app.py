@@ -22,7 +22,7 @@ for noisy in ("werkzeug", "flask"):
 from db import get_connection, init_db, get_pipeline_summary, get_recent_books, get_pipeline_log, get_book_by_id
 from db import get_phase_counts, get_survivors, get_tags, add_custom_tag, remove_custom_tag, search_tags
 from db import get_summary, get_book_pipeline_log, rebuild_fts, search_books, get_funnel, get_daemon_status
-from db import get_quarantined, resolve_quarantine, QUARANTINE_ERRORS
+from db import get_quarantined, resolve_quarantine, QUARANTINE_ERRORS, get_quarantine_counts_by_error, get_quarantine_formats, bulk_dismiss, bulk_keep_both, bulk_delete_files, get_quarantine_rules, set_quarantine_rule
 from pipeline import state, run_pipeline, run_all_phases, run_phase_metadata, run_phase_dedup, run_phase_copy, discover_source_files, add_to_inbox
 
 app = Flask(__name__)
@@ -403,9 +403,16 @@ def api_quarantine():
     reviewed = request.args.get("reviewed", type=int)
     limit = request.args.get("limit", default=100, type=int)
     offset = request.args.get("offset", default=0, type=int)
+    error_code = request.args.get("error_code") or None
+    q = request.args.get("q") or None
+    fmt = request.args.get("format") or None
+    date_from = request.args.get("date_from") or None
+    date_to = request.args.get("date_to") or None
     conn = get_connection(DB_PATH)
     try:
-        results, total = get_quarantined(conn, reviewed=reviewed, limit=limit, offset=offset)
+        results, total = get_quarantined(conn, reviewed=reviewed, limit=limit, offset=offset,
+                                          error_code=error_code, q=q, fmt=fmt,
+                                          date_from=date_from, date_to=date_to)
         return jsonify({"results": results, "total": total})
     finally:
         conn.close()
@@ -498,6 +505,102 @@ def api_quarantine_keep_both():
                      (id_a, id_b))
         conn.commit()
         return jsonify({"status": "kept_both", "files": [id_a, id_b]})
+    finally:
+        conn.close()
+
+
+@app.route("/api/quarantine/counts")
+def api_quarantine_counts():
+    conn = get_connection(DB_PATH)
+    try:
+        by_error = get_quarantine_counts_by_error(conn, reviewed=0)
+        by_format = get_quarantine_formats(conn, reviewed=0)
+        return jsonify({"by_error": by_error, "by_format": by_format})
+    finally:
+        conn.close()
+
+
+@app.route("/api/quarantine/bulk/dismiss", methods=["POST"])
+def api_quarantine_bulk_dismiss():
+    data = request.json or {}
+    file_ids = data.get("file_ids", [])
+    if not file_ids:
+        return jsonify({"error": "file_ids required"}), 400
+    conn = get_connection(DB_PATH)
+    try:
+        bulk_dismiss(conn, file_ids)
+        conn.commit()
+        return jsonify({"status": "dismissed", "count": len(file_ids)})
+    finally:
+        conn.close()
+
+
+@app.route("/api/quarantine/bulk/keep-both", methods=["POST"])
+def api_quarantine_bulk_keep_both():
+    data = request.json or {}
+    file_ids = data.get("file_ids", [])
+    if not file_ids:
+        return jsonify({"error": "file_ids required"}), 400
+    conn = get_connection(DB_PATH)
+    try:
+        bulk_keep_both(conn, file_ids)
+        conn.commit()
+        return jsonify({"status": "kept_both", "count": len(file_ids)})
+    finally:
+        conn.close()
+
+
+@app.route("/api/quarantine/bulk/delete", methods=["POST"])
+def api_quarantine_bulk_delete():
+    data = request.json or {}
+    file_ids = data.get("file_ids", [])
+    if not file_ids:
+        return jsonify({"error": "file_ids required"}), 400
+    conn = get_connection(DB_PATH)
+    try:
+        bulk_delete_files(conn, file_ids)
+        conn.commit()
+        return jsonify({"status": "deleted", "count": len(file_ids)})
+    finally:
+        conn.close()
+
+
+@app.route("/api/quarantine/bulk/reprocess", methods=["POST"])
+def api_quarantine_bulk_reprocess():
+    data = request.json or {}
+    file_ids = data.get("file_ids", [])
+    if not file_ids:
+        return jsonify({"error": "file_ids required"}), 400
+    from pipeline import state
+    results = []
+    for fid in file_ids:
+        try:
+            resp = api_book_re_extract(fid)
+            results.append({"file_id": fid, "status": "ok"})
+        except Exception as e:
+            results.append({"file_id": fid, "status": "error", "detail": str(e)})
+    conn = get_connection(DB_PATH)
+    try:
+        for r in results:
+            if r["status"] == "ok":
+                conn.execute("UPDATE quarantined SET reviewed=1 WHERE file_id=?", (r["file_id"],))
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"results": results})
+
+
+@app.route("/api/quarantine/rules", methods=["GET", "POST"])
+def api_quarantine_rules():
+    conn = get_connection(DB_PATH)
+    try:
+        if request.method == "POST":
+            data = request.json or {}
+            for name, value in data.items():
+                set_quarantine_rule(conn, name, value)
+            conn.commit()
+        rules = get_quarantine_rules(conn)
+        return jsonify(rules)
     finally:
         conn.close()
 

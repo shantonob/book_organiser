@@ -614,14 +614,34 @@ def quarantine_file(conn, file_id, error_code, detail=None):
     set_stage(conn, file_id, "quarantined", error_code)
 
 
-def get_quarantined(conn, reviewed=None, limit=100, offset=0):
+def get_quarantined(conn, reviewed=None, limit=100, offset=0,
+                    error_code=None, q=None, fmt=None,
+                    date_from=None, date_to=None):
     where = "WHERE 1=1"
     params = []
     if reviewed is not None:
         where += " AND q.reviewed = ?"
         params.append(reviewed)
+    if error_code:
+        where += " AND q.error_code = ?"
+        params.append(error_code)
+    if q:
+        where += " AND f.filename LIKE ?"
+        params.append(f"%{q}%")
+    if fmt:
+        where += " AND f.format = ?"
+        params.append(fmt if fmt.startswith(".") else f".{fmt}")
+    if date_from:
+        where += " AND q.created_at >= ?"
+        params.append(date_from)
+    if date_to:
+        where += " AND q.created_at <= ?"
+        params.append(date_to)
     total = conn.execute(f"""
-        SELECT COUNT(*) FROM quarantined q {where}
+        SELECT COUNT(*) FROM quarantined q
+        JOIN files f ON f.id = q.file_id
+        LEFT JOIN metadata m ON m.file_id = q.file_id
+        {where}
     """, params).fetchone()[0]
     rows = conn.execute(f"""
         SELECT q.*, f.filename, f.stage, f.source_path, f.format, f.file_size,
@@ -634,6 +654,87 @@ def get_quarantined(conn, reviewed=None, limit=100, offset=0):
         LIMIT ? OFFSET ?
     """, params + [limit, offset]).fetchall()
     return [dict(r) for r in rows], total
+
+
+def get_quarantine_counts_by_error(conn, reviewed=0):
+    rows = conn.execute("""
+        SELECT q.error_code, COUNT(*) as cnt
+        FROM quarantined q
+        WHERE q.reviewed = ?
+        GROUP BY q.error_code
+        ORDER BY cnt DESC
+    """, (reviewed,)).fetchall()
+    return {r["error_code"]: r["cnt"] for r in rows}
+
+
+def get_quarantine_formats(conn, reviewed=0):
+    rows = conn.execute("""
+        SELECT f.format, COUNT(*) as cnt
+        FROM quarantined q
+        JOIN files f ON f.id = q.file_id
+        WHERE q.reviewed = ?
+        GROUP BY f.format
+        ORDER BY cnt DESC
+    """, (reviewed,)).fetchall()
+    return {r["format"]: r["cnt"] for r in rows}
+
+
+def bulk_dismiss(conn, file_ids):
+    now = datetime.utcnow().isoformat()
+    placeholders = ",".join("?" * len(file_ids))
+    conn.execute(f"""
+        UPDATE quarantined SET reviewed=2, reviewed_at=?
+        WHERE file_id IN ({placeholders})
+    """, [now] + file_ids)
+    conn.execute(f"""
+        DELETE FROM quarantined WHERE file_id IN ({placeholders}) AND reviewed=2
+    """, file_ids)
+
+
+def bulk_keep_both(conn, file_ids):
+    for fid in file_ids:
+        mark_survivor(conn, fid)
+    placeholders = ",".join("?" * len(file_ids))
+    conn.execute(f"""
+        UPDATE quarantined SET reviewed=1, reviewed_at=datetime('now')
+        WHERE file_id IN ({placeholders})
+    """, file_ids)
+
+
+def bulk_delete_files(conn, file_ids):
+    placeholders = ",".join("?" * len(file_ids))
+    conn.execute(f"DELETE FROM quarantined WHERE file_id IN ({placeholders})", file_ids)
+    conn.execute(f"DELETE FROM pipeline_log WHERE file_id IN ({placeholders})", file_ids)
+    conn.execute(f"DELETE FROM tags WHERE file_id IN ({placeholders})", file_ids)
+    conn.execute(f"DELETE FROM metadata WHERE file_id IN ({placeholders})", file_ids)
+    conn.execute(f"DELETE FROM files WHERE id IN ({placeholders})", file_ids)
+
+
+def get_quarantine_rules(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS quarantine_rules (
+            name  TEXT PRIMARY KEY,
+            value INTEGER DEFAULT 0,
+            updated_at TEXT
+        )
+    """)
+    rows = conn.execute("SELECT * FROM quarantine_rules").fetchall()
+    return {r["name"]: r["value"] for r in rows}
+
+
+def set_quarantine_rule(conn, name, value):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS quarantine_rules (
+            name  TEXT PRIMARY KEY,
+            value INTEGER DEFAULT 0,
+            updated_at TEXT
+        )
+    """)
+    now = datetime.utcnow().isoformat()
+    conn.execute("""
+        INSERT OR REPLACE INTO quarantine_rules (name, value, updated_at)
+        VALUES (?, ?, ?)
+    """, (name, int(bool(value)), now))
 
 
 def resolve_quarantine(conn, file_id, reviewed=1, user_notes=None):

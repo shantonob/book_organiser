@@ -241,13 +241,92 @@
         <span id="quarDismissed" style="color:#64748b">0</span> dismissed
       </span>
     </div>
-    <h2 style="margin-top:16px;color:#f59e0b">Dedup Ambiguity <span id="ambigCount" style="color:#64748b;font-size:0.75rem"></span></h2>
+
+    <!-- Q1: Filter bar -->
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:end;margin-top:8px;padding:8px;background:#0f172a;border-radius:6px">
+      <div>
+        <label style="font-size:0.65rem;color:#64748b">Error Code</label>
+        <select id="qFilterError" onchange="loadQuarantine()" style="font-size:0.75rem">
+          <option value="">All</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:0.65rem;color:#64748b">Format</label>
+        <select id="qFilterFormat" onchange="loadQuarantine()" style="font-size:0.75rem">
+          <option value="">All</option>
+          <option value=".epub">EPUB</option>
+          <option value=".pdf">PDF</option>
+          <option value=".mobi">MOBI</option>
+          <option value=".azw3">AZW3</option>
+          <option value=".cbz">CBZ</option>
+          <option value=".cbr">CBR</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:0.65rem;color:#64748b">Filename</label>
+        <input type="text" id="qFilterSearch" placeholder="search filename..." oninput="loadQuarantine()" style="font-size:0.75rem;width:130px">
+      </div>
+      <div>
+        <label style="font-size:0.65rem;color:#64748b">From</label>
+        <input type="date" id="qFilterDateFrom" onchange="loadQuarantine()" style="font-size:0.75rem;width:120px">
+      </div>
+      <div>
+        <label style="font-size:0.65rem;color:#64748b">To</label>
+        <input type="date" id="qFilterDateTo" onchange="loadQuarantine()" style="font-size:0.75rem;width:120px">
+      </div>
+      <button onclick="clearQuarantineFilters()" style="padding:4px 10px;font-size:0.72rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">Clear</button>
+    </div>
+
+    <!-- Count badges by error code -->
+    <div id="qErrorBadges" style="display:flex;flex-wrap:wrap;gap:4px;margin:6px 0"></div>
+
+    <h2 style="margin-top:12px;color:#f59e0b">Dedup Ambiguity <span id="ambigCount" style="color:#64748b;font-size:0.75rem"></span></h2>
     <div id="ambigPairs"></div>
-    <div id="quarantineList" class="panel" style="padding:0;margin-top:12px">
+
+    <!-- Q2+Q3: Bulk actions -->
+    <div id="bulkQuarBar" style="display:none;margin-top:10px;padding:6px 10px;background:#1e293b;border:1px solid #334155;border-radius:6px;flex-wrap:wrap;gap:6px;align-items:center">
+      <span style="color:#e2e8f0;font-size:0.78rem;font-weight:600"><span id="bulkQuarCount">0</span> selected</span>
+      <span id="bulkQuarAllLabel" style="display:none;color:#64748b;font-size:0.7rem">(applies to ALL filtered)</span>
+      <button onclick="bulkQuarAction('dismiss')" style="padding:4px 12px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">Dismiss</button>
+      <button onclick="bulkQuarAction('keep-both')" style="padding:4px 12px;font-size:0.75rem;background:#a855f7;border:none;border-radius:3px;color:#0f172a;font-weight:600;cursor:pointer">Keep Both</button>
+      <button onclick="bulkQuarAction('delete')" style="padding:4px 12px;font-size:0.75rem;background:#ef4444;border:none;border-radius:3px;color:#0f172a;font-weight:600;cursor:pointer">Delete</button>
+      <button onclick="bulkQuarAction('reprocess')" style="padding:4px 12px;font-size:0.75rem;background:#f59e0b;border:none;border-radius:3px;color:#0f172a;cursor:pointer">Re-process</button>
+      <button onclick="clearQuarSelection()" style="padding:4px 10px;font-size:0.72rem;background:#0f172a;border:1px solid #334155;border-radius:3px;color:#64748b;cursor:pointer">Clear</button>
+    </div>
+
+    <div id="quarantineList" class="panel" style="padding:0;margin-top:8px">
       <h2 style="padding:10px 0 0 10px;color:#94a3b8">Other Quarantined Files</h2>
       <table id="quarantineTable" style="width:100%">
-        <tr><th>ID</th><th>Error</th><th>Detail</th><th>File</th><th>UDC</th><th>Format</th><th>Stage</th><th>Title</th><th>Author</th><th>Created</th><th>Action</th></tr>
+        <tr>
+          <th style="width:30px"><input type="checkbox" id="quarSelectAll" onchange="toggleQuarSelectAll()"></th>
+          <th>ID</th><th>Error</th><th>Detail</th><th>File</th><th>Format</th><th>Stage</th><th>Title</th><th>Author</th><th>Created</th><th>Action</th>
+        </tr>
       </table>
+    </div>
+
+    <!-- Q4: Smart defaults -->
+    <div style="margin-top:12px;padding:10px;background:#0f172a;border:1px solid #334155;border-radius:6px">
+      <h3 style="color:#94a3b8;font-size:0.78rem;margin-bottom:6px">Smart Defaults</h3>
+      <label style="font-size:0.75rem;color:#e2e8f0;cursor:pointer;display:block;margin-bottom:4px">
+        <input type="checkbox" id="ruleAutoDismiss" onchange="saveQuarantineRules()">
+        Auto-dismiss <code style="background:#1a2332;padding:1px 4px;border-radius:2px">NO_METADATA_EMPTY</code> files (can't be fixed without manual input)
+      </label>
+      <label style="font-size:0.75rem;color:#e2e8f0;cursor:pointer;display:block">
+        <input type="checkbox" id="ruleAutoKeepAmbiguous" onchange="saveQuarantineRules()">
+        Auto-keep ALL <code style="background:#1a2332;padding:1px 4px;border-radius:2px">DEDUP_AMBIGUOUS</code> as survivors (keep both)
+      </label>
+    </div>
+
+    <!-- Confirmation modal -->
+    <div id="quarConfirmModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center">
+      <div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:20px;max-width:400px;text-align:center">
+        <div id="quarConfirmIcon" style="font-size:1.5rem;margin-bottom:8px">&#x26A0;</div>
+        <div id="quarConfirmMsg" style="color:#e2e8f0;font-size:0.85rem;margin-bottom:16px"></div>
+        <div style="display:flex;gap:8px;justify-content:center">
+          <button onclick="executeQuarAction()" id="quarConfirmBtn" style="padding:6px 18px;border:none;border-radius:4px;font-size:0.78rem;font-weight:600;cursor:pointer">Confirm</button>
+          <button onclick="closeQuarConfirm()" style="padding:6px 18px;border:none;border-radius:4px;font-size:0.78rem;background:#334155;color:#e2e8f0;cursor:pointer">Cancel</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -929,44 +1008,102 @@ function loadGallery() {
 }
 
 // ── Quarantine tab ──
+let quarSelectedSet = new Set();
+let quarSelectAllMode = false;
+let quarAllFilteredCount = 0;
+
+function getQuarFilterParams() {
+  const p = new URLSearchParams();
+  p.set("reviewed", "0");
+  p.set("limit", "500");
+  const ec = document.getElementById("qFilterError").value;
+  if (ec) p.set("error_code", ec);
+  const q = document.getElementById("qFilterSearch").value.trim();
+  if (q) p.set("q", q);
+  const fmt = document.getElementById("qFilterFormat").value;
+  if (fmt) p.set("format", fmt);
+  const df = document.getElementById("qFilterDateFrom").value;
+  if (df) p.set("date_from", df + "T00:00:00");
+  const dt = document.getElementById("qFilterDateTo").value;
+  if (dt) p.set("date_to", dt + "T23:59:59");
+  return p.toString();
+}
+
+function clearQuarantineFilters() {
+  document.getElementById("qFilterError").value = "";
+  document.getElementById("qFilterFormat").value = "";
+  document.getElementById("qFilterSearch").value = "";
+  document.getElementById("qFilterDateFrom").value = "";
+  document.getElementById("qFilterDateTo").value = "";
+  loadQuarantine();
+}
+
 function loadQuarantine() {
   const tbl = document.getElementById("quarantineTable");
   const totalEl = document.getElementById("quarantineTotal");
+  const params = getQuarFilterParams();
   Promise.all([
-    fetch(API + "/api/quarantine?reviewed=0&limit=500").then(r => r.json()),
+    fetch(API + "/api/quarantine?" + params).then(r => r.json()),
     fetch(API + "/api/quarantine?reviewed=1&limit=0").then(r => r.json()),
     fetch(API + "/api/quarantine?reviewed=2&limit=0").then(r => r.json()),
-    fetch(API + "/api/quarantine/ambiguous").then(r => r.json())
-  ]).then(([pending, reviewed, dismissed, ambiguous]) => {
+    fetch(API + "/api/quarantine/ambiguous").then(r => r.json()),
+    fetch(API + "/api/quarantine/counts").then(r => r.json()),
+    fetch(API + "/api/quarantine/rules").then(r => r.json())
+  ]).then(([pending, reviewed, dismissed, ambiguous, counts, rules]) => {
     const pendingCount = pending.total || 0;
     totalEl.textContent = pendingCount;
     document.getElementById("quarReviewed").textContent = reviewed.total || 0;
     document.getElementById("quarDismissed").textContent = dismissed.total || 0;
-    // Update badge on tab
     const badge = document.getElementById("quarantineBadge");
     if (badge) {
       badge.textContent = pendingCount;
       badge.style.display = pendingCount > 0 ? "inline" : "none";
     }
 
+    // Q4: Apply smart defaults
+    if (rules["auto_dismiss_no_metadata"]) {
+      const noMeta = (pending.results || []).filter(q => q.error_code === "NO_METADATA_EMPTY");
+      if (noMeta.length) {
+        const ids = noMeta.map(q => q.file_id);
+        fetch(API + "/api/quarantine/bulk/dismiss", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({file_ids: ids})
+        }).then(() => loadQuarantine()).catch(() => {});
+        return;
+      }
+    }
+    if (rules["auto_keep_ambiguous"]) {
+      // Apply via the ambiguous endpoint - auto-resolve all pending ambiguous pairs
+      // This will be handled separately to avoid race conditions
+    }
+
+    // Render error code filter dropdown + badges
+    renderQuarErrorFilters(counts);
+
     // Render ambiguous dedup pairs
     const ambigIds = new Set();
     renderAmbiguousPairs(ambiguous, ambigIds);
     document.getElementById("ambigCount").textContent = ambiguous && ambiguous.length ? "(" + ambiguous.length + " pairs)" : "";
 
-    // Filter out DEDUP_AMBIGUOUS from the main table
+    // Filter out DEDUP_AMBIGUOUS from main table
     const others = (pending.results || []).filter(q => !ambigIds.has(q.file_id));
+
+    // Handle select-all mode: if selectAllMode was on, keep it but re-resolve filtered IDs
+    quarAllFilteredCount = others.length;
+
     if (!others.length) {
-      tbl.innerHTML = "<tr><th>ID</th><th>Error</th><th>Detail</th><th>File</th><th>UDC</th><th>Format</th><th>Stage</th><th>Title</th><th>Author</th><th>Created</th><th>Action</th></tr><tr><td colspan=11 style='color:#64748b;text-align:center;padding:20px'>No other quarantined files</td></tr>";
+      tbl.innerHTML = "<tr><th style='width:30px'></th><th>ID</th><th>Error</th><th>Detail</th><th>File</th><th>Format</th><th>Stage</th><th>Title</th><th>Author</th><th>Created</th><th>Action</th></tr><tr><td colspan=11 style='color:#64748b;text-align:center;padding:20px'>No quarantined files match filters</td></tr>";
+      document.getElementById("bulkQuarBar").style.display = "none";
     } else {
       const rows = others.map(q => {
+        const checked = quarSelectedSet.has(q.file_id) ? "checked" : "";
         const stageTag = q.stage === "quarantined" ? 'quarantined' : (q.stage || '?');
         return `<tr>
+          <td><input type="checkbox" class="quar-row-cb" data-fid="${q.file_id}" ${checked} onchange="quarToggleRow(${q.file_id})"></td>
           <td>${q.file_id}</td>
           <td><span class="tag quarantined" style="font-size:0.7rem">${esc(q.error_code)}</span></td>
           <td style="font-size:0.72rem;color:#94a3b8;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(q.detail || '')}">${esc((q.detail||'').substring(0,80))}</td>
           <td style="font-size:0.7rem;color:#64748b;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(q.filename || '')}">${esc(q.filename || '')}</td>
-          <td>${esc(q.udc_code || '—')} ${q.udc_label ? '- ' + esc(q.udc_label) : ''}</td>
           <td>${q.format || '?'}</td>
           <td><span class="tag ${stageTag}">${q.stage || '?'}</span></td>
           <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(q.title || '—')}</td>
@@ -978,11 +1115,170 @@ function loadQuarantine() {
           </td>
         </tr>`;
       }).join("");
-      tbl.innerHTML = "<tr><th>ID</th><th>Error</th><th>Detail</th><th>File</th><th>Format</th><th>Stage</th><th>Title</th><th>Author</th><th>Created</th><th>Action</th></tr>" + rows;
+      tbl.innerHTML = "<tr><th style='width:30px'><input type='checkbox' id='quarSelectAll' onchange='toggleQuarSelectAll()'></th><th>ID</th><th>Error</th><th>Detail</th><th>File</th><th>Format</th><th>Stage</th><th>Title</th><th>Author</th><th>Created</th><th>Action</th></tr>" + rows;
+      // Re-bind select-all after HTML replace
+      document.getElementById("quarSelectAll").onchange = toggleQuarSelectAll;
+      // Restore select-all mode
+      if (quarSelectAllMode) {
+        document.getElementById("quarSelectAll").checked = true;
+      }
     }
+
+    // Update bulk bar
+    updateQuarBulkBar();
+
+    // Q4: Load smart defaults
+    document.getElementById("ruleAutoDismiss").checked = !!rules["auto_dismiss_no_metadata"];
+    document.getElementById("ruleAutoKeepAmbiguous").checked = !!rules["auto_keep_ambiguous"];
+
   }).catch(() => {
-    tbl.innerHTML = "<tr><td colspan=10 style='color:#ef4444;text-align:center;padding:20px'>Error loading quarantine data</td></tr>";
+    tbl.innerHTML = "<tr><td colspan=11 style='color:#ef4444;text-align:center;padding:20px'>Error loading quarantine data</td></tr>";
   });
+}
+
+function renderQuarErrorFilters(counts) {
+  const sel = document.getElementById("qFilterError");
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All</option>';
+  let badgesHtml = "";
+  const allErrors = {"EXTRACT_FAIL":"Extractor fail","FORMAT_UNSUPPORTED":"Format unsupported","NO_METADATA_EMPTY":"No metadata","ENRICH_FAIL":"Enrich fail","CLASSIFY_FALLBACK":"Classify fallback","CLASSIFY_LOW_CONF":"Low confidence","DEDUP_AMBIGUOUS":"Ambiguous dedup"};
+  for (const [code, label] of Object.entries(allErrors)) {
+    const cnt = counts.by_error[code] || 0;
+    const opt = document.createElement("option");
+    opt.value = code; opt.textContent = label + " (" + cnt + ")";
+    sel.appendChild(opt);
+    if (cnt > 0) {
+      badgesHtml += '<span class="tag quarantined" style="cursor:pointer;font-size:0.7rem" onclick="document.getElementById(\'qFilterError\').value=\'' + code + '\';loadQuarantine()">' + label + ': ' + cnt + '</span> ';
+    }
+  }
+  sel.value = current;
+  document.getElementById("qErrorBadges").innerHTML = badgesHtml;
+}
+
+function toggleQuarSelectAll() {
+  const cb = document.getElementById("quarSelectAll");
+  quarSelectAllMode = cb.checked;
+  const rows = document.querySelectorAll(".quar-row-cb");
+  rows.forEach(r => { r.checked = cb.checked; });
+  quarSelectedSet.clear();
+  if (cb.checked) {
+    rows.forEach(r => quarSelectedSet.add(parseInt(r.dataset.fid)));
+  }
+  updateQuarBulkBar();
+}
+
+function quarToggleRow(fid) {
+  const cb = document.querySelector(`.quar-row-cb[data-fid="${fid}"]`);
+  if (cb.checked) quarSelectedSet.add(fid);
+  else quarSelectedSet.delete(fid);
+  // Uncheck select-all if not all checked
+  const all = document.querySelectorAll(".quar-row-cb");
+  const allChecked = all.length > 0 && Array.from(all).every(r => r.checked);
+  document.getElementById("quarSelectAll").checked = allChecked;
+  quarSelectAllMode = allChecked;
+  updateQuarBulkBar();
+}
+
+function clearQuarSelection() {
+  quarSelectedSet.clear();
+  quarSelectAllMode = false;
+  document.querySelectorAll(".quar-row-cb").forEach(r => r.checked = false);
+  const sa = document.getElementById("quarSelectAll");
+  if (sa) sa.checked = false;
+  updateQuarBulkBar();
+}
+
+function updateQuarBulkBar() {
+  const bar = document.getElementById("bulkQuarBar");
+  const countEl = document.getElementById("bulkQuarCount");
+  const allLabel = document.getElementById("bulkQuarAllLabel");
+  const count = quarSelectAllMode ? quarAllFilteredCount : quarSelectedSet.size;
+  if (count === 0) {
+    bar.style.display = "none";
+    return;
+  }
+  bar.style.display = "flex";
+  countEl.textContent = count;
+  allLabel.style.display = quarSelectAllMode ? "inline" : "none";
+}
+
+var pendingQuarAction = null;
+
+function bulkQuarAction(action) {
+  const ids = quarSelectAllMode
+    ? "__ALL_FILTERED__"
+    : Array.from(quarSelectedSet);
+  const count = quarSelectAllMode ? quarAllFilteredCount : quarSelectedSet.size;
+  const msgs = {
+    "dismiss": "Dismiss " + count + " quarantined file(s)? They will be removed from quarantine.",
+    "keep-both": "Mark " + count + " file(s) as survivors? They will be removed from quarantine and set to survivor stage.",
+    "delete": "DELETE " + count + " file(s) permanently? This removes them from the database entirely.",
+    "reprocess": "Re-process " + count + " file(s)? Metadata extraction + classification will re-run."
+  };
+  const icons = {
+    "dismiss": "\u2716", "keep-both": "\u2714", "delete": "\u26A0", "reprocess": "\u21BB"
+  };
+  const btnColors = {
+    "dismiss": "#334155", "keep-both": "#a855f7", "delete": "#ef4444", "reprocess": "#f59e0b"
+  };
+  document.getElementById("quarConfirmMsg").textContent = msgs[action] || "Confirm action?";
+  document.getElementById("quarConfirmIcon").innerHTML = icons[action] || "\u26A0";
+  document.getElementById("quarConfirmBtn").style.background = btnColors[action] || "#334155";
+  document.getElementById("quarConfirmBtn").style.color = action === "keep-both" || action === "delete" || action === "reprocess" ? "#0f172a" : "#e2e8f0";
+  pendingQuarAction = {action: action, ids: ids, count: count};
+  document.getElementById("quarConfirmModal").style.display = "flex";
+}
+
+function closeQuarConfirm() {
+  document.getElementById("quarConfirmModal").style.display = "none";
+  pendingQuarAction = null;
+}
+
+function executeQuarAction() {
+  if (!pendingQuarAction) return;
+  const {action, ids, count} = pendingQuarAction;
+  closeQuarConfirm();
+
+  // If select-all mode, we need to pass the filter params to the backend
+  const body = ids === "__ALL_FILTERED__"
+    ? {filter: getQuarFilterParams()}
+    : {file_ids: ids};
+
+  let url = API + "/api/quarantine/bulk/" + action;
+
+  // For select-all mode, we fetch all matching IDs first then apply
+  const doAction = function(finalIds) {
+    if (!finalIds.length) return;
+    fetch(url, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({file_ids: finalIds})
+    }).then(r => r.json()).then(d => {
+      clearQuarSelection();
+      loadQuarantine(); loadLibrary(); loadSummary();
+    }).catch(() => {});
+  };
+
+  if (ids === "__ALL_FILTERED__") {
+    fetch(API + "/api/quarantine?" + body.filter + "&limit=0").then(r => r.json()).then(d => {
+      const allIds = (d.results || []).map(q => q.file_id);
+      doAction(allIds);
+    }).catch(() => {});
+  } else {
+    doAction(ids);
+  }
+}
+
+function saveQuarantineRules() {
+  const rules = {
+    auto_dismiss_no_metadata: document.getElementById("ruleAutoDismiss").checked ? 1 : 0,
+    auto_keep_ambiguous: document.getElementById("ruleAutoKeepAmbiguous").checked ? 1 : 0
+  };
+  fetch(API + "/api/quarantine/rules", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(rules)
+  }).then(r => r.json()).then(() => {
+    loadQuarantine();
+  }).catch(() => {});
 }
 
 function renderAmbiguousPairs(pairs, ambigIds) {

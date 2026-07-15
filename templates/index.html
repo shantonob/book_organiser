@@ -306,15 +306,22 @@
 
     <!-- Q4: Smart defaults -->
     <div style="margin-top:12px;padding:10px;background:#0f172a;border:1px solid #334155;border-radius:6px">
-      <h3 style="color:#94a3b8;font-size:0.78rem;margin-bottom:6px">Smart Defaults</h3>
+      <h3 style="color:#94a3b8;font-size:0.78rem;margin-bottom:6px">Smart Defaults <span style="font-weight:400;color:#64748b">(applied on reload, not during filtering)</span></h3>
       <label style="font-size:0.75rem;color:#e2e8f0;cursor:pointer;display:block;margin-bottom:4px">
         <input type="checkbox" id="ruleAutoDismiss" onchange="saveQuarantineRules()">
         Auto-dismiss <code style="background:#1a2332;padding:1px 4px;border-radius:2px">NO_METADATA_EMPTY</code> files (can't be fixed without manual input)
       </label>
-      <label style="font-size:0.75rem;color:#e2e8f0;cursor:pointer;display:block">
+      <label style="font-size:0.75rem;color:#e2e8f0;cursor:pointer;display:block;margin-bottom:4px">
         <input type="checkbox" id="ruleAutoKeepAmbiguous" onchange="saveQuarantineRules()">
         Auto-keep ALL <code style="background:#1a2332;padding:1px 4px;border-radius:2px">DEDUP_AMBIGUOUS</code> as survivors (keep both)
       </label>
+      <button onclick="runQuarantineRules()" style="padding:4px 10px;font-size:0.72rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer;margin-top:4px">Run Rules Now</button>
+    </div>
+
+    <!-- Action History -->
+    <div style="margin-top:12px">
+      <div onclick="var e=this.nextElementSibling;e.style.display=e.style.display==='none'?'block':'none'" style="cursor:pointer;color:#64748b;font-size:0.75rem;padding:6px 0">&#x25B6; Action History (<span id="quarActionCount">0</span>)</div>
+      <div id="quarActionLog" style="display:none;max-height:200px;overflow-y:auto;background:#0f172a;border:1px solid #334155;border-radius:6px;padding:6px"></div>
     </div>
 
     <!-- Confirmation modal -->
@@ -1011,6 +1018,64 @@ function loadGallery() {
 let quarSelectedSet = new Set();
 let quarSelectAllMode = false;
 let quarAllFilteredCount = 0;
+let quarActionHistory = [];
+
+function pushQuarAction(action, fileIds, result) {
+  quarActionHistory.unshift({
+    action: action,
+    file_ids: fileIds,
+    count: fileIds.length,
+    result: result,
+    ts: new Date().toLocaleTimeString()
+  });
+  if (quarActionHistory.length > 50) quarActionHistory.pop();
+  renderQuarActionLog();
+}
+
+function renderQuarActionLog() {
+  const el = document.getElementById("quarActionLog");
+  document.getElementById("quarActionCount").textContent = quarActionHistory.length;
+  if (!quarActionHistory.length) {
+    el.innerHTML = '<div style="color:#64748b;padding:8px;font-size:0.72rem">No actions recorded yet</div>';
+    return;
+  }
+  el.innerHTML = quarActionHistory.map((entry, i) => {
+    const actionLabels = { dismiss: "Dismissed", "keep-both": "Kept Both", delete: "Deleted", reprocess: "Re-processed" };
+    const label = actionLabels[entry.action] || entry.action;
+    const canUndo = entry.action === "dismiss" || entry.action === "keep-both";
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 6px;border-bottom:1px solid #1e293b;font-size:0.72rem">' +
+      '<span style="color:#94a3b8">' + entry.ts + '</span>' +
+      '<span style="color:#e2e8f0">' + label + ' <strong>' + entry.count + '</strong> files</span>' +
+      (canUndo ? '<button onclick="undoQuarAction(' + i + ')" style="padding:2px 8px;font-size:0.65rem;background:#334155;border:none;border-radius:3px;color:#facc15;cursor:pointer">Undo</button>' : '') +
+      '</div>';
+  }).join("");
+}
+
+function undoQuarAction(idx) {
+  const entry = quarActionHistory[idx];
+  if (!entry) return;
+  if (entry.action === "dismiss") {
+    // Undo dismiss: re-quarantine these files
+    fetch(API + "/api/quarantine/undo/dismiss", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({file_ids: entry.file_ids})
+    }).then(r => r.json()).then(d => {
+      quarActionHistory.splice(idx, 1);
+      renderQuarActionLog();
+      loadQuarantine();
+    }).catch(() => {});
+  } else if (entry.action === "keep-both") {
+    // Undo keep-both: re-quarantine these files
+    fetch(API + "/api/quarantine/undo/keep-both", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({file_ids: entry.file_ids})
+    }).then(r => r.json()).then(d => {
+      quarActionHistory.splice(idx, 1);
+      renderQuarActionLog();
+      loadQuarantine();
+    }).catch(() => {});
+  }
+}
 
 function getQuarFilterParams() {
   const p = new URLSearchParams();
@@ -1038,6 +1103,10 @@ function clearQuarantineFilters() {
   loadQuarantine();
 }
 
+function applyQuarFilters() {
+  loadQuarantine();
+}
+
 function loadQuarantine() {
   const tbl = document.getElementById("quarantineTable");
   const totalEl = document.getElementById("quarantineTotal");
@@ -1060,22 +1129,8 @@ function loadQuarantine() {
       badge.style.display = pendingCount > 0 ? "inline" : "none";
     }
 
-    // Q4: Apply smart defaults
-    if (rules["auto_dismiss_no_metadata"]) {
-      const noMeta = (pending.results || []).filter(q => q.error_code === "NO_METADATA_EMPTY");
-      if (noMeta.length) {
-        const ids = noMeta.map(q => q.file_id);
-        fetch(API + "/api/quarantine/bulk/dismiss", {
-          method: "POST", headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({file_ids: ids})
-        }).then(() => loadQuarantine()).catch(() => {});
-        return;
-      }
-    }
-    if (rules["auto_keep_ambiguous"]) {
-      // Apply via the ambiguous endpoint - auto-resolve all pending ambiguous pairs
-      // This will be handled separately to avoid race conditions
-    }
+    // Q4 smart defaults are no longer applied inline here.
+    // They run only via runQuarantineRules() (button or initial load).
 
     // Render error code filter dropdown + badges
     renderQuarErrorFilters(counts);
@@ -1088,7 +1143,6 @@ function loadQuarantine() {
     // Filter out DEDUP_AMBIGUOUS from main table
     const others = (pending.results || []).filter(q => !ambigIds.has(q.file_id));
 
-    // Handle select-all mode: if selectAllMode was on, keep it but re-resolve filtered IDs
     quarAllFilteredCount = others.length;
 
     if (!others.length) {
@@ -1116,24 +1170,71 @@ function loadQuarantine() {
         </tr>`;
       }).join("");
       tbl.innerHTML = "<tr><th style='width:30px'><input type='checkbox' id='quarSelectAll' onchange='toggleQuarSelectAll()'></th><th>ID</th><th>Error</th><th>Detail</th><th>File</th><th>Format</th><th>Stage</th><th>Title</th><th>Author</th><th>Created</th><th>Action</th></tr>" + rows;
-      // Re-bind select-all after HTML replace
       document.getElementById("quarSelectAll").onchange = toggleQuarSelectAll;
-      // Restore select-all mode
       if (quarSelectAllMode) {
         document.getElementById("quarSelectAll").checked = true;
       }
     }
 
-    // Update bulk bar
     updateQuarBulkBar();
 
-    // Q4: Load smart defaults
+    // Q4: Load smart defaults state
     document.getElementById("ruleAutoDismiss").checked = !!rules["auto_dismiss_no_metadata"];
     document.getElementById("ruleAutoKeepAmbiguous").checked = !!rules["auto_keep_ambiguous"];
 
   }).catch(() => {
     tbl.innerHTML = "<tr><td colspan=11 style='color:#ef4444;text-align:center;padding:20px'>Error loading quarantine data</td></tr>";
   });
+}
+
+function runQuarantineRules() {
+  const rules = {
+    auto_dismiss_no_metadata: document.getElementById("ruleAutoDismiss").checked ? 1 : 0,
+    auto_keep_ambiguous: document.getElementById("ruleAutoKeepAmbiguous").checked ? 1 : 0
+  };
+  fetch(API + "/api/quarantine/rules", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(rules)
+  }).then(r => r.json()).then(() => {
+    // Now apply the rules
+    const promises = [];
+    if (rules.auto_dismiss_no_metadata) {
+      promises.push(
+        fetch(API + "/api/quarantine?reviewed=0&error_code=NO_METADATA_EMPTY&limit=0").then(r => r.json()).then(d => {
+          const ids = (d.results || []).map(q => q.file_id);
+          if (ids.length) {
+            return fetch(API + "/api/quarantine/bulk/dismiss", {
+              method: "POST", headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({file_ids: ids})
+            }).then(r => r.json()).then(res => {
+              pushQuarAction("dismiss", ids, res);
+            });
+          }
+        })
+      );
+    }
+    if (rules.auto_keep_ambiguous) {
+      promises.push(
+        fetch(API + "/api/quarantine/ambiguous").then(r => r.json()).then(pairs => {
+          const ids = [];
+          pairs.forEach(pair => {
+            pair.forEach(f => ids.push(f.file_id));
+          });
+          if (ids.length) {
+            return fetch(API + "/api/quarantine/bulk/keep-both", {
+              method: "POST", headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({file_ids: ids})
+            }).then(r => r.json()).then(res => {
+              pushQuarAction("keep-both", ids, res);
+            });
+          }
+        })
+      );
+    }
+    Promise.all(promises).then(() => {
+      loadQuarantine();
+    });
+  }).catch(() => {});
 }
 
 function renderQuarErrorFilters(counts) {
@@ -1239,20 +1340,19 @@ function executeQuarAction() {
   const {action, ids, count} = pendingQuarAction;
   closeQuarConfirm();
 
-  // If select-all mode, we need to pass the filter params to the backend
   const body = ids === "__ALL_FILTERED__"
     ? {filter: getQuarFilterParams()}
     : {file_ids: ids};
 
   let url = API + "/api/quarantine/bulk/" + action;
 
-  // For select-all mode, we fetch all matching IDs first then apply
   const doAction = function(finalIds) {
     if (!finalIds.length) return;
     fetch(url, {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({file_ids: finalIds})
     }).then(r => r.json()).then(d => {
+      pushQuarAction(action, finalIds, d);
       clearQuarSelection();
       loadQuarantine(); loadLibrary(); loadSummary();
     }).catch(() => {});
@@ -1332,7 +1432,6 @@ function renderAmbiguousFile(f, label) {
 }
 
 function resolveAmbiguous(keepId, skipId) {
-  if (!confirm("Keep #" + keepId + " and mark #" + skipId + " as duplicate?")) return;
   fetch(API + "/api/quarantine/resolve-ambiguous", {
     method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({keep_id: keepId, skip_id: skipId})
@@ -1342,7 +1441,6 @@ function resolveAmbiguous(keepId, skipId) {
 }
 
 function resolveAmbiguousDismissBoth(aId, bId) {
-  if (!confirm("Dismiss both #" + aId + " and #" + bId + "?")) return;
   Promise.all([
     fetch(API + "/api/quarantine/resolve", {
       method: "POST", headers: {"Content-Type": "application/json"},
@@ -1356,7 +1454,6 @@ function resolveAmbiguousDismissBoth(aId, bId) {
 }
 
 function resolveAmbiguousKeepBoth(aId, bId) {
-  if (!confirm("Keep both #" + aId + " and #" + bId + " as survivors?")) return;
   fetch(API + "/api/quarantine/keep-both", {
     method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({id_a: aId, id_b: bId})
@@ -1803,8 +1900,6 @@ function saveBook(bookId) {
 
 // ── Quarantine resolve ──
 function resolveQuarantine(fileId, reviewed) {
-  if (reviewed === 1 && !confirm("Apply manual metadata corrections before resolving?")) return;
-  if (reviewed === 2 && !confirm("Dismiss quarantine for this file?")) return;
   const payload = {file_id: fileId, reviewed: reviewed};
   fetch(API + "/api/quarantine/resolve", {
     method: "POST",
@@ -1819,21 +1914,18 @@ function resolveQuarantine(fileId, reviewed) {
 
 // ── Per-book re-processing ──
 function reExtractBook(bookId) {
-  if (!confirm("Re-extract metadata for book #" + bookId + "?")) return;
   fetch(API + "/api/book/" + bookId + "/re-extract", {method:"POST"})
     .then(r => r.json()).then(d => { showDetail(bookId); loadLibrary(); })
     .catch(() => { showDetail(bookId); });
 }
 
 function reDedupBook(bookId) {
-  if (!confirm("Re-check dedup for book #" + bookId + "?")) return;
   fetch(API + "/api/book/" + bookId + "/re-dedup", {method:"POST"})
     .then(r => r.json()).then(d => { showDetail(bookId); loadLibrary(); })
     .catch(() => { showDetail(bookId); });
 }
 
 function reCopyBook(bookId) {
-  if (!confirm("Re-copy book #" + bookId + " to output?")) return;
   fetch(API + "/api/book/" + bookId + "/re-copy", {method:"POST"})
     .then(r => r.json()).then(d => { showDetail(bookId); loadLibrary(); })
     .catch(() => { showDetail(bookId); });

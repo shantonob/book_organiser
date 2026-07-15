@@ -605,6 +605,58 @@ def api_quarantine_rules():
         conn.close()
 
 
+@app.route("/api/quarantine/undo/dismiss", methods=["POST"])
+def api_quarantine_undo_dismiss():
+    data = request.json or {}
+    file_ids = data.get("file_ids", [])
+    if not file_ids:
+        return jsonify({"error": "file_ids required"}), 400
+    conn = get_connection(DB_PATH)
+    try:
+        from datetime import datetime
+        now = datetime.utcnow().isoformat()
+        for fid in file_ids:
+            conn.execute("""
+                INSERT OR IGNORE INTO quarantined (file_id, error_code, detail, reviewed, created_at)
+                VALUES (?, 'UNDO_DISMISS', 'Re-quarantined via undo', 0, ?)
+            """, (fid, now))
+            conn.execute("""
+                UPDATE quarantined SET reviewed=0, reviewed_at=NULL, created_at=?
+                WHERE file_id=?
+            """, (now, fid))
+            conn.execute("UPDATE files SET stage='quarantined', updated_at=? WHERE id=?", (now, fid))
+        conn.commit()
+        return jsonify({"status": "undone", "count": len(file_ids)})
+    finally:
+        conn.close()
+
+
+@app.route("/api/quarantine/undo/keep-both", methods=["POST"])
+def api_quarantine_undo_keep_both():
+    data = request.json or {}
+    file_ids = data.get("file_ids", [])
+    if not file_ids:
+        return jsonify({"error": "file_ids required"}), 400
+    conn = get_connection(DB_PATH)
+    try:
+        from datetime import datetime
+        now = datetime.utcnow().isoformat()
+        for fid in file_ids:
+            conn.execute("""
+                INSERT OR IGNORE INTO quarantined (file_id, error_code, detail, reviewed, created_at)
+                VALUES (?, 'UNDO_KEEP_BOTH', 'Re-quarantined via undo', 0, ?)
+            """, (fid, now))
+            conn.execute("""
+                UPDATE quarantined SET reviewed=0, reviewed_at=NULL, created_at=?
+                WHERE file_id=?
+            """, (now, fid))
+            conn.execute("UPDATE files SET stage='quarantined', is_master=0, updated_at=? WHERE id=?", (now, fid))
+        conn.commit()
+        return jsonify({"status": "undone", "count": len(file_ids)})
+    finally:
+        conn.close()
+
+
 # ── Per-book re-processing ───────────────────────────────────
 
 @app.route("/api/book/<int:book_id>/re-extract", methods=["POST"])

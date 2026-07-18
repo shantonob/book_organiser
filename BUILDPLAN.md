@@ -1,4 +1,4 @@
-# Build Plan — Book Organiser
+﻿# Build Plan — Book Organiser
 
 ## Phase 1 — MVP (Complete)
 
@@ -760,6 +760,16 @@ _Add a "Reset" button to the Library tab that clears all filters and shows all b
 - Improves UX when users have drilled into a filtered view and want to go back to full catalog
 
 **Status**: ✅ Done
+
+### 2026-07-11 — In-App Configuration UI (P3.4)
+
+- New Settings tab in UI with categorized config form (Paths, Processing, Enrichment)
+- config_overrides DB table for persisting changes without modifying config.py
+- GET/POST /api/config for reading/writing config overrides
+- Config export/import as JSON files
+- Restart-required banner for settings needing app restart
+- Password field type for API keys (obscured input)
+- Overridden fields highlighted with purple border
 
 ### 2026-07-11 — Quarantine Bulk Operations (P3.3)
 

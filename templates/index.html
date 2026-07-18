@@ -193,6 +193,7 @@
     <button class="tab-btn" onclick="switchTab('library')">Library</button>
     <button class="tab-btn" onclick="switchTab('gallery')">Gallery</button>
     <button class="tab-btn" onclick="switchTab('reader')">Reader</button>
+    <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
   </div>
 
   <!-- ════ PIPELINE TAB ════ -->
@@ -491,6 +492,24 @@
     <div id="readerArea" style="max-width:850px;margin:0 auto;min-height:70vh;border:1px solid #334155;border-radius:6px;background:#f8fafc;overflow-y:auto"></div>
   </div>
 
+  <!-- ════ SETTINGS TAB ════ -->
+  <div class="tab-panel" id="tab-settings">
+    <div class="row">
+      <h2 style="color:#e2e8f0;font-size:1rem;margin:0">Settings</h2>
+      <button onclick="loadConfig()" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">Refresh</button>
+      <button onclick="exportConfig()" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#0ea5e9;color:#0f172a;font-weight:600">Export</button>
+      <button onclick="document.getElementById('configImportInput').click()" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f59e0b;color:#0f172a">Import</button>
+      <input type="file" id="configImportInput" accept=".json" style="display:none" onchange="importConfig(this)">
+      <span id="configSaveStatus" style="color:#22c55e;font-size:0.75rem;display:none"></span>
+    </div>
+    <div id="configGroups" style="margin-top:8px"></div>
+    <div style="margin-top:12px;padding:10px;background:#0f172a;border:1px solid #334155;border-radius:6px">
+      <button onclick="saveConfig()" style="padding:8px 24px;border:none;border-radius:6px;background:#22c55e;color:#0f172a;font-weight:600;cursor:pointer;font-size:0.85rem">Save All Changes</button>
+      <button onclick="loadConfig()" style="padding:8px 16px;border:none;border-radius:6px;background:#334155;color:#e2e8f0;cursor:pointer;font-size:0.78rem;margin-left:8px">Discard Changes</button>
+      <span id="configRestartBanner" style="display:none;margin-left:12px;font-size:0.75rem;color:#f59e0b">&#x26A0; Some changes require restarting the app</span>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -531,6 +550,7 @@ function switchTab(name, filters) {
   }
   if (name === "quarantine") { loadQuarantine(); }
   if (name === "gallery") { loadGallery(); }
+  if (name === "settings") { loadConfig(); }
 }
 
 // ── Pipeline tab ──
@@ -1379,6 +1399,108 @@ function saveQuarantineRules() {
   }).then(r => r.json()).then(() => {
     loadQuarantine();
   }).catch(() => {});
+}
+
+// ── Config (Settings tab) ──
+let configData = [];
+
+function loadConfig() {
+  fetch(API + "/api/config").then(r => r.json()).then(data => {
+    configData = data;
+    const groups = document.getElementById("configGroups");
+    const categories = { "paths": "Paths", "processing": "Processing", "enrichment": "Enrichment" };
+    let html = "";
+    for (const [catKey, catLabel] of Object.entries(categories)) {
+      const items = data.filter(f => f.category === catKey);
+      if (!items.length) continue;
+      let rows = items.map(f => {
+        const val = f.value || "";
+        const isOverridden = f.overridden ? 'style="border-color:#a855f7"' : '';
+        const restartTag = f.restart ? ' <span style="color:#f59e0b;font-size:0.65rem">(restart required)</span>' : '';
+        if (f.type === "password") {
+          return '<div style="margin-bottom:8px">' +
+            '<label style="font-size:0.72rem;color:#64748b;display:block;margin-bottom:2px">' + esc(f.label) + restartTag + '</label>' +
+            '<input type="password" id="cfg_' + f.name + '" value="' + esc(val) + '" ' + isOverridden + ' style="width:100%;padding:5px 8px;font-size:0.78rem;border:1px solid #334155;border-radius:4px;background:#0f172a;color:#e2e8f0;font-family:monospace">' +
+            '<div style="font-size:0.65rem;color:#64748b;margin-top:2px">' + esc(f.desc) + '</div></div>';
+        }
+        return '<div style="margin-bottom:8px">' +
+          '<label style="font-size:0.72rem;color:#64748b;display:block;margin-bottom:2px">' + esc(f.label) + restartTag + '</label>' +
+          '<input type="text" id="cfg_' + f.name + '" value="' + esc(val) + '" ' + isOverridden + ' style="width:100%;padding:5px 8px;font-size:0.78rem;border:1px solid #334155;border-radius:4px;background:#0f172a;color:#e2e8f0;font-family:monospace">' +
+          '<div style="font-size:0.65rem;color:#64748b;margin-top:2px">Default: <code style="background:#1a2332;padding:1px 4px;border-radius:2px">' + esc(f.default) + '</code> &mdash; ' + esc(f.desc) + '</div></div>';
+      }).join("");
+      html += '<div class="panel" style="margin-bottom:10px;padding:12px"><h3 style="color:#94a3b8;font-size:0.82rem;margin-bottom:8px">' + catLabel + '</h3>' + rows + '</div>';
+    }
+    groups.innerHTML = html;
+    document.getElementById("configSaveStatus").style.display = "none";
+    document.getElementById("configRestartBanner").style.display = "none";
+  }).catch(() => {
+    document.getElementById("configGroups").innerHTML = '<div style="color:#ef4444;text-align:center;padding:20px">Error loading config</div>';
+  });
+}
+
+function saveConfig() {
+  const overrides = {};
+  let needsRestart = false;
+  configData.forEach(f => {
+    const el = document.getElementById("cfg_" + f.name);
+    if (!el) return;
+    const newVal = el.value.trim();
+    if (newVal !== f.default) {
+      overrides[f.name] = newVal;
+      if (f.restart) needsRestart = true;
+    } else {
+      overrides[f.name] = null; // will delete override
+    }
+  });
+  fetch(API + "/api/config", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({overrides: overrides})
+  }).then(r => r.json()).then(d => {
+    const status = document.getElementById("configSaveStatus");
+    status.textContent = "Saved successfully!";
+    status.style.display = "inline";
+    status.style.color = "#22c55e";
+    document.getElementById("configRestartBanner").style.display = needsRestart ? "inline" : "none";
+    setTimeout(() => status.style.display = "none", 3000);
+    loadConfig();
+  }).catch(() => {});
+}
+
+function exportConfig() {
+  fetch(API + "/api/config/export").then(r => r.json()).then(data => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "book_organiser_config.json"; a.click();
+    URL.revokeObjectURL(url);
+  }).catch(() => {});
+}
+
+function importConfig(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      const overrides = data.overrides || {};
+      fetch(API + "/api/config/import", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({overrides: overrides})
+      }).then(r => r.json()).then(d => {
+        const status = document.getElementById("configSaveStatus");
+        status.textContent = "Imported " + d.count + " settings!";
+        status.style.display = "inline";
+        status.style.color = "#f59e0b";
+        setTimeout(() => status.style.display = "none", 3000);
+        loadConfig();
+      }).catch(() => {});
+    } catch(e) {
+      alert("Invalid JSON file");
+    }
+  };
+  reader.readAsText(file);
+  input.value = "";
 }
 
 function renderAmbiguousPairs(pairs, ambigIds) {

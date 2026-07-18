@@ -22,7 +22,7 @@ for noisy in ("werkzeug", "flask"):
 from db import get_connection, init_db, get_pipeline_summary, get_recent_books, get_pipeline_log, get_book_by_id
 from db import get_phase_counts, get_survivors, get_tags, add_custom_tag, remove_custom_tag, search_tags
 from db import get_summary, get_book_pipeline_log, rebuild_fts, search_books, get_funnel, get_daemon_status
-from db import get_quarantined, resolve_quarantine, QUARANTINE_ERRORS, get_quarantine_counts_by_error, get_quarantine_formats, bulk_dismiss, bulk_keep_both, bulk_delete_files, get_quarantine_rules, set_quarantine_rule
+from db import get_quarantined, resolve_quarantine, QUARANTINE_ERRORS, get_quarantine_counts_by_error, get_quarantine_formats, bulk_dismiss, bulk_keep_both, bulk_delete_files, get_quarantine_rules, set_quarantine_rule, get_config_overrides, set_config_override, delete_config_override, get_all_config
 from pipeline import state, run_pipeline, run_all_phases, run_phase_metadata, run_phase_dedup, run_phase_copy, discover_source_files, add_to_inbox
 
 app = Flask(__name__)
@@ -653,6 +653,60 @@ def api_quarantine_undo_keep_both():
             conn.execute("UPDATE files SET stage='quarantined', is_master=0, updated_at=? WHERE id=?", (now, fid))
         conn.commit()
         return jsonify({"status": "undone", "count": len(file_ids)})
+    finally:
+        conn.close()
+
+
+# ── Config ───────────────────────────────────────────────────
+
+@app.route("/api/config", methods=["GET", "POST"])
+def api_config():
+    conn = get_connection(DB_PATH)
+    try:
+        if request.method == "POST":
+            data = request.json or {}
+            overrides = data.get("overrides", {})
+            for name, value in overrides.items():
+                if value is None or value == "":
+                    delete_config_override(conn, name)
+                else:
+                    set_config_override(conn, name, value)
+            conn.commit()
+        config_data = get_all_config(conn)
+        return jsonify(config_data)
+    finally:
+        conn.close()
+
+
+@app.route("/api/config/export")
+def api_config_export():
+    from datetime import datetime
+    conn = get_connection(DB_PATH)
+    try:
+        overrides = get_config_overrides(conn)
+        config_data = get_all_config(conn)
+        return jsonify({
+            "app_version": "book_organiser",
+            "exported_at": datetime.utcnow().isoformat(),
+            "overrides": overrides,
+            "full_config": config_data,
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/api/config/import", methods=["POST"])
+def api_config_import():
+    data = request.json or {}
+    overrides = data.get("overrides", {})
+    if not overrides:
+        return jsonify({"error": "no overrides in import data"}), 400
+    conn = get_connection(DB_PATH)
+    try:
+        for name, value in overrides.items():
+            set_config_override(conn, name, value)
+        conn.commit()
+        return jsonify({"status": "imported", "count": len(overrides)})
     finally:
         conn.close()
 

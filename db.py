@@ -745,3 +745,93 @@ def resolve_quarantine(conn, file_id, reviewed=1, user_notes=None):
     """, (reviewed, now, user_notes, file_id))
     # Remove from quarantined if dismissed
     conn.execute("DELETE FROM quarantined WHERE file_id=? AND reviewed=2", (file_id,))
+
+
+# ── Config overrides ───────────────────────────────────────
+
+CONFIG_SCHEMA = [
+    {"name": "source_dirs", "default": "", "type": "text", "category": "paths",
+     "label": "Source Directories", "desc": "Semicolon-separated list of directories to scan"},
+    {"name": "flat_dir", "default": "", "type": "path", "category": "paths",
+     "label": "Flat Output Directory", "desc": "Destination for copied survivor files"},
+    {"name": "inbox_dir", "default": "", "type": "path", "category": "paths",
+     "label": "Inbox Directory", "desc": "Watched directory for auto-processing"},
+    {"name": "db_path", "default": "", "type": "path", "category": "paths",
+     "label": "Database Path", "desc": "SQLite database file location", "restart": True},
+    {"name": "log_dir", "default": "", "type": "path", "category": "paths",
+     "label": "Log Directory", "desc": "Where application logs are stored", "restart": True},
+    {"name": "ebook_exts", "default": ".epub,.pdf,.mobi,.azw3,.djvu,.cbr,.cbz,.fb2",
+     "type": "text", "category": "processing", "label": "Ebook Extensions",
+     "desc": "Comma-separated recognised ebook file extensions"},
+    {"name": "exclude_exts", "default": ".ini,.db,.lnk,.url,.tmp,.dat,.exe,.dll",
+     "type": "text", "category": "processing", "label": "Exclude Extensions",
+     "desc": "Comma-separated file extensions to skip during scan"},
+    {"name": "exclude_dirs", "default": ".git,__pycache__,data,templates,extractors,inbox,processed,covers",
+     "type": "text", "category": "processing", "label": "Exclude Directories",
+     "desc": "Comma-separated directory names to skip during scan"},
+    {"name": "dup_similarity", "default": "0.85", "type": "number", "category": "processing",
+     "label": "Duplicate Similarity Threshold",
+     "desc": "Title similarity ratio (0-1) for fuzzy dedup"},
+    {"name": "enrich_rate_limit", "default": "1.0", "type": "number", "category": "enrichment",
+     "label": "Enrichment Rate Limit (s)", "desc": "Seconds between external API calls"},
+    {"name": "google_books_api_key", "default": "", "type": "password", "category": "enrichment",
+     "label": "Google Books API Key", "desc": "API key for Google Books enrichment"},
+]
+
+
+def ensure_config_table(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS config_overrides (
+            name  TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT
+        )
+    """)
+
+
+def get_config_overrides(conn):
+    ensure_config_table(conn)
+    rows = conn.execute("SELECT name, value FROM config_overrides").fetchall()
+    return {r["name"]: r["value"] for r in rows}
+
+
+def set_config_override(conn, name, value):
+    ensure_config_table(conn)
+    now = datetime.utcnow().isoformat()
+    conn.execute("""
+        INSERT OR REPLACE INTO config_overrides (name, value, updated_at)
+        VALUES (?, ?, ?)
+    """, (name, str(value), now))
+
+
+def delete_config_override(conn, name):
+    ensure_config_table(conn)
+    conn.execute("DELETE FROM config_overrides WHERE name=?", (name,))
+
+
+def get_all_config(conn):
+    import config as cfg
+    overrides = get_config_overrides(conn)
+    result = []
+    for field in CONFIG_SCHEMA:
+        entry = dict(field)
+        # Fill in the current runtime default from config.py
+        key = field["name"]
+        default_map = {
+            "source_dirs": ";".join(cfg.SOURCE_DIRS),
+            "flat_dir": cfg.FLAT_DIR,
+            "inbox_dir": cfg.INBOX_DIR,
+            "db_path": cfg.DB_PATH,
+            "log_dir": cfg.LOG_DIR,
+            "ebook_exts": ",".join(sorted(cfg.EBOOK_EXTS)),
+            "exclude_exts": ",".join(sorted(cfg.EXCLUDE_EXTS)),
+            "exclude_dirs": ",".join(sorted(cfg.EXCLUDE_DIRS)),
+            "dup_similarity": str(cfg.DUPLICATE_SIMILARITY_THRESHOLD),
+            "enrich_rate_limit": str(cfg.ENRICH_RATE_LIMIT),
+            "google_books_api_key": cfg.GOOGLE_BOOKS_API_KEY,
+        }
+        entry["default"] = default_map.get(key, field.get("default", ""))
+        entry["value"] = overrides.get(key, entry["default"])
+        entry["overridden"] = key in overrides
+        result.append(entry)
+    return result

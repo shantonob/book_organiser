@@ -75,6 +75,9 @@
 
   .panel { background: #1e293b; border-radius: 8px; padding: 14px; border: 1px solid #334155; }
   .panel-scroll { overflow-x: auto; }
+  .library-row { display: flex; gap: 14px; align-items: flex-start; }
+  .library-panel { max-height: calc(100vh - 240px); overflow-y: auto; overscroll-behavior: contain; }
+  .library-panel > h2 { position: sticky; top: 0; background: #1e293b; z-index: 1; padding-bottom: 6px; }
 
   table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
   th { text-align: left; padding: 5px 6px; color: #64748b; font-weight: 500; border-bottom: 1px solid #334155; white-space: nowrap; }
@@ -456,13 +459,12 @@
       </div>
     </div>
 
-    <div style="display:flex;gap:14px">
-      <div id="udcTreePanel" class="panel" style="width:200px;flex-shrink:0;max-height:80vh;overflow-y:auto;font-size:0.75rem">
+    <div class="library-row">
+      <div id="udcTreePanel" class="panel library-panel" style="width:200px;flex-shrink:0;font-size:0.75rem">
         <h2 style="margin-bottom:6px">Tag Tree</h2>
         <div id="udcTree"></div>
       </div>
-      <div style="flex:1;min-width:0">
-        <div class="panel panel-scroll">
+      <div class="panel library-panel" style="flex:1;min-width:0">
         <h2>Books</h2>
         <div id="bulkToolbar" style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;align-items:center">
           <span id="bulkCount" style="color:#64748b;font-size:0.75rem">0 selected</span>
@@ -474,9 +476,8 @@
           <tr><th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th><th style="width:34px">Cover</th><th>ID</th><th>UUID</th><th>Title</th><th>Author</th><th>UDC</th><th>Format</th><th>Stage</th></tr>
         </table>
       </div>
-      </div>
       <div style="width:320px;flex-shrink:0">
-        <div class="panel visible" id="detailPanel">
+        <div class="panel visible library-panel" id="detailPanel">
           <h2>Book Detail <span id="detailId" style="color:#64748b;font-size:0.7rem"></span></h2>
           <div id="detailBody">
             <div style="color:#64748b;padding:12px 0;text-align:center">Click a book row to view details</div>

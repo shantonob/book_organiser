@@ -990,3 +990,183 @@ Visualise and edit all application settings directly from the web interface.
 **Why:** Eliminates the need to SSH in and edit config.py by hand for routine configuration changes.
 
 **Status**: Done
+
+---
+
+## Phase 4 — Backlog (Planned)
+
+### P4.1 — Source Folder Tagging + Custom Tags in Tag Tree
+
+Add the ability to tag books by their source folder name, and show custom tags alongside UDC tags in the Tag Tree sidebar.
+
+#### P4.1a — Folder Tag Script
+
+A standalone script that walks the source directory and tags each book with the name of its immediate parent folder.
+
+**Implementation:**
+- New file: `tools/folder_tags.py` (or extendable via `python tools/folder_tags.py`)
+- Reads `source_path` from the `files` table for every book
+- Extracts the immediate parent folder name from the path
+- Adds it as a custom tag (e.g. `tag_type='custom'`, `tag='2026 reading'`) via `add_custom_tag()`
+- Skips books that already have that folder tag (idempotent)
+- Reports summary: "Tagged 142 books, skipped 58 already tagged"
+
+**Why:** Users organise books into folders like `2026 reading/`, `reference/`, `fiction/`. This preserves that organisation as searchable/filterable tags in the UI.
+
+**Changes needed:**
+- `tools/folder_tags.py` (new) — CLI script
+- Optionally integrate as a button in Settings tab or Pipeline actions
+
+#### P4.1b — Custom Tags in Tag Tree
+
+Currently the Tag Tree sidebar (`renderUdcTree()`) only shows UDC classification counts. Custom tags (e.g. `2026 reading`, `favorite`, `to-read`) are invisible in the tree.
+
+**Implementation:**
+- Backend: Add `by_custom_tags` to the `/api/summary` response. Query:
+  ```sql
+  SELECT tag, COUNT(*) as c FROM tags WHERE tag_type='custom' GROUP BY tag ORDER BY c DESC
+  ```
+- Frontend: In `renderUdcTree()`, after the UDC list, add a **Custom Tags** section with a header and individual tag rows. Each row shows the tag name + book count, and clicking it filters the library by that tag (like UDC nodes do).
+- If no custom tags exist, the section is hidden.
+
+**Changes needed:**
+- `db.py`: extend `get_summary()` to return `by_custom_tags`
+- `app.py`: `api_summary()` already returns the full result dict — no endpoint change needed
+- `templates/index.html`: modify `renderUdcTree()` to append a custom-tags section
+
+**Status**: Planned
+
+---
+
+### P4.2 — Fullscreen Reader with Cross-Format Highlighting & Annotation Sidebar
+
+Turn the current reader into a full-featured reading environment with fullscreen mode, cross-format highlighting and annotation, and a right-side annotation sidebar.
+
+#### Current state
+
+- Reader lives in the Reader tab alongside a left reading-list sidebar (200px)
+- Annotations panel is below the reader area (`#annotationsPanel`)
+- Only EPUB supports highlighting (via ePub.js native selection)
+- PDF shows in an iframe, comics show as image pages — no highlighting at all
+- Close button navigates back to Library tab (same as Back)
+- No fullscreen support
+
+#### P4.2a — Fullscreen Mode
+
+Add a fullscreen button to the reader toolbar that uses the Fullscreen API.
+
+**Implementation:**
+- New button in `#readerToolbar`: `⛶ Fullscreen` (or a fullscreen icon)
+- On click: `document.getElementById("readerMain").requestFullscreen()` (or `document.documentElement`)
+- Style adjustment: in fullscreen, hide the reading list sidebar, maximise the reader area, adjust heights to `100vh`
+- Esc or a "Exit Fullscreen" button returns to normal layout
+- Keyboard shortcuts still work in fullscreen (Arrow keys, Space)
+
+**Changes needed:**
+- `templates/index.html`: add fullscreen toggle button + Fullscreen API JS
+- CSS: `.reader-main:fullscreen` overrides for max width, sidebar hiding
+
+#### P4.2b — Close (×) Button vs Back
+
+Replace the current "Back" button (which navigates to Library tab) with a proper × close button that dismisses the book from the reading pane without losing state.
+
+**Behaviour:**
+- `×` (close) button in the toolbar: hides the reader area, switches to Library tab. The book's reader state (position, annotations) is already saved via the auto-save timer — no data loss.
+- "Back" behaviour preserved as a secondary action: the existing `closeReader()` already saves position + switches to Library. Rename the button to a `×` icon for clarity.
+- Tooltip: "Close reader (bookmarks & notes are saved)"
+
+**Changes needed:**
+- `templates/index.html`: replace `← Back` button text with `✕` symbol, update onclick to `closeReader()` (already done) with a confirmation-free close
+- Ensure no unnecessary cache cleanup when simply closing (keep comic cache until explicitly cleared)
+
+#### P4.2c — Right-Side Annotation Sidebar
+
+Move the annotations panel from below the reader area to a right-side sidebar, and show highlights/notes/bookmarks in a scrollable panel alongside the book.
+
+**Layout change:**
+```
+┌─────────────────────────────────────────────────┐
+│ Reader Toolbar                       [⛶][✕]   │
+├────────────────────────┬────────────────────────┤
+│                        │   Annotations (right)  │
+│    Reader Area         │   ─────────────────    │
+│    (flex: 1)           │   Highlight "In the   │
+│                        │   beginning..."       │
+│                        │   Note: Great insight │
+│                        │   ─────────            │
+│                        │   Bookmark: page 42   │
+│                        │   ×                   │
+└────────────────────────┴────────────────────────┘
+```
+
+**Implementation:**
+- Add `#annotationsSidebar` div beside `#readerArea`, initially hidden
+- When annotations exist, show it as a right column (280px width)
+- Each annotation card shows: highlight colour bar, quoted text, note text, bookmark icon, timestamp, delete button
+- Empty state: "No annotations yet. Highlight text to add notes."
+
+**Changes needed:**
+- `templates/index.html`: restructure Reader tab layout to 3-column flex (reading list | reader | annotations sidebar)
+- CSS: `.annotations-sidebar` with scroll, fixed width, sticky header
+- JS: `loadAnnotations()` should render into the sidebar, not the bottom panel. Update `showAnnotation()` and `deleteAnnotation()` accordingly
+- Remove old `#annotationsPanel` (or hide it)
+
+#### P4.2d — Cross-Format Highlighting
+
+Enable text selection and highlighting for all supported formats, not just EPUB.
+
+**EPUB** (existing):
+- ePub.js has native `annotations` support via `rendition.annotations.highlight()`
+- User selects text → popup "Highlight" button → saves CFI range + selected text to `annotations` table
+- Already works in current code but only shows annotation after highlighting
+
+**PDF** (new):
+- Use PDF.js (CDN: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js`) instead of raw iframe
+- Render PDF pages to canvas, listen for `mouseup` / selection events
+- On text selection → show floating toolbar with "Highlight" + "Note" buttons
+- Store page number + selected text + bounding rect (for re-display)
+- On reload, overlay highlights on the PDF canvas (draw semi-transparent yellow rectangles at stored positions)
+
+**CBZ/CBR** (new):
+- Use `Canvas 2D` approach: render each comic page on a canvas overlay instead of `<img>`
+- On mousedown+mousemove+mouseup → allow rectangular area selection
+- Store: page index, x/y/w/h (as percentage of image dimensions for scalability)
+- On reload, draw semi-transparent yellow rectangles over the selected areas
+- User can add a note to each selected area via a floating input popup
+
+**Storage for non-EPUB highlights:**
+Extend the `annotations` table or add serialised positions:
+
+| Column | Current (EPUB) | New (PDF/Comic) |
+|--------|----------------|-----------------|
+| `text` | Highlighted text | Selected text or empty for area |
+| `cfi_range` | EPUB CFI range | NULL |
+| `page` | NULL | Page number (PDF) / page index (comic) |
+| `bbox` | NULL | JSON: `{"x":0.15,"y":0.2,"w":0.7,"h":0.05}` (percentages) |
+| `color` | `#fef08a` default | Same |
+| `note` | User note text | Same |
+
+**Backend changes:**
+- `db.py`: `add_annotation()` already accepts generic fields — just need to pass `page` and `bbox`
+- `app.py`: `POST /api/book/<id>/annotations` already accepts arbitrary JSON — extend to accept `page` + `bbox`
+- New endpoint: `GET /api/book/<id>/annotations/render` — returns annotation data needed for canvas overlay (page + bbox + color + text)
+
+**Files to modify:**
+- `templates/index.html`: new JS modules for PDF.js rendering, comic canvas overlay, floating highlight toolbar
+- `db.py`: extend `add_annotation()` signature (optional params already work)
+- `app.py`: no structural changes needed
+
+**Status**: Planned
+
+---
+
+## Recommended Order
+
+| Order | Feature | Effort | Rationale |
+|-------|---------|--------|-----------|
+| 1 | **P4.1a** — Folder Tag Script | Low | Standalone Python script, no UI changes. Quick win |
+| 2 | **P4.1b** — Custom Tags in Tag Tree | Low | Small backend query + minor frontend change. Builds on P4.1a |
+| 3 | **P4.2c** — Right-Side Annotation Sidebar | Medium | Restructures reader layout. Good foundation for P4.2d |
+| 4 | **P4.2a** — Fullscreen Mode | Low | Mostly CSS + Fullscreen API. Independent but uses reader layout from P4.2c |
+| 5 | **P4.2b** — Close (×) Button | Trivial | Replace button text. Can be done anytime |
+| 6 | **P4.2d** — Cross-Format Highlighting | High | PDF.js integration, comic canvas overlay, floating toolbar, persistence. Most complex item |

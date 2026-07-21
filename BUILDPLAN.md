@@ -1160,6 +1160,66 @@ Extend the `annotations` table or add serialised positions:
 
 ---
 
+---
+
+### P4.3 — Synchronised Scrolling for Library 3-Panel Layout
+
+Fix the scroll behaviour in the Library tab so the two sidebars (Tag Tree, Book Detail) scroll in sync with the main books table, while each panel independently scrolls its own overflow content.
+
+#### Current state
+
+The Library tab uses a 3-column flex layout:
+
+```html
+<div style="display:flex;gap:14px">
+  <div id="udcTreePanel" style="max-height:80vh;overflow-y:auto">  ← Tag Tree
+  <div style="flex:1">                                              ← Books Table
+  <div style="width:320px">                                         ← Book Detail
+```
+
+**Problems:**
+- Left panel (`udcTreePanel`) is capped at `80vh` with `overflow-y:auto` — scrolls independently from the page
+- Centre books table has no max-height or overflow-y — its content makes the full page scroll, while the left panel stays fixed in viewport
+- Right panel (`detailPanel`) has no overflow control — when book metadata is long (long descriptions, many tags), it spills outside the panel without scrolling
+- The three columns feel disconnected when scrolling: the left panel scroll list but the page scrolls the books table
+
+#### Desired behaviour
+
+- **The entire row** (all 3 panels) scrolls as a single unit with the page. No panel is fixed/independent.
+- **Each panel** has internal `overflow-y:auto` for its own content when it exceeds the viewport height (e.g. a 200-item tag tree, or a book description with 1000 words in the detail panel)
+- **Panel max-heights** align to `calc(100vh - header - filters)` so they fill the viewport but scroll internally
+
+#### Implementation
+
+```css
+.library-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;         /* panels grow naturally */
+  min-height: calc(100vh - 240px); /* fill viewport */
+}
+
+.library-panel {
+  max-height: calc(100vh - 240px); /* same as row min-height */
+  overflow-y: auto;                /* internal scroll when content overflows */
+  overscroll-behavior: contain;    /* prevent scroll chaining */
+}
+```
+
+**Key change:** Remove `max-height:80vh` from `#udcTreePanel` inline style. Add a shared CSS class for all three panels that constrains height to the viewport minus the header + filter bar (approx 240px). Each panel scrolls internally. The whole row never scrolls the page because each panel caps its height.
+
+**Files to change:**
+- `templates/index.html`:
+  - CSS: define `.library-row`, `.library-panel` classes
+  - HTML: wrap the 3-column `div` in a `.library-row` container. Apply `.library-panel` to `#udcTreePanel`, the books `div`, and `#detailPanel`
+  - Remove the inline `max-height:80vh;overflow-y:auto` from `#udcTreePanel`
+  - Add `overflow-y:auto` to the books panel and detail panel
+  - Add `position:sticky` to panel headers (`<h2>`) so the heading stays visible while the content scrolls
+
+**Status**: Planned
+
+---
+
 ## Recommended Order
 
 | Order | Feature | Effort | Rationale |
@@ -1170,3 +1230,4 @@ Extend the `annotations` table or add serialised positions:
 | 4 | **P4.2a** — Fullscreen Mode | Low | Mostly CSS + Fullscreen API. Independent but uses reader layout from P4.2c |
 | 5 | **P4.2b** — Close (×) Button | Trivial | Replace button text. Can be done anytime |
 | 6 | **P4.2d** — Cross-Format Highlighting | High | PDF.js integration, comic canvas overlay, floating toolbar, persistence. Most complex item |
+| 7 | **P4.3** — Synchronised Scrolling | Low | CSS-only fix. Remove independent scroll on left panel, cap all 3 panels to viewport height with internal scroll. Quick win |

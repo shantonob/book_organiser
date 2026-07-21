@@ -1,137 +1,165 @@
 # Book Organiser
 
-Catalog, deduplicate, and organise ebooks from a source directory into a clean flat output. Uses **Universal Decimal Classification (UDC)** for automatic categorisation.
+Ebook catalog, deduplication, enrichment, and in-browser reader with a web UI.
 
-## Pipeline Overview
+## Quick Start
 
-The pipeline is split into **three independent phases**. Phases A and B are **read-only** on source files — no files are moved or copied until Phase C.
-
-```
-Source (Z:\books)                  Processed (processed/books/)
-       │                                     ▲
-       │  ┌──────────┐   ┌────────┐   ┌──────┴──────┐
-       ├──► Phase A  ├──► Phase B ├──►  Phase C     │
-       │  │ Metadata  │   │ Dedup  │   │ Copy       │
-       │  │ (read)    │   │ (read) │   │ (write)    │
-       │  └─────┬────┘   └───┬────┘   └──────▲──────┘
-       │        │            │               │
-       │        ▼            ▼               │
-       │    SQLite DB (data/catalog.db) ──────┘
-       │    files + metadata + pipeline_log
+```bash
+docker compose up -d
+# Then open http://localhost:5000
 ```
 
-### Phase A — Metadata Extraction
+Or natively:
 
-Walks the source directory recursively, hashes every ebook file with SHA-256, and extracts metadata using format-specific extractors.
+```bash
+pip install -r requirements.txt
+python app.py --source "path/to/books"
+```
 
-**Extractors by format:**
+## Features
 
-| Format | Extractor | Metadata |
-|--------|-----------|----------|
-| `.epub` | `extractors/epub.py` (ebooklib) | Title, author, publisher, ISBN, language, description, subjects, year, cover |
-| `.pdf` | `extractors/pdf.py` (binary parse) | Title, author, subject (from PDF Info dict), page count |
-| `.mobi` / `.azw3` | `extractors/mobi.py` (binary parse) | Title (from Palm DB header) |
-| `.cbz` / `.cbr` | `extractors/cbz.py` (zip inspect) | Title (filename), page count |
+| Feature | Description |
+|---------|-------------|
+| **3-phase pipeline** | Metadata extraction → global dedup (hash + title fuzzy) → copy survivors to flat folder. Phases A+B are read-only |
+| **Multi-format extractors** | EPUB (ebooklib), PDF (binary), MOBI/AZW3 (binary), CBZ/CBR (zip) |
+| **Filename enrichment** | spaCy NER + regex for author/title/year/series extraction |
+| **External API enrichment** | Open Library + Google Books lookups for sparse metadata |
+| **UDC classification** | Multi-tag keyword scoring across 10 UDC classes |
+| **Custom tags** | Add your own tags to any book |
+| **In-browser reader** | EPUB (ePub.js), PDF (iframe), CBZ/CBR (image viewer), keyboard shortcuts, bookmarks, annotations |
+| **Reading list** | Persistent sidebar grouped by Reading / To Read / Finished. Auto-adds books on open |
+| **Annotations & highlights** | Add notes, highlight text (EPUB), export as Markdown |
+| **Cover gallery** | Visual book browser with UDC/stage filters |
+| **Quarantine system** | 5 error buckets for failed files, side-by-side dedup comparison, bulk resolve |
+| **Inbox watcher** | Auto-process new files via Watchdog |
+| **Excel export** | Download full catalog as `book_catalog.xlsx` |
+| **Advanced search** | FTS5 full-text search, faceted filters, saved queries |
+| **Metadata editing** | Inline edit + re-process from UI |
+| **SSE live updates** | Real-time pipeline progress in browser |
+| **Docker + CasaOS** | Multi-arch ARM64/amd64, CasaOS App Store metadata |
+| **Cloudflare Tunnel** | Secure HTTPS access via Cloudflare Tunnel |
 
-**Filename cleanup** (`filename_cleaner.py`): Strips URLs, brackets, version numbers, edition markers, leading years, and trailing format labels (ebook, epub, pdf, etc.) from filenames. Extracts year from `(2005)`, `[2005]`, or `2005` patterns in filenames.
+## Web UI Tabs
 
-File stage after Phase A: `cataloged` (with `duplicate_by_hash` or `duplicate_by_title` if an exact inline duplicate was found).
+| Tab | Access | Description |
+|-----|--------|-------------|
+| **Library** | Public | Browse/search books, detail panel, filters, UDC Tag Tree sidebar |
+| **Reader** | Public | In-browser reading with reading list, bookmarks, annotations, progress bar |
+| **Gallery** | Public | Cover grid view with UDC/stage filters |
+| **Pipeline** | Admin | Funnel view, phase controls, live log, SSE progress, summary tiles |
+| **Quarantine** | Admin | Error buckets, smart filters, bulk actions, dedup ambiguity comparison |
+| **Settings** | Admin | In-app config editor, export/import, restart-required banner |
 
-### Phase B — Global Dedup Sweep
+## Authentication
 
-Runs two dedup passes across **all** cataloged files in the database:
+Authentication is **disabled by default** (no password set). When enabled, it only protects the admin tabs (Pipeline, Quarantine, Settings); the Library, Reader, and Gallery tabs remain public.
 
-1. **Hash dedup**: Groups files by SHA-256 hash. For each group with >1 file, keeps the one with the richest metadata (most non-null fields: title, author, ISBN, description, publisher, year, language, pages). Marks others as `skipped` with reason `duplicate_by_hash`.
+### How it works
 
-2. **Title fuzzy dedup**: Within the same UDC class, compares normalised titles using `SequenceMatcher` (threshold: 85%). When a match is found, the file with richer metadata is kept; the other is marked `skipped` with reason `duplicate_by_title`.
+1. **Server-side**: Flask sessions with a 30-day cookie lifetime
+2. **Login modal**: Password input in the browser, authenticates via `POST /api/auth/login`
+3. **Session check**: Every page load calls `GET /api/auth/check` which returns `{authenticated, enabled}`
+4. **Conditional UI**: Admin tabs are hidden from the tab bar until authenticated. If a non-authenticated user navigates to an admin tab (e.g. via URL), they're redirected to Library
 
-Surviving files are marked `survivor`.
+### Enabling auth
 
-### Phase C — Copy Survivors
+Set the `BOOK_AUTH_PASSWORD` environment variable:
 
-Copies only files with stage `survivor` to the flat output folder **`Z:\books\processed`** — no subdirectories, no hierarchy. Only files with recognised ebook extensions (`.epub`, `.pdf`, `.mobi`, `.azw3`, `.djvu`, `.cbr`, `.cbz`, `.fb2`) are copied; ancillary files (`.opf`, `.jpg`, `.txt`, `.ini`, etc.) are skipped. Cleans filenames and resolves collisions by appending the database ID. Marks copied files as `copied`.
+```bash
+# Docker
+docker run -e BOOK_AUTH_PASSWORD=mysecretpassword ...
 
-**Final destination:** `Z:\books\processed` (config: `config.FLAT_DIR`).
+# Native
+$env:BOOK_AUTH_PASSWORD="mysecretpassword"
+python app.py
 
-This phase is **never included** in the default pipeline — it must be triggered explicitly. Use the **C: Copy Only** button or `--phase copy`.
+# Docker Compose (.env file)
+BOOK_AUTH_PASSWORD=mysecretpassword
+BOOK_SECRET_KEY=generate-a-random-key-here
+```
 
-## Database
+### API reference
 
-SQLite at `data/catalog.db` with four tables:
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/auth/check` | GET | Returns `{authenticated: bool, enabled: bool}` |
+| `/api/auth/login` | POST | Body: `{password: string}`. Returns `{authenticated: bool}` |
+| `/api/auth/logout` | POST | Clears session |
 
-### `files`
+### Session security
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | INTEGER PK | Auto-increment |
-| `source_path` | TEXT UNIQUE | Full path to original file |
-| `filename` | TEXT | Original filename |
-| `file_size` | INTEGER | Size in bytes |
-| `file_hash` | TEXT | SHA-256 hex digest |
-| `format` | TEXT | File extension without dot |
-| `stage` | TEXT | Current pipeline stage |
-| `stage_error` | TEXT | Error message (if any) |
-| `created_at` | TEXT | ISO timestamp |
-| `updated_at` | TEXT | ISO timestamp |
+- `SECRET_KEY` is auto-generated per restart if not set via `BOOK_SECRET_KEY`
+- Set `BOOK_SECRET_KEY` to a fixed value in production so sessions survive restarts
+- Password is hashed via `hashlib.sha256` before comparison (not plaintext)
+- Session is configured as `permanent` with 30-day lifetime (`PERMANENT_SESSION_LIFETIME`)
 
-### `metadata`
+## Configuration
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | INTEGER PK | Auto-increment |
-| `file_id` | INTEGER FK → files.id | Unique per file |
-| `title` | TEXT | Cleaned title |
-| `authors` | TEXT | Semicolon-separated |
-| `publisher` | TEXT | Publisher name |
-| `isbn` | TEXT | ISBN-13 (digits only) |
-| `language` | TEXT | Language code |
-| `pages` | INTEGER | Page/image count |
-| `year` | INTEGER | Publication year |
-| `description` | TEXT | Synopsis/blurb |
-| `subjects` | TEXT | Subject keywords |
-| `udc_code` | TEXT | UDC class number |
-| `udc_label` | TEXT | UDC class label |
-| `cover_path` | TEXT | Path to extracted cover |
+### Environment variables (Docker)
 
-### `pipeline_log`
+All settings can be overridden via environment variables:
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | INTEGER PK | Auto-increment |
-| `file_id` | INTEGER FK | Associated file |
-| `stage` | TEXT | Stage name |
-| `status` | TEXT | `done` or `failed` |
-| `message` | TEXT | Log message |
-| `timestamp` | TEXT | ISO timestamp |
+| Variable | Default (Docker) | Default (Native) | Description |
+|----------|-----------------|-------------------|-------------|
+| `BOOK_SOURCE_DIR` | `/books` | `Z:\books` | Source directory for ebooks |
+| `BOOK_DATA_DIR` | `/data` | `data/` | Directory for DB, cache, processed files |
+| `BOOK_CONFIG_DIR` | `/config` | `.` | Directory for logs, config overrides |
+| `BOOK_FLAT_DIR` | `/data/processed/flat` | `data/processed/flat` | Flat output for Phase C |
+| `BOOK_DB_PATH` | `/data/catalog.db` | `data/catalog.db` | SQLite database path |
+| `BOOK_LOG_DIR` | `/config/logs` | `logs/` | Log file directory |
+| `BOOK_AUTH_PASSWORD` | — | — | Admin password (empty = no auth) |
+| `BOOK_SECRET_KEY` | — | — | Flask session key |
+| `GOOGLE_BOOKS_API_KEY` | — | — | Google Books API key for enrichment |
 
-### `tags`
+### Storage layout (CasaOS on Raspberry Pi)
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | INTEGER PK | Auto-increment |
-| `file_id` | INTEGER FK → files.id | Associated file |
-| `tag` | TEXT | Tag string (e.g. `006`, `custom-tag-name`) |
-| `tag_type` | TEXT | `udc` or `custom` |
-| `tag_label` | TEXT | Human-readable label (for UDC: e.g. `Applied Sciences`) |
-| `score` | REAL | UDC keyword match score |
+| Path | Media | Contents |
+|------|-------|----------|
+| `/data` | SSD | SQLite DB, enrich cache, processed files |
+| `/config` | SD card | Logs, config overrides (tiny writes) |
+| `/books` | NAS/media share | Source books (mounted read-only) |
 
-## File Stages
+## Pipeline
 
-Each file progresses through stages as it moves along the pipeline:
+```
+Source ──► Phase A ──► Phase B ──► Phase C ──► Flat output
+            Metadata     Dedup        Copy
+            (read)       (read)       (write)
+                │            │            │
+                ▼            ▼            ▼
+            SQLite DB (data/catalog.db)
+```
+
+### Phase stages
 
 | Stage | Meaning |
 |-------|---------|
-| `arrived` | File discovered in source and registered in DB |
-| `extracted` | Metadata extractor ran (may have failed) |
-| `cleaned` | Metadata cleaned, year extracted |
+| `arrived` | File discovered in source, registered in DB |
+| `extracted` | Metadata extractor ran (format-specific) |
+| `cleaned` | Filename cleaned, year extracted, title normalised |
 | `cataloged` | UDC classification applied, inline dedup checked |
-| `survivor` | Passed Phase B global dedup |
-| `skipped` | Identified as duplicate (hash or title) |
+| `survivor` | Passed global dedup (hash + title fuzzy) |
+| `skipped` | Identified as duplicate |
 | `copied` | File copied to flat output folder |
+| `quarantined` | Non-recoverable error (see error code in detail) |
+
+## Database
+
+SQLite at `BOOK_DB_PATH` (default: `data/catalog.db`). Tables:
+
+- `files` — source paths, hashes, stages, UUIDs
+- `metadata` — title, author, ISBN, publisher, year, language, pages, description, subjects, cover, UDC
+- `pipeline_log` — per-file log with status and messages
+- `tags` — UDC and custom tags per file
+- `quarantined` — error codes, review status, user notes
+- `reading_list` — status (Reading/To Read/Finished) per book
+- `reader_state` — bookmarks: CFI for EPUB, page index for comics, progress %
+- `annotations` — highlights, notes, chapter refs per book
+- `config_overrides` — user-edited config values via Settings tab
+- `quarantine_rules` — auto-resolve rules for bulk operations
+- `daemon_status` — IPC table for daemon process
 
 ## UDC Classification (Multi-Tag)
-
-The classifier (`classifier.py`) uses keyword scoring against 10 main UDC classes. Unlike a single-category system, **every matching class** is assigned as a tag — a single book can belong to multiple UDC classes:
 
 | Code | Class |
 |------|-------|
@@ -145,104 +173,39 @@ The classifier (`classifier.py`) uses keyword scoring against 10 main UDC classe
 | 800 | Language. Linguistics. Literature |
 | 900 | Geography. Biography. History |
 
-Each class has a list of keyword patterns. All classes with positive keyword scores are stored as `udc` tags. For example, a data science book might get tags `006` (Applied Sciences) and `005` (Natural Sciences).
+Books can have multiple UDC tags simultaneously. Add custom tags for personal categories.
 
-### Custom Tags
+## CLI
 
-You can add your own text tags to any book from the web UI (click a book row → tag editor). Custom tags are stored with `tag_type='custom'` and are independent of UDC tags. Use them for personal categories like `favorite`, `to-read`, `reference`, `archived`, etc.
+```bash
+# Web UI
+python app.py --source "path/to/books"
 
-## File Cleanup
+# Headless — run specific phase
+python app.py --source "path/to/books" --phase metadata
+python app.py --source "path/to/books" --phase dedup
+python app.py --source "path/to/books" --phase copy
+python app.py --source "path/to/books" --phase all
 
-The `filename_cleaner.py` module applies these transformations:
-
-- Removes URLs (`www.*.com`, `http://*`)
-- Removes bracketed text `[...]`
-- Removes format labels at end of name (`epub`, `pdf`, `mobi`, etc.)
-- Removes version numbers (`v1.0`, `v.2.5`)
-- Removes edition markers (`edition 3`, `vol 2`)
-- Removes leading years (`2025 - Title`)
-- Collapses whitespace
-- Falls back to `untitled` if filename is empty after cleaning
-
-Duplicate filenames in the output folder are disambiguated by appending `_{database_id}`.
-
-## Usage
-
-```powershell
-# Web UI (default port 5000)
-python app.py --source "Z:\books"
-
-# Custom port
-python app.py --source "\\server\share\books" --port 8080
-
-# Headless — Phase A only (metadata)
-python app.py --source "Z:\books" --phase metadata
-
-# Headless — Phase B only (dedup)
-python app.py --source "Z:\books" --phase dedup
-
-# Headless — Phase C only (copy survivors)
-python app.py --source "Z:\books" --phase copy
-
-# Headless — all three phases
-python app.py --source "Z:\books" --phase all
+# Daemon mode (separate process)
+python daemon.py --status
+python daemon.py --run metadata --source "path/to/books"
+python daemon.py --watch
 ```
 
-### Web UI Tabs
+## Docker
 
-The interface has two tabs:
+```bash
+# Build and run
+docker compose up -d
 
-**Pipeline** — Track processing progress. Stage cards, phase badges, live log, and action buttons:
+# Custom password
+BOOK_AUTH_PASSWORD=mysecret docker compose up -d
 
-| Button | Phases | What it does |
-|--------|--------|-------------|
-| **A+B: Metadata + Dedup** | A + B | Default action. Scans, extracts, cleans, classifies, deduplicates |
-| **A: Metadata** | A | Only extract metadata and catalog |
-| **B: Dedup** | B | Only run global dedup on already-cataloged files |
-| **A+B+C: Full** | A + B + C | Complete pipeline including copy to flat folder |
-| **C: Copy** | C | Copy survivors to flat folder (no re-scanning) |
-
-**Library** — Browse, search, and manage books. Click any row to open the detail panel showing full metadata, UDC tags (all matching classes), and custom tags. Add or remove custom tags directly from the detail view.
-
-## Monitoring
-
-- **Browser**: `http://localhost:5000` — two tabs:
-  - **Pipeline**: real-time dashboard with Server-Sent Events (updates every 2s). Shows stage counts, phase badges, current file, progress bar, and pipeline log.
-  - **Library**: browse all catalogued books by stage, UDC class, or search. Click any book to view full metadata, all assigned UDC tags, and add/remove custom tags.
-- **API**: `GET /api/status` returns JSON with pipeline state, stage counts, recent books, and pipeline log.
-- **SQLite**: Direct DB queries for detailed analysis:
-  ```sql
-  SELECT stage, COUNT(*) FROM files GROUP BY stage;
-  SELECT f.filename, m.title, m.udc_code, f.stage FROM files f LEFT JOIN metadata m ON m.file_id = f.id;
-  ```
-
-## Future Plans
-
-See `BUILDPLAN.md` for the full change log, architecture decisions, and Phase 2 backlog including:
-
-- **Global discovery progress bar** — total file count + completion % in UI
-- **Filename metadata enrichment** — spaCy + regex author/title extraction
-- **External API enrichment** — Open Library / Google Books lookups
-- **Metadata confidence indicators** — source badges per field
-- **Manual metadata editing** — inline correction from UI
-- **Inbox watcher** — auto-process new files
-- **Advanced search, bulk tags, cover gallery, multi-source support**
-
-## Configuration
-
-See `config.py`. Key settings:
-
-- `SOURCE_DIR` — default source path (overridable via `--source` / `BOOK_SOURCE` env var)
-- `EBOOK_EXTS` — recognised ebook extensions
-- `EXCLUDE_DIRS` — directories to skip during walk
-- `DUPLICATE_SIMILARITY_THRESHOLD` — title similarity cutoff (0.0–1.0)
+# Stop
+docker compose down
+```
 
 ## Dependencies
 
-- Python 3.10+
-- Flask (web server)
-- EbookLib (EPUB parsing)
-- lxml (EPUB XML parsing)
-- Pillow (cover image handling)
-
-All listed in `requirements.txt`.
+Python 3.10+, Flask, EbookLib, lxml, Pillow, spaCy, pandas, requests, watchdog. See `requirements.txt`.

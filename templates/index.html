@@ -215,16 +215,19 @@
   </div>
 
   <div class="tab-bar">
-    <button class="tab-btn active" onclick="switchTab('pipeline')">Pipeline</button>
-    <button class="tab-btn" onclick="switchTab('quarantine')" id="quarantineTabBtn">Quarantine <span id="quarantineBadge" style="display:none;background:#701a22;color:#fca5a5;padding:1px 6px;border-radius:8px;font-size:0.65rem;margin-left:4px"></span></button>
-    <button class="tab-btn" onclick="switchTab('library')">Library</button>
-    <button class="tab-btn" onclick="switchTab('gallery')">Gallery</button>
+    <button class="tab-btn active" onclick="switchTab('library')">Library</button>
     <button class="tab-btn" onclick="switchTab('reader')">Reader</button>
-    <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
+    <button class="tab-btn" onclick="switchTab('gallery')">Gallery</button>
+    <button class="tab-btn admin-tab" onclick="switchTab('pipeline')" style="display:none">Pipeline</button>
+    <button class="tab-btn admin-tab" onclick="switchTab('quarantine')" id="quarantineTabBtn" style="display:none">Quarantine <span id="quarantineBadge" style="display:none;background:#701a22;color:#fca5a5;padding:1px 6px;border-radius:8px;font-size:0.65rem;margin-left:4px"></span></button>
+    <button class="tab-btn admin-tab" onclick="switchTab('settings')" style="display:none">Settings</button>
+    <span style="flex:1"></span>
+    <button class="tab-btn" id="loginBtn" onclick="showLoginModal()" style="color:#22c55e;font-size:0.78rem">&#x1F512; Login</button>
+    <button class="tab-btn" id="logoutBtn" onclick="doLogout()" style="display:none;color:#ef4444;font-size:0.78rem">Logout</button>
   </div>
 
   <!-- ════ PIPELINE TAB ════ -->
-  <div class="tab-panel active" id="tab-pipeline">
+  <div class="tab-panel" id="tab-pipeline">
     <div class="row">
       <input type="text" id="sourcePath" value="Z:\books" placeholder="Source path (e.g. Z:\books)">
       <button class="primary" onclick="runAll()">A+B: Metadata + Dedup</button>
@@ -366,7 +369,7 @@
   </div>
 
   <!-- ════ LIBRARY TAB ════ -->
-  <div class="tab-panel" id="tab-library">
+  <div class="tab-panel active" id="tab-library">
     <div class="row" style="flex-wrap:wrap">
       <input type="text" id="libSearch" placeholder="FTS query (title / author / desc)..." oninput="loadLibrary()" style="flex:1;min-width:180px">
       <button onclick="toggleAdvancedSearch()" id="advToggleBtn" style="padding:5px 12px;font-size:0.78rem;background:#334155;border:none;border-radius:4px;color:#e2e8f0;cursor:pointer">&#x25BC; Advanced</button>
@@ -563,6 +566,18 @@
     </div>
   </div>
 
+  <!-- Login modal (P3.2) -->
+  <div id="loginModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:2000;align-items:center;justify-content:center">
+    <div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:24px;max-width:340px;width:90%">
+      <h3 style="color:#e2e8f0;margin-bottom:12px">Admin Login</h3>
+      <input type="password" id="loginPassword" placeholder="Enter password" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.85rem;margin-bottom:10px" onkeydown="if(event.key==='Enter')doLogin()">
+      <div id="loginError" style="color:#ef4444;font-size:0.75rem;margin-bottom:8px;display:none">Invalid password</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="doLogin()" style="flex:1;padding:8px;border:none;border-radius:6px;background:#0ea5e9;color:#0f172a;font-weight:600;cursor:pointer;font-size:0.85rem">Login</button>
+        <button onclick="closeLoginModal()" style="padding:8px 16px;border:none;border-radius:6px;background:#334155;color:#e2e8f0;cursor:pointer;font-size:0.85rem">Cancel</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -570,6 +585,12 @@ const API = "";
 
 // ── Tab switching ──
 function switchTab(name, filters) {
+  // Check auth for admin tabs
+  var adminTabs = ["pipeline", "quarantine", "settings"];
+  if (adminTabs.indexOf(name) >= 0 && !window._authenticated) {
+    showLoginModal();
+    return;
+  }
   // Save position and destroy reader when leaving reader tab
   if (name !== "reader" && readerBookId) {
     saveReaderState();
@@ -608,6 +629,71 @@ function switchTab(name, filters) {
   if (name === "quarantine") { loadQuarantine(); }
   if (name === "gallery") { loadGallery(); }
   if (name === "settings") { loadConfig(); }
+}
+
+// ── Auth (P3.2) ──
+window._authenticated = false;
+
+function checkAuth() {
+  fetch(API + "/api/auth/check").then(function(r) { return r.json(); }).then(function(d) {
+    window._authenticated = d.authenticated;
+    var loginBtn = document.getElementById("loginBtn");
+    var logoutBtn = document.getElementById("logoutBtn");
+    if (loginBtn) loginBtn.style.display = d.enabled && !d.authenticated ? "" : "none";
+    if (logoutBtn) logoutBtn.style.display = d.enabled && d.authenticated ? "" : "none";
+    document.querySelectorAll(".admin-tab").forEach(function(el) {
+      el.style.display = d.authenticated ? "" : "none";
+    });
+    if (!d.authenticated) {
+      var active = document.querySelector(".tab-panel.active");
+      if (active) {
+        var adminPanels = ["tab-pipeline", "tab-quarantine", "tab-settings"];
+        if (adminPanels.indexOf(active.id) >= 0) {
+          switchTab("library");
+        }
+      }
+    }
+  }).catch(function() {});
+}
+
+function showLoginModal() {
+  document.getElementById("loginModal").style.display = "flex";
+  var pw = document.getElementById("loginPassword");
+  if (pw) { pw.value = ""; pw.focus(); }
+  var err = document.getElementById("loginError");
+  if (err) err.style.display = "none";
+}
+
+function closeLoginModal() {
+  document.getElementById("loginModal").style.display = "none";
+}
+
+function doLogin() {
+  var pw = document.getElementById("loginPassword");
+  if (!pw) return;
+  fetch(API + "/api/auth/login", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({password: pw.value})
+  }).then(function(r) {
+    if (r.status === 401) {
+      var err = document.getElementById("loginError");
+      if (err) err.style.display = "block";
+      return;
+    }
+    return r.json();
+  }).then(function(d) {
+    if (d && d.authenticated) {
+      closeLoginModal();
+      checkAuth();
+    }
+  }).catch(function() {});
+}
+
+function doLogout() {
+  fetch(API + "/api/auth/logout", {method: "POST"}).then(function() {
+    checkAuth();
+  }).catch(function() {});
 }
 
 // ── Pipeline tab ──
@@ -2336,6 +2422,7 @@ if (typeof EventSource !== "undefined") {
 }
 
 fetchStatus();
+checkAuth();
 setInterval(fetchStatus, 5000);
 </script>
 </body>

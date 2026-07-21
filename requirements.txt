@@ -1,0 +1,9 @@
+flask>=3.0
+pandas>=2.0
+openpyxl>=3.0
+ebooklib>=0.18
+Pillow>=10.0
+spacy>=3.7
+rarfile>=4.0
+requests>=2.31
+watchdog>=4.0

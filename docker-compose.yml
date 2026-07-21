@@ -1,0 +1,27 @@
+services:
+  book-organiser:
+    build: .
+    image: book-organiser:latest
+    container_name: book-organiser
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      # SSD mount: database, cache, enrich data
+      - /mnt/ssd/book-organiser/data:/data
+      # SD card: logs, config overrides (tiny writes)
+      - /mnt/sd/book-organiser/config:/config
+      # Source books (read-only)
+      - /mnt/media_ssd/books:/books:ro
+    environment:
+      - BOOK_ORGANISER_DOCKER=1
+      - BOOK_DATA_DIR=/data
+      - BOOK_CONFIG_DIR=/config
+      - BOOK_SOURCE_DIR=/books
+      - BOOK_FLAT_DIR=/data/processed/flat
+      - BOOK_DB_PATH=/data/catalog.db
+      - BOOK_LOG_DIR=/config/logs
+      - BOOK_AUTH_PASSWORD=${BOOK_AUTH_PASSWORD:-}
+      - BOOK_SECRET_KEY=${BOOK_SECRET_KEY:-change-me-in-production}
+      - GOOGLE_BOOKS_API_KEY=${GOOGLE_BOOKS_API_KEY:-}
+      - TZ=Europe/London

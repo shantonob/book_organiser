@@ -5,7 +5,7 @@ import time
 import argparse
 import io
 import logging
-from flask import Flask, render_template, jsonify, Response, request, send_file
+from flask import Flask, render_template, jsonify, Response, request, send_file, session
 import pandas as pd
 
 import config
@@ -30,12 +30,14 @@ from pipeline import state, run_pipeline, run_all_phases, run_phase_metadata, ru
 
 app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.secret_key = config.SECRET_KEY
+app.permanent_session_lifetime = 86400 * 30  # 30 days
 
 # Ensure log directory exists
 os.makedirs(config.LOG_DIR, exist_ok=True)
 
 # Route all server output to app.log
-log_handler = logging.FileHandler(os.path.join(config.LOG_DIR, "app.log"), encoding="utf-8")
+log_handler = logging.FileHandler(config.LOG_FILE, encoding="utf-8")
 log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
 werkz = logging.getLogger("werkzeug")
 werkz.setLevel(logging.INFO)
@@ -49,6 +51,41 @@ flask_log.setLevel(logging.INFO)
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+# ── Auth (P3.2) ──
+
+def is_authenticated():
+    if not config.AUTH_ENABLED:
+        return True
+    return session.get("authenticated", False)
+
+
+@app.route("/api/auth/check")
+def api_auth_check():
+    return jsonify({
+        "authenticated": is_authenticated(),
+        "enabled": config.AUTH_ENABLED,
+    })
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_auth_login():
+    data = request.json or {}
+    pw = data.get("password", "")
+    if not config.AUTH_ENABLED:
+        return jsonify({"status": "ok", "authenticated": True})
+    if pw == config.AUTH_PASSWORD:
+        session["authenticated"] = True
+        session.permanent = True
+        return jsonify({"status": "ok", "authenticated": True})
+    return jsonify({"status": "error", "message": "Invalid password"}), 401
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_auth_logout():
+    session.pop("authenticated", None)
+    return jsonify({"status": "logged_out"})
 
 
 @app.route("/api/status")

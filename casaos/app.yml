@@ -1,0 +1,33 @@
+name: "Book Organiser"
+description: "Ebook catalog, deduplication, and in-browser reader"
+icon: "https://raw.githubusercontent.com/shantonob/book_organiser/main/casaos/icon.png"
+tags:
+  - books
+  - ebooks
+  - organizer
+  - reader
+port: 5000
+volumes:
+  - host: /mnt/ssd/book-organiser/data
+    container: /data
+    label: "Database & processed files (SSD)"
+  - host: /mnt/sd/book-organiser/config
+    container: /config
+    label: "Logs & configuration (SD card)"
+  - host: ~
+    container: /books:ro
+    label: "Source book directories"
+environment:
+  - label: "Admin password"
+    name: BOOK_AUTH_PASSWORD
+    default: ""
+    description: "Leave empty for no authentication"
+  - label: "Secret key"
+    name: BOOK_SECRET_KEY
+    default: "change-me-in-production"
+    description: "Session encryption key (change for security)"
+  - label: "Google Books API key"
+    name: GOOGLE_BOOKS_API_KEY
+    default: ""
+    description: "Optional: Google Books API key for enrichment"
+tip: "After install, set your source books volume and admin password in the CasaOS dashboard"

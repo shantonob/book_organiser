@@ -892,6 +892,15 @@ Turn the basic reader into a full-featured reading experience.
 
 ---
 
+### 2026-07-21 — Infrastructure & Deployment + Auth (P3.2)
+
+- I1 Docker: Multi-arch Dockerfile (ARM64 + amd64), docker-compose.yml with SSD/SD volume mapping
+- I2 Dual-mode config: `config.py` detects `BOOK_ORGANISER_DOCKER` env var. All paths overridable via env vars (`BOOK_DATA_DIR`, `BOOK_SOURCE_DIR`, `BOOK_DB_PATH`, etc.)
+- I3 Dashboard: Default landing page is now Library tab (public). Pipeline/Quarantine/Settings marked as admin tabs
+- I4 Basic auth: `BOOK_AUTH_PASSWORD` env var. Login modal with session cookie (30-day expiry). `/api/auth/check`, `/api/auth/login`, `/api/auth/logout` endpoints. Admin tabs hidden until authenticated, redirect to library if not
+- I5 CasaOS: `casaos/app.yml` metadata for CasaOS App Store. `casaos/cloudflare-tunnel.md` setup guide for Cloudflare Tunnel (Docker sidecar, native install, and CasaOS app approaches)
+- Storage split: DB on SSD (`/data`), logs on SD card (`/config`), source books read-only (`/books`)
+
 ### 2026-07-21 — Enhanced Reader (P3.1)
 
 - R1 Reading List: Persistent sidebar on Reader tab, grouped by status (Reading/To Read/Finished), click to open. `reading_list` DB table with CRUD. Add/Remove from detail panel and reader toolbar
@@ -908,15 +917,23 @@ Production-hardening and deployment tooling.
 
 **Backlog items:**
 
-| Item | Description |
-|------|-------------|
-| I1 | Docker Compose - Dockerfile + docker-compose.yml for the 3-process architecture (web, api, daemon). Single docker compose up |
-| I2 | Dual-mode config - Docker mode uses volume mounts for DB + data; native mode unchanged. AUTO_DETECT env var |
-| I3 | Dashboard page - Public status page at / showing system health, recent scans, library stats, daemon status. Links to Library tab |
-| I4 | Basic auth - Simple password gate for the UI. Configurable via AUTH_PASSWORD env var or config.py |
-| I5 | Raspberry Pi deployment - ARM64 Docker builds, low-memory mode (sqlite WAL tuning), SD card wear optimisation, headless boot. Script: tools/deploy_pi.sh |
+| Item | Description | Status |
+|------|-------------|--------|
+| I1 | Docker Compose - Dockerfile + docker-compose.yml. Single `docker compose up` | Done |
+| I2 | Dual-mode config - Docker uses env vars for paths; native mode unchanged. `BOOK_ORGANISER_DOCKER=1` env var | Done |
+| I3 | Dashboard page - Root `/` shows Library/Reader as landing. Pipeline/Quarantine/Settings are admin tabs | Done |
+| I4 | Basic auth - Password gate for admin tabs. Config via `BOOK_AUTH_PASSWORD` env var. Login modal + session | Done |
+| I5 | CasaOS + Cloudflare - CasaOS app metadata (`casaos/app.yml`), ARM64 Dockerfile, Cloudflare Tunnel docs | Done |
 
-**Status**: Planned
+**Storage layout (CasaOS on Pi):**
+
+| Path | Media | Contents |
+|------|-------|----------|
+| `/data` | SSD mount (`/mnt/ssd/book-organiser/data`) | SQLite DB, enrich cache, processed files |
+| `/config` | SD card (`/mnt/sd/book-organiser/config`) | Logs, config overrides |
+| `/books` | Media share (`/mnt/media_ssd/books`) | Source books (read-only) |
+
+**Status**: Done
 
 ---
 

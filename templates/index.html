@@ -783,6 +783,15 @@ function resetLibrary() {
   loadLibrary();
 }
 
+function filterLibraryByTag(tag) {
+  document.getElementById("libTagFilter").value = tag;
+  if (document.getElementById("tab-library").classList.contains("active")) {
+    loadLibrary({tag: tag});
+  } else {
+    switchTab("library", {tag: tag});
+  }
+}
+
 function filterLibraryByFormat(fmt) {
   document.getElementById("libFormatFilter").value = fmt;
   if (document.getElementById("tab-library").classList.contains("active")) {
@@ -1018,7 +1027,7 @@ function loadSummary() {
   ]).then(([s, q]) => {
       const area = document.getElementById("summaryArea");
       if (area) area.style.display = "block";
-      renderUdcTree(s.by_udc || {}, s.udc_labels || {});
+      renderUdcTree(s.by_udc || {}, s.udc_labels || {}, s.by_custom_tags || {});
       const grid = document.getElementById("summaryGrid");
       const udcLabels = s.udc_labels || {};
 
@@ -1099,17 +1108,18 @@ const UDC_TREE = [
   {code:"900", label:"History", subs:[{code:"910", label:"Geography"},{code:"920", label:"Biography"}]},
 ];
 
-function renderUdcTree(byUdc, udcLabels) {
+function renderUdcTree(byUdc, udcLabels, byCustomTags) {
   const el = document.getElementById("udcTree");
   if (!el) return;
   // Lazily fetch counts if not provided
   if (!byUdc) {
     fetch(API + "/api/summary").then(r => r.json()).then(s => {
-      renderUdcTree(s.by_udc || {}, s.udc_labels || {});
+      renderUdcTree(s.by_udc || {}, s.udc_labels || {}, s.by_custom_tags || {});
     }).catch(() => {});
     return;
   }
   const currentFilter = document.getElementById("libUdcFilter").value;
+  const currentTagFilter = document.getElementById("libTagFilter").value;
   let html = "";
   UDC_TREE.forEach(group => {
     const cnt = byUdc[group.code] || 0;
@@ -1125,6 +1135,18 @@ function renderUdcTree(byUdc, udcLabels) {
       html += '</div>';
     }
   });
+  // Custom tags section
+  if (byCustomTags && Object.keys(byCustomTags).length > 0) {
+    var tagKeys = Object.keys(byCustomTags);
+    html += '<div class="custom-tags-section"><h4 style="margin:12px 0 6px 0;font-size:0.72rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px">Custom Tags</h4>';
+    tagKeys.sort().forEach(function(tag) {
+      var cnt = byCustomTags[tag] || 0;
+      var tagActive = currentTagFilter === tag ? " active" : "";
+      var safeAttr = String(tag).replace(/'/g, "\\'");
+      html += '<div class="udc-tree-node' + tagActive + '" onclick="filterLibraryByTag(\'' + safeAttr + '\')"><span>' + esc(tag) + '</span><span class="utcnt">' + cnt + '</span></div>';
+    });
+    html += '</div>';
+  }
   el.innerHTML = html;
 }
 

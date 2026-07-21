@@ -367,6 +367,9 @@ def get_summary(conn):
     by_format = dict(conn.execute(
         "SELECT COALESCE(format, '?') as k, COUNT(*) as c FROM files GROUP BY k ORDER BY c DESC"
     ).fetchall())
+    by_custom_tags = dict(conn.execute(
+        "SELECT tag, COUNT(*) as c FROM tags WHERE tag_type='custom' GROUP BY tag ORDER BY c DESC"
+    ).fetchall())
     for s in ("arrived", "extracted", "cleaned", "cataloged", "survivor", "skipped", "copied", "quarantined"):
         by_stage.setdefault(s, 0)
     return {
@@ -374,6 +377,7 @@ def get_summary(conn):
         "by_stage": by_stage,
         "by_udc": by_udc,
         "by_format": by_format,
+        "by_custom_tags": by_custom_tags,
     }
 
 

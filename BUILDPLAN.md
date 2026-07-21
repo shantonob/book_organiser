@@ -1221,6 +1221,118 @@ The Library tab uses a 3-column flex layout:
 
 ---
 
+---
+
+### P5.1 — Reading Pane Full-Space Layout
+
+Fix the reader pane so it fills the available viewport width and height both on the page and in fullscreen mode.
+
+#### Current state
+The reader layout uses a 3-column flex (reading list sidebar | reader | annotations sidebar), but the reader area doesn't expand to consume all available space between the sidebars. On fullscreen the same issue persists.
+
+#### Desired behaviour
+- The reader content area should stretch to fill the gap between the left reading list sidebar and the right annotations sidebar
+- In fullscreen, after hiding only the reading list sidebar, the reader should expand to fill the full width minus the annotations sidebar
+- Heights should use `100vh` minus the toolbar, with no wasted padding/margins
+- The EPUB rendition, PDF iframe, and comic image should all use `width:100%; height:100%` within the reader area
+
+#### Implementation
+- CSS adjustments to `.reader-layout`, `.reader-main`, `#readerArea`, `.annotations-sidebar`
+- Remove fixed `height: window.innerHeight - 200` from EPUB `renderTo()` call — use `<div>` CSS sizing instead
+- Ensure `.reader-main` uses `flex:1` or `width:100%` minus sidebar widths
+
+#### Files to modify
+- `templates/index.html`: CSS for `.reader-layout`, `.reader-main`, `#readerArea`; JS `loadReader()` height param
+
+**Status**: Pending
+
+---
+
+### P5.2 — Reading List UX Improvements
+
+Upgrade the reading list sidebar to show the currently open book, replace the "Remove" button with an inline ✕ close, show book metadata, and highlight the active book.
+
+#### Current state
+- Reading list has a "Remove" button per entry
+- No visual indicator for which book is currently open
+- No metadata (author, format, tags, UDC) shown in the reading list
+- Bookmarks are not directly accessible from the reading list view
+
+#### Desired behaviour
+- Replace the "Remove" button with a ✕ icon rendered inline next to the book title (same line, right-aligned)
+- The book that is currently open in the reader should have a highlighted background (e.g. `#1e293b` with left accent border `#0ea5e9`)
+- Below the reading list entries, show a "Book Info" section that displays metadata of the currently open/open book:
+  - Title, Author(s), Format, UDC code + label, Custom tags, Year
+  - Reading status
+- Reading list items show a small progress indicator (from `reader-state` percentage)
+
+#### Implementation
+- CSS: `.rl-item.active` class for highlighting, `.rl-item .rl-close` for ✕ button, `.rl-metadata` panel
+- JS: `renderReadingList()` — add active class when `readerBookId` matches, modify HTML template per item
+- New panel: `<div id="readingListBookInfo">` below the reading list entries, updated on book open and on list click
+
+#### Files to modify
+- `templates/index.html`: CSS classes, JS `renderReadingList()` rewrite, `openReader()` updates metadata section
+
+**Status**: Pending
+
+---
+
+### P5.3 — Enhanced Text Selection, Highlighting, Bookmarks & Notes
+
+Extend the annotation system to support text selection across all formats, automatic bookmark creation at highlighted locations, inline notes on highlights, and sequential display in the annotations sidebar.
+
+#### Current state
+- EPUB highlights work via ePub.js native `rendition.annotations.highlight()` and save CFI range + text
+- PDF is served as an `<iframe>` — no selection interaction
+- Comics show as `<img>` — no selection
+- Annotations sidebar shows notes but highlights from non-EPUB formats are not captured
+- No bookmark auto-creation when highlighting
+- Highlights, notes, bookmarks are displayed separately, not as a unified timeline
+
+#### Desired behaviour
+- **EPUB**: Keep existing highlight mechanism; add auto-bookmark at the CFI location when highlighting; show highlight + bookmark + note as a single entry
+- **PDF**: Use PDF.js to render pages; enable text selection with `mouseup` listener; on selection show floating toolbar with "Highlight" + "Add Note" buttons; store page number + selected text + bounding box; on reload, overlay highlights
+- **CBZ/CBR**: Use canvas overlay; allow rectangular area selection via drag; store percentage-based coordinates; show floating input for notes
+- **All formats**: Each annotation entry in the sidebar shows: highlight colour bar, quoted/selected text (truncated), bookmark icon + location reference (page/CFI), note text, timestamp, edit/delete buttons
+- Annotations are ordered chronologically (newest first or by location — user toggle?)
+
+#### Storage
+- Extend `annotations` table with `page` (INT), `bbox` (TEXT JSON), `bookmark_cfi` (TEXT), `location_label` (TEXT e.g. "p.110 · line 22")
+- Existing `text`, `note`, `color`, `created_at` columns reused
+
+#### Files to modify
+- `templates/index.html`: PDF.js integration, comic canvas, floating toolbar, updated annotation rendering
+- `db.py`: may need migration for new columns
+- `app.py`: minor endpoint changes
+
+**Status**: Pending
+
+---
+
+### P5.4 — Export Annotations & Highlights as Markdown
+
+Add the ability to export all annotations, highlights, and notes for a book as a well-formatted Markdown file, including book metadata.
+
+#### Desired behaviour
+- Button in the annotations sidebar or reader toolbar: "Export .md"
+- Generates a Markdown file with frontmatter (book title, author, format, UDC, tags, reading dates)
+- Body contains sequential annotation entries:
+  - Each entry: highlight text (quoted), note text, location reference (page/CFI), timestamp, colour
+- File downloads automatically with filename: `<book-title>-annotations.md`
+- The same "Export" button should trigger `.md` export alongside the existing highlight export
+
+#### Implementation
+- Frontend JS: `exportAnnotationsMd()` — fetches all annotations for the book, formats markdown, triggers download via Blob
+- Could use an API endpoint `GET /api/book/<id>/annotations/export?format=md` or do it entirely client-side
+
+#### Files to modify
+- `templates/index.html`: new export function, button text/style update
+
+**Status**: Pending
+
+---
+
 ## Recommended Order
 
 | Order | Feature | Effort | Status | Rationale |
@@ -1232,3 +1344,7 @@ The Library tab uses a 3-column flex layout:
 | 5 | **P4.2b** — Close (×) Button | Trivial | ✅ Done | Replaced "Back" with ✕. Saves state on close |
 | 6 | **P4.3** — Synchronised Scrolling | Low | ✅ Done | CSS-only. All 3 Library panels capped to viewport with internal scroll |
 | 7 | **P4.2d** — Cross-Format Highlighting | High | ⬜ Pending | PDF.js integration, comic canvas overlay, floating toolbar, persistence. Most complex item |
+| 8 | **P5.1** — Reading Pane Full-Space Layout | Low | ⬜ Pending | CSS flex fix to make reader fill available viewport space |
+| 9 | **P5.2** — Reading List UX (✕ close, active highlight, metadata panel) | Medium | ⬜ Pending | Replace remove btn with ✕, highlight active book, show book info below list |
+| 10 | **P5.3** — Enhanced Highlighting & Bookmarks | High | ⬜ Pending | Text selection for PDF/comic, auto-bookmarks, unified timeline in annotations sidebar |
+| 11 | **P5.4** — Export Annotations as Markdown | Low | ⬜ Pending | Download .md with book metadata + all highlights/notes in sequence |

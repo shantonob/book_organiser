@@ -23,6 +23,9 @@ from db import get_connection, init_db, get_pipeline_summary, get_recent_books, 
 from db import get_phase_counts, get_survivors, get_tags, add_custom_tag, remove_custom_tag, search_tags
 from db import get_summary, get_book_pipeline_log, rebuild_fts, search_books, get_funnel, get_daemon_status
 from db import get_quarantined, resolve_quarantine, QUARANTINE_ERRORS, get_quarantine_counts_by_error, get_quarantine_formats, bulk_dismiss, bulk_keep_both, bulk_delete_files, get_quarantine_rules, set_quarantine_rule, get_config_overrides, set_config_override, delete_config_override, get_all_config
+from db import get_reading_list, add_to_reading_list, update_reading_list_status, remove_from_reading_list
+from db import get_reader_state, save_reader_state
+from db import get_annotations, add_annotation, delete_annotation, export_annotations_markdown
 from pipeline import state, run_pipeline, run_all_phases, run_phase_metadata, run_phase_dedup, run_phase_copy, discover_source_files, add_to_inbox
 
 app = Flask(__name__)
@@ -1064,6 +1067,95 @@ def api_book_clear_reader_cache(book_id):
         import shutil
         shutil.rmtree(cache_dir, ignore_errors=True)
     return jsonify({"status": "cleared"})
+
+
+# ── Reading List (P3.1) ────────────────────────────────────
+
+@app.route("/api/reading-list")
+def api_reading_list():
+    status = request.args.get("status")
+    conn = get_connection(DB_PATH)
+    try:
+        items = get_reading_list(conn, status=status)
+        return jsonify(items)
+    finally:
+        conn.close()
+
+
+@app.route("/api/reading-list/<int:book_id>", methods=["POST", "DELETE"])
+def api_reading_list_item(book_id):
+    conn = get_connection(DB_PATH)
+    try:
+        if request.method == "DELETE":
+            remove_from_reading_list(conn, book_id)
+            conn.commit()
+            return jsonify({"status": "removed"})
+        data = request.json or {}
+        rl_status = data.get("status", "to_read")
+        add_to_reading_list(conn, book_id, status=rl_status)
+        conn.commit()
+        return jsonify({"status": "added", "rl_status": rl_status})
+    finally:
+        conn.close()
+
+
+@app.route("/api/book/<int:book_id>/reader-state", methods=["GET", "POST"])
+def api_reader_state(book_id):
+    conn = get_connection(DB_PATH)
+    try:
+        if request.method == "POST":
+            data = request.json or {}
+            location = data.get("location", "")
+            progress_pct = data.get("progress_pct", 0)
+            save_reader_state(conn, book_id, location, progress_pct)
+            conn.commit()
+            return jsonify({"status": "saved"})
+        state = get_reader_state(conn, book_id)
+        return jsonify(dict(state) if state else {})
+    finally:
+        conn.close()
+
+
+@app.route("/api/book/<int:book_id>/annotations", methods=["GET", "POST"])
+def api_annotations(book_id):
+    conn = get_connection(DB_PATH)
+    try:
+        if request.method == "POST":
+            data = request.json or {}
+            ann_id = add_annotation(conn, book_id,
+                                    ann_type=data.get("type", "highlight"),
+                                    cfi_range=data.get("cfi_range", ""),
+                                    text=data.get("text", ""),
+                                    note=data.get("note"),
+                                    color=data.get("color", "#fef08a"))
+            conn.commit()
+            return jsonify({"id": ann_id, "status": "created"})
+        anns = get_annotations(conn, book_id)
+        return jsonify(anns)
+    finally:
+        conn.close()
+
+
+@app.route("/api/book/<int:book_id>/annotations/<int:ann_id>", methods=["DELETE"])
+def api_annotation_delete(book_id, ann_id):
+    conn = get_connection(DB_PATH)
+    try:
+        delete_annotation(conn, ann_id)
+        conn.commit()
+        return jsonify({"status": "deleted"})
+    finally:
+        conn.close()
+
+
+@app.route("/api/book/<int:book_id>/annotations/export")
+def api_annotations_export(book_id):
+    conn = get_connection(DB_PATH)
+    try:
+        md = export_annotations_markdown(conn, book_id)
+        return Response(md, mimetype="text/markdown",
+                        headers={"Content-Disposition": f"attachment; filename=highlights_{book_id}.md"})
+    finally:
+        conn.close()
 
 
 # ── FTS5 Search ──────────────────────────────────────────────

@@ -888,9 +888,19 @@ Turn the basic reader into a full-featured reading experience.
 | R4 | Reading progress tracking - Visual progress indicator per book. Estimated time remaining based on reading speed |
 | R5 | Export highlights - Export all annotations/highlights for a book as Markdown or plain text. "My Clippings" style |
 
-**Status**: Planned
+**Status**: Done
 
 ---
+
+### 2026-07-21 — Enhanced Reader (P3.1)
+
+- R1 Reading List: Persistent sidebar on Reader tab, grouped by status (Reading/To Read/Finished), click to open. `reading_list` DB table with CRUD. Add/Remove from detail panel and reader toolbar
+- R2 Bookmarking: `reader_state` table saves location (CFI for EPUB, page index for comics) + progress %. Auto-restore on open. Position saved every 2s during reading and on tab switch/close
+- R3 Annotations: `annotations` table stores highlights and notes per book. Display panel below reader area. Inline "Add Note" button for manual notes. Delete support
+- R4 Progress Bar: Visual progress bar in reader toolbar for all formats. Updates on page turn/navigation
+- R5 Export Highlights: Markdown export endpoint (`GET /api/book/<id>/annotations/export`) with "Export" button in reader toolbar. Downloads `highlights_<id>.md`
+- Backend: `get_reading_list()`, `add_to_reading_list()`, `update_reading_list_status()`, `remove_from_reading_list()`, `get_reader_state()`, `save_reader_state()`, `get_annotations()`, `add_annotation()`, `delete_annotation()`, `export_annotations_markdown()` in db.py
+- Backend endpoints: `GET/POST /api/reading-list`, `POST/DELETE /api/reading-list/<id>`, `GET/POST /api/book/<id>/reader-state`, `GET/POST /api/book/<id>/annotations`, `DELETE /api/book/<id>/annotations/<ann_id>`, `GET /api/book/<id>/annotations/export`
 
 ### P3.2 - Infrastructure & Deployment
 
@@ -962,4 +972,4 @@ Visualise and edit all application settings directly from the web interface.
 
 **Why:** Eliminates the need to SSH in and edit config.py by hand for routine configuration changes.
 
-**Status**: Planned
+**Status**: Done

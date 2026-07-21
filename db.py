@@ -123,6 +123,8 @@ def init_db(db_path):
         )
     """)
 
+    ensure_reading_tables(conn)
+
     conn.commit()
     conn.close()
     # Re-open and re-init to ensure all migrations are applied
@@ -745,6 +747,137 @@ def resolve_quarantine(conn, file_id, reviewed=1, user_notes=None):
     """, (reviewed, now, user_notes, file_id))
     # Remove from quarantined if dismissed
     conn.execute("DELETE FROM quarantined WHERE file_id=? AND reviewed=2", (file_id,))
+
+
+# ── Reading List (P3.1) ────────────────────────────────────
+
+def ensure_reading_tables(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS reading_list (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            book_id     INTEGER NOT NULL UNIQUE REFERENCES files(id) ON DELETE CASCADE,
+            status      TEXT NOT NULL DEFAULT 'to_read' CHECK(status IN ('reading','to_read','finished')),
+            added_at    TEXT DEFAULT (datetime('now')),
+            updated_at  TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS reader_state (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            book_id     INTEGER NOT NULL UNIQUE REFERENCES files(id) ON DELETE CASCADE,
+            location    TEXT,
+            progress_pct REAL DEFAULT 0,
+            updated_at  TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS annotations (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            book_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+            type        TEXT NOT NULL DEFAULT 'highlight' CHECK(type IN ('highlight','note')),
+            cfi_range   TEXT,
+            text        TEXT,
+            note        TEXT,
+            color       TEXT DEFAULT '#fef08a',
+            created_at  TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_reading_list_book ON reading_list(book_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_reader_state_book ON reader_state(book_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_annotations_book ON annotations(book_id)")
+
+
+def get_reading_list(conn, status=None):
+    where = ""
+    params = []
+    if status:
+        where = " WHERE rl.status = ?"
+        params.append(status)
+    rows = conn.execute(f"""
+        SELECT rl.*, f.filename, f.format, f.stage, f.source_path,
+               m.title, m.authors, m.udc_code, m.udc_label, m.cover_path,
+               COALESCE(rs.progress_pct, 0) as progress_pct
+        FROM reading_list rl
+        JOIN files f ON f.id = rl.book_id
+        LEFT JOIN metadata m ON m.file_id = rl.book_id
+        LEFT JOIN reader_state rs ON rs.book_id = rl.book_id
+        {where}
+        ORDER BY rl.updated_at DESC
+    """, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_to_reading_list(conn, book_id, status='to_read'):
+    conn.execute("""
+        INSERT OR REPLACE INTO reading_list (book_id, status, updated_at)
+        VALUES (?, ?, datetime('now'))
+    """, (book_id, status))
+
+
+def update_reading_list_status(conn, book_id, status):
+    conn.execute("""
+        UPDATE reading_list SET status=?, updated_at=datetime('now')
+        WHERE book_id=?
+    """, (status, book_id))
+
+
+def remove_from_reading_list(conn, book_id):
+    conn.execute("DELETE FROM reading_list WHERE book_id=?", (book_id,))
+
+
+def get_reader_state(conn, book_id):
+    return conn.execute("""
+        SELECT * FROM reader_state WHERE book_id=?
+    """, (book_id,)).fetchone()
+
+
+def save_reader_state(conn, book_id, location, progress_pct=0):
+    conn.execute("""
+        INSERT OR REPLACE INTO reader_state (book_id, location, progress_pct, updated_at)
+        VALUES (?, ?, ?, datetime('now'))
+    """, (book_id, location, progress_pct))
+
+
+def get_annotations(conn, book_id):
+    rows = conn.execute("""
+        SELECT * FROM annotations WHERE book_id=? ORDER BY created_at ASC
+    """, (book_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_annotation(conn, book_id, ann_type, cfi_range, text, note=None, color='#fef08a'):
+    conn.execute("""
+        INSERT INTO annotations (book_id, type, cfi_range, text, note, color)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (book_id, ann_type, cfi_range, text, note, color))
+    return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+
+def delete_annotation(conn, ann_id):
+    conn.execute("DELETE FROM annotations WHERE id=?", (ann_id,))
+
+
+def export_annotations_markdown(conn, book_id):
+    """Return annotations as markdown text."""
+    anns = get_annotations(conn, book_id)
+    book = conn.execute("""
+        SELECT m.title, m.authors FROM files f
+        LEFT JOIN metadata m ON m.file_id = f.id
+        WHERE f.id=?
+    """, (book_id,)).fetchone()
+    title = book["title"] if book and book["title"] else f"Book #{book_id}"
+    authors = book["authors"] if book and book["authors"] else "Unknown"
+    lines = [f"# {title}", f"*By {authors}*", "", "---", ""]
+    for a in anns:
+        if a["type"] == "highlight":
+            lines.append(f"> {a['text']}")
+            if a.get("note"):
+                lines.append(f"  — {a['note']}")
+            lines.append("")
+        else:
+            lines.append(f"**Note:** {a['text'] or a.get('note', '')}")
+            lines.append("")
+    return "\n".join(lines)
 
 
 # ── Config overrides ───────────────────────────────────────

@@ -170,6 +170,33 @@
   .udc-tree-node .utcnt { color: #94a3b8; font-weight: 600; }
   .udc-tree-node.active .utcnt { color: #0f172a; }
   .udc-sub-list { margin-left: 12px; border-left: 1px solid #334155; padding-left: 6px; }
+
+  /* Reading List Sidebar */
+  .reader-layout { display: flex; gap: 14px; align-items: flex-start; }
+  .reading-list-sidebar { width: 220px; flex-shrink: 0; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px; max-height: calc(100vh - 120px); overflow-y: auto; }
+  .reading-list-sidebar h3 { font-size: 0.78rem; color: #94a3b8; margin-bottom: 8px; }
+  .reading-list-sidebar .rl-item { padding: 6px 8px; border-radius: 4px; cursor: pointer; margin-bottom: 3px; transition: background 0.15s; }
+  .reading-list-sidebar .rl-item:hover { background: #334155; }
+  .reading-list-sidebar .rl-item .rl-title { font-size: 0.75rem; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .reading-list-sidebar .rl-item .rl-meta { font-size: 0.62rem; color: #64748b; }
+  .reading-list-sidebar .rl-group-label { font-size: 0.65rem; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; margin: 8px 0 4px 6px; }
+  .reading-list-sidebar .rl-progress { height: 2px; background: #334155; border-radius: 1px; margin-top: 3px; overflow: hidden; }
+  .reading-list-sidebar .rl-progress-fill { height: 100%; background: #0ea5e9; border-radius: 1px; }
+  .reading-list-sidebar .rl-empty { font-size: 0.7rem; color: #475569; text-align: center; padding: 16px 0; }
+  .reader-main { flex: 1; min-width: 0; }
+  /* Progress bar in toolbar */
+  .reader-progress-wrap { flex: 1; min-width: 80px; max-width: 160px; height: 4px; background: #334155; border-radius: 2px; overflow: hidden; }
+  .reader-progress-fill { height: 100%; background: #0ea5e9; border-radius: 2px; transition: width 0.3s; }
+  /* Reading list dropdown */
+  .rl-status-select { font-size: 0.68rem; padding: 2px 4px; border-radius: 3px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; }
+  /* Annotation sidebar */
+  .annotations-panel { margin-top: 10px; border-top: 1px solid #334155; padding-top: 8px; }
+  .annotations-panel .ann-item { padding: 6px 8px; border-left: 3px solid #fef08a; background: #0f172a; border-radius: 0 4px 4px 0; margin-bottom: 4px; font-size: 0.72rem; }
+  .annotations-panel .ann-item .ann-text { color: #e2e8f0; }
+  .annotations-panel .ann-item .ann-note { color: #64748b; font-style: italic; margin-top: 2px; }
+  .annotations-panel .ann-item .ann-del { cursor: pointer; color: #ef4444; float: right; opacity: 0.6; }
+  .annotations-panel .ann-item .ann-del:hover { opacity: 1; }
+  .annotations-panel .ann-empty { color: #475569; font-size: 0.7rem; text-align: center; padding: 12px 0; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.88/epub.min.js"></script>
 </head>
@@ -474,22 +501,48 @@
     <div class="gallery-grid" id="galleryGrid"></div>
   </div>
 
-  <!-- ════ READER TAB ════ -->
+  <!-- ════ READER TAB (P3.1 Enhanced) ════ -->
   <div class="tab-panel" id="tab-reader">
-    <div id="readerToolbar" style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
-      <button onclick="closeReader()" style="padding:5px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">&#x2190; Back to Library</button>
-      <span id="readerTitle" style="color:#e2e8f0;font-weight:600;font-size:0.9rem;flex:1"></span>
-      <span id="readerFormat" style="color:#64748b;font-size:0.75rem"></span>
-      <button id="readerPrev" onclick="readerPrev()" style="padding:4px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">&#x2190; Prev</button>
-      <span id="readerLocation" style="color:#64748b;font-size:0.78rem"></span>
-      <button id="readerNext" onclick="readerNext()" style="padding:4px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">Next &#x2192;</button>
+    <div class="reader-layout">
+      <!-- Reading List Sidebar (R1) -->
+      <div class="reading-list-sidebar" id="readingListPanel">
+        <h3>Reading List</h3>
+        <div id="readingListContent">
+          <div class="rl-empty">Loading...</div>
+        </div>
+      </div>
+      <!-- Reader Main -->
+      <div class="reader-main">
+        <div id="readerToolbar" style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+          <button onclick="closeReader()" style="padding:5px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">&#x2190; Back</button>
+          <span id="readerTitle" style="color:#e2e8f0;font-weight:600;font-size:0.9rem;flex:1;min-width:80px"></span>
+          <span id="readerFormat" style="color:#64748b;font-size:0.75rem"></span>
+          <div class="reader-progress-wrap" id="readerProgressWrap" style="display:none">
+            <div class="reader-progress-fill" id="readerProgressFill" style="width:0%"></div>
+          </div>
+          <span id="readerLocation" style="color:#64748b;font-size:0.78rem;min-width:35px"></span>
+          <button id="readerPrev" onclick="readerPrev()" style="padding:4px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">&#x2190; Prev</button>
+          <button id="readerNext" onclick="readerNext()" style="padding:4px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">Next &#x2192;</button>
+          <button id="readingListBtn" onclick="toggleReadingListForBook()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#0ea5e9;color:#0f172a;font-weight:600;display:none">+ List</button>
+          <button id="exportHighlightsBtn" onclick="exportHighlights()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#22c55e;color:#0f172a;font-weight:600;display:none">Export</button>
+        </div>
+        <div id="readerFallback" style="display:none;text-align:center;padding:40px;color:#64748b">
+          <div style="font-size:1.1rem;margin-bottom:12px">Cannot preview this format in the browser</div>
+          <p style="font-size:0.85rem;margin-bottom:16px">Use the <strong>Download</strong> button on the detail page to open it in your ebook reader.</p>
+          <button onclick="switchTab('library')" style="padding:8px 20px;border:none;border-radius:6px;background:#0ea5e9;color:#0f172a;font-weight:600;cursor:pointer">Back to Library</button>
+        </div>
+        <div id="readerArea" style="max-width:850px;margin:0 auto;min-height:70vh;border:1px solid #334155;border-radius:6px;background:#f8fafc;overflow-y:auto"></div>
+        <!-- Annotations panel (R3) -->
+        <div id="annotationsPanel" class="annotations-panel" style="display:none;max-width:850px;margin:8px auto 0">
+          <h3 style="font-size:0.78rem;color:#94a3b8;margin-bottom:6px">Annotations &amp; Highlights <span id="annCount" style="color:#64748b;font-size:0.7rem"></span></h3>
+          <div style="display:flex;gap:6px;margin-bottom:6px">
+            <input type="text" id="annInput" placeholder="Add a note for this book..." style="flex:1;padding:4px 8px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.75rem">
+            <button onclick="addNote()" style="padding:4px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#0ea5e9;color:#0f172a;font-weight:600">Add Note</button>
+          </div>
+          <div id="annotationsList"></div>
+        </div>
+      </div>
     </div>
-    <div id="readerFallback" style="display:none;text-align:center;padding:40px;color:#64748b">
-      <div style="font-size:1.1rem;margin-bottom:12px">Cannot preview this format in the browser</div>
-      <p style="font-size:0.85rem;margin-bottom:16px">Use the <strong>Download</strong> button on the detail page to open it in your ebook reader.</p>
-      <button onclick="switchTab('library')" style="padding:8px 20px;border:none;border-radius:6px;background:#0ea5e9;color:#0f172a;font-weight:600;cursor:pointer">Back to Library</button>
-    </div>
-    <div id="readerArea" style="max-width:850px;margin:0 auto;min-height:70vh;border:1px solid #334155;border-radius:6px;background:#f8fafc;overflow-y:auto"></div>
   </div>
 
   <!-- ════ SETTINGS TAB ════ -->
@@ -517,10 +570,13 @@ const API = "";
 
 // ── Tab switching ──
 function switchTab(name, filters) {
-  // Destroy reader when leaving reader tab
-  if (name !== "reader" && readerRendition) {
+  // Save position and destroy reader when leaving reader tab
+  if (name !== "reader" && readerBookId) {
+    saveReaderState();
+    if (readerSaveTimer) { clearTimeout(readerSaveTimer); readerSaveTimer = null; }
     if (readerRendition) { try { readerRendition.destroy(); } catch(e) {} readerRendition = null; }
     if (readerBook) { try { readerBook.destroy(); } catch(e) {} readerBook = null; }
+    readerBook = null; readerRendition = null; readerPages = []; readerPage = 0;
     document.removeEventListener("keydown", readerKeyHandler);
   }
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
@@ -548,6 +604,7 @@ function switchTab(name, filters) {
     loadSources();
     renderUdcTree();
   }
+  if (name === "reader") { loadReadingList(); }
   if (name === "quarantine") { loadQuarantine(); }
   if (name === "gallery") { loadGallery(); }
   if (name === "settings") { loadConfig(); }
@@ -1754,6 +1811,7 @@ function showDetail(bookId) {
       html += '<button onclick="reCopyBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a">Re-copy</button>';
       html += '<button onclick="window.location.href=API+\'/api/book/' + bookId + '/download\'" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#6366f1;color:#f8fafc;font-weight:600">Download</button>';
       html += '<button onclick="openReader(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f97316;color:#0f172a;font-weight:600">Read Online</button>';
+      html += '<button id="detailRlBtn" onclick="addDetailToReadingList(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#0ea5e9;color:#0f172a;font-weight:600">+ Reading List</button>';
       html += '</div>';
 
       // UDC tags
@@ -1810,16 +1868,101 @@ function showDetail(bookId) {
       }
 
       body.innerHTML = html;
+      // Check reading list status for detail button
+      fetch(API + "/api/reading-list").then(function(r) { return r.json(); }).then(function(items) {
+        var inList = items.some(function(i) { return i.book_id === bookId; });
+        var rlBtn = document.getElementById("detailRlBtn");
+        if (rlBtn) {
+          if (inList) { rlBtn.textContent = "Remove"; rlBtn.style.background = "#ef4444"; }
+          else { rlBtn.textContent = "+ Reading List"; rlBtn.style.background = "#0ea5e9"; }
+        }
+      }).catch(function() {});
     }).catch(() => { body.innerHTML = '<div style="color:#ef4444">Error loading book</div>'; });
 }
 
-// ── In-browser reader ──
+// ── In-browser reader (P3.1 Enhanced) ──
 let readerBook = null;
 let readerRendition = null;
 let readerFormat = null;
 let readerPage = 0;
 let readerPages = [];
 let readerBookId = null;
+let readerProgressTimer = null;
+let readerSaveTimer = null;
+
+// ═══ Reading List (R1) ═══
+
+function loadReadingList() {
+  fetch(API + "/api/reading-list").then(r => r.json()).then(items => {
+    const el = document.getElementById("readingListContent");
+    if (!items.length) { el.innerHTML = '<div class="rl-empty">Add books to your reading list to get started</div>'; return; }
+    const groups = {reading: [], to_read: [], finished: []};
+    const labels = {reading: "Reading", to_read: "To Read", finished: "Finished"};
+    items.forEach(i => { if (groups[i.status]) groups[i.status].push(i); });
+    var html = "";
+    ["reading","to_read","finished"].forEach(g => {
+      if (!groups[g].length) return;
+      html += '<div class="rl-group-label">' + labels[g] + ' (' + groups[g].length + ')</div>';
+      groups[g].forEach(i => {
+        var pct = i.progress_pct || 0;
+        html += '<div class="rl-item" onclick="openReader(' + i.book_id + ')">';
+        html += '<div class="rl-title">' + esc(i.title || i.filename || "Book #" + i.book_id) + '</div>';
+        html += '<div class="rl-meta">' + esc(i.authors || "") + (i.format ? " \xb7 " + i.format : "") + '</div>';
+        if (pct > 0) html += '<div class="rl-progress"><div class="rl-progress-fill" style="width:' + pct + '%"></div></div>';
+        html += '</div>';
+      });
+    });
+    el.innerHTML = html;
+  }).catch(function() { document.getElementById("readingListContent").innerHTML = '<div class="rl-empty">Could not load</div>'; });
+}
+
+function toggleReadingListForBook() {
+  var bid = readerBookId;
+  if (!bid) return;
+  var btn = document.getElementById("readingListBtn");
+  if (btn.textContent.indexOf("Remove") >= 0) {
+    fetch(API + "/api/reading-list/" + bid, {method: "DELETE"}).then(function(r) { return r.json(); }).then(function() {
+      btn.textContent = "+ Reading List";
+      btn.style.background = "#0ea5e9";
+      loadReadingList();
+    }).catch(function() {});
+  } else {
+    fetch(API + "/api/reading-list/" + bid, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({status: "reading"})}).then(function(r) { return r.json(); }).then(function() {
+      btn.textContent = "Remove";
+      btn.style.background = "#ef4444";
+      loadReadingList();
+    }).catch(function() {});
+  }
+}
+
+function setReadingListStatus(bid, status) {
+  fetch(API + "/api/reading-list/" + bid, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({status: status})}).then(function() { loadReadingList(); }).catch(function() {});
+}
+
+// ═══ Reader State (R2) ═══
+
+function saveReaderState() {
+  var bid = readerBookId;
+  if (!bid) return;
+  var loc = "";
+  var pct = 0;
+  if (readerFormat === "epub" && readerRendition) {
+    try {
+      var locObj = readerRendition.currentLocation();
+      if (locObj && locObj.start) {
+        loc = locObj.start.cfi || "";
+        pct = Math.round((locObj.start.percentage || 0) * 100);
+      }
+    } catch(e) {}
+  } else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPages.length > 0) {
+    loc = String(readerPage);
+    pct = Math.round((readerPage + 1) / readerPages.length * 100);
+  }
+  fetch(API + "/api/book/" + bid + "/reader-state", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({location: loc, progress_pct: pct})}).catch(function() {});
+  document.getElementById("readerProgressFill").style.width = pct + "%";
+}
+
+// ═══ Open Reader ═══
 
 function openReader(bookId) {
   fetch(API + "/api/book/" + bookId).then(r => r.json()).then(b => {
@@ -1830,6 +1973,19 @@ function openReader(bookId) {
     document.getElementById("readerFallback").style.display = "none";
     document.getElementById("readerPrev").style.display = "";
     document.getElementById("readerNext").style.display = "";
+    document.getElementById("readerProgressWrap").style.display = "";
+    document.getElementById("readerProgressFill").style.width = "0%";
+    document.getElementById("readingListBtn").style.display = "";
+    document.getElementById("exportHighlightsBtn").style.display = ext === "epub" ? "" : "none";
+    document.getElementById("annotationsPanel").style.display = ext === "epub" ? "block" : "none";
+    loadAnnotations(bookId);
+    // Check reading list
+    fetch(API + "/api/reading-list").then(function(r) { return r.json(); }).then(function(items) {
+      var inList = items.some(function(i) { return i.book_id === bookId; });
+      var btn = document.getElementById("readingListBtn");
+      if (inList) { btn.textContent = "Remove"; btn.style.background = "#ef4444"; }
+      else { btn.textContent = "+ List"; btn.style.background = "#0ea5e9"; }
+    }).catch(function() {});
     switchTab("reader");
     if (ext === "epub") {
       loadReader(bookId, b);
@@ -1842,9 +1998,18 @@ function openReader(bookId) {
       document.getElementById("readerFallback").style.display = "block";
       document.getElementById("readerPrev").style.display = "none";
       document.getElementById("readerNext").style.display = "none";
+      document.getElementById("readerProgressWrap").style.display = "none";
     }
+    // Auto-add to reading list as "reading" (R1)
+    addToReadingListAsReading(bookId);
   }).catch(() => alert("Could not load book info"));
 }
+
+function addToReadingListAsReading(bid) {
+  fetch(API + "/api/reading-list/" + bid, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({status: "reading"})}).then(function() { loadReadingList(); }).catch(function() {});
+}
+
+// ═══ EPUB Reader (R2+R3+R4) ═══
 
 function loadReader(bookId, book) {
   const area = document.getElementById("readerArea");
@@ -1859,14 +2024,29 @@ function loadReader(bookId, book) {
   readerBook = ePub(API + "/api/book/" + bookId + "/read");
   readerRendition = readerBook.renderTo("readerArea", { width: "100%", height: window.innerHeight - 200, spread: "none" });
   readerRendition.display();
+
   document.getElementById("readerPrev").onclick = function() { readerPrev(); };
   document.getElementById("readerNext").onclick = function() { readerNext(); };
   document.addEventListener("keydown", readerKeyHandler);
+
   readerRendition.on("relocated", function(loc) {
     var pct = loc && loc.start ? (loc.start.percentage * 100).toFixed(0) : 0;
     document.getElementById("readerLocation").textContent = pct + "%";
+    document.getElementById("readerProgressFill").style.width = pct + "%";
+    // Auto-save position (debounced)
+    if (readerSaveTimer) clearTimeout(readerSaveTimer);
+    readerSaveTimer = setTimeout(function() { saveReaderState(); }, 2000);
   });
+
+  // Restore saved position (R2)
+  fetch(API + "/api/book/" + bookId + "/reader-state").then(r => r.json()).then(function(state) {
+    if (state && state.location) {
+      try { readerRendition.display(state.location); } catch(e) {}
+    }
+  }).catch(function() {});
 }
+
+// ═══ PDF Reader ═══
 
 function loadPdfReader(bookId, book) {
   const area = document.getElementById("readerArea");
@@ -1877,9 +2057,12 @@ function loadPdfReader(bookId, book) {
   document.getElementById("readerLocation").textContent = "";
   document.getElementById("readerPrev").style.display = "none";
   document.getElementById("readerNext").style.display = "none";
+  document.getElementById("readerProgressFill").style.width = "0%";
   document.removeEventListener("keydown", readerKeyHandler);
   area.innerHTML = '<iframe src="' + API + '/api/book/' + bookId + '/read" style="width:100%;height:' + (window.innerHeight - 200) + 'px;border:none;border-radius:4px"></iframe>';
 }
+
+// ═══ Comic Reader ═══
 
 function loadComicReader(bookId, book) {
   const area = document.getElementById("readerArea");
@@ -1902,7 +2085,12 @@ function loadComicReader(bookId, book) {
       document.getElementById("readerPrev").style.display = "none";
       document.getElementById("readerNext").style.display = "none";
     } else {
-      showComicPage(bookId, 0);
+      // Restore saved position (R2)
+      fetch(API + "/api/book/" + bookId + "/reader-state").then(r => r.json()).then(function(state) {
+        var startPage = 0;
+        if (state && state.location) { startPage = parseInt(state.location) || 0; if (startPage >= readerPages.length) startPage = 0; }
+        showComicPage(bookId, startPage);
+      }).catch(function() { showComicPage(bookId, 0); });
     }
   }).catch(function() {
     area.innerHTML = '<div style="color:#ef4444;text-align:center;padding:40px">Failed to load comic</div>';
@@ -1914,20 +2102,25 @@ function showComicPage(bookId, idx) {
   readerPage = idx;
   const area = document.getElementById("readerArea");
   area.innerHTML = '<div style="text-align:center;padding:10px"><img src="' + API + '/api/book/' + bookId + '/read/page/' + idx + '" style="max-width:100%;max-height:' + (window.innerHeight - 220) + 'px;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.3)"></div>';
+  var pct = readerPages.length > 0 ? Math.round((idx + 1) / readerPages.length * 100) : 0;
   document.getElementById("readerLocation").textContent = (idx + 1) + " / " + readerPages.length;
+  document.getElementById("readerProgressFill").style.width = pct + "%";
+  // Auto-save position (debounced)
+  if (readerSaveTimer) clearTimeout(readerSaveTimer);
+  readerSaveTimer = setTimeout(function() { saveReaderState(); }, 2000);
 }
 
 function readerPrev() {
   if (readerFormat === "epub" && readerRendition) { readerRendition.prev(); }
   else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPage > 0) {
-    showComicPage(null, readerPage - 1);
+    showComicPage(readerBookId, readerPage - 1);
   }
 }
 
 function readerNext() {
   if (readerFormat === "epub" && readerRendition) { readerRendition.next(); }
   else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPage < readerPages.length - 1) {
-    showComicPage(null, readerPage + 1);
+    showComicPage(readerBookId, readerPage + 1);
   }
 }
 
@@ -1937,6 +2130,9 @@ function readerKeyHandler(e) {
 }
 
 function closeReader() {
+  // Save final position
+  saveReaderState();
+  if (readerSaveTimer) { clearTimeout(readerSaveTimer); readerSaveTimer = null; }
   if (readerRendition) { try { readerRendition.destroy(); } catch(e) {} readerRendition = null; }
   if (readerBook) { try { readerBook.destroy(); } catch(e) {} readerBook = null; }
   readerBook = null; readerRendition = null; readerPages = []; readerPage = 0;
@@ -1946,6 +2142,78 @@ function closeReader() {
     fetch(API + "/api/book/" + bid + "/read/cache", {method: "DELETE"}).catch(function(){});
   }
   switchTab("library");
+}
+
+// ═══ Annotations (R3 + R5) ═══
+
+function loadAnnotations(bookId) {
+  fetch(API + "/api/book/" + bookId + "/annotations").then(r => r.json()).then(function(anns) {
+    var el = document.getElementById("annotationsList");
+    var countEl = document.getElementById("annCount");
+    if (!anns.length) { el.innerHTML = '<div class="ann-empty">No annotations yet. Highlight text in the EPUB to add.</div>'; if (countEl) countEl.textContent = ""; return; }
+    if (countEl) countEl.textContent = "(" + anns.length + ")";
+    var html = "";
+    anns.forEach(function(a) {
+      html += '<div class="ann-item" style="border-left-color:' + (a.color || "#fef08a") + '">';
+      html += '<span class="ann-del" onclick="deleteAnnotation(' + a.id + ',' + bookId + ')" title="Delete">&times;</span>';
+      if (a.type === "highlight") {
+        html += '<div class="ann-text">"' + esc(a.text || "") + '"</div>';
+        if (a.note) html += '<div class="ann-note">\u2014 ' + esc(a.note) + '</div>';
+      } else {
+        html += '<div class="ann-text"><strong>Note:</strong> ' + esc(a.note || a.text || "") + '</div>';
+      }
+      html += '<div style="font-size:0.62rem;color:#475569;margin-top:2px">' + (a.created_at || "").slice(0, 10) + '</div>';
+      html += '</div>';
+    });
+    el.innerHTML = html;
+  }).catch(function() {});
+}
+
+function deleteAnnotation(annId, bookId) {
+  fetch(API + "/api/book/" + bookId + "/annotations/" + annId, {method: "DELETE"})
+    .then(function(r) { return r.json(); }).then(function() { loadAnnotations(bookId); }).catch(function() {});
+}
+
+function exportHighlights() {
+  var bid = readerBookId;
+  if (!bid) return;
+  var a = document.createElement("a");
+  a.href = API + "/api/book/" + bid + "/annotations/export";
+  a.download = "highlights_" + bid + ".md";
+  a.click();
+}
+
+function addNote() {
+  var bid = readerBookId;
+  if (!bid) return;
+  var text = document.getElementById("annInput").value.trim();
+  if (!text) return;
+  fetch(API + "/api/book/" + bid + "/annotations", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({type: "note", text: text, note: text})
+  }).then(function(r) { return r.json(); }).then(function() {
+    document.getElementById("annInput").value = "";
+    loadAnnotations(bid);
+  }).catch(function() {});
+}
+
+function addDetailToReadingList(bookId) {
+  var btn = document.getElementById("detailRlBtn");
+  if (!btn) return;
+  if (btn.textContent.indexOf("Remove") >= 0) {
+    fetch(API + "/api/reading-list/" + bookId, {method: "DELETE"}).then(function(r) { return r.json(); }).then(function() {
+      btn.textContent = "+ Reading List";
+      btn.style.background = "#0ea5e9";
+      loadReadingList();
+    }).catch(function() {});
+  } else {
+    fetch(API + "/api/reading-list/" + bookId, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({status: "to_read"})}).then(function(r) { return r.json(); }).then(function() {
+      btn.textContent = "Remove";
+      btn.style.background = "#ef4444";
+      loadReadingList();
+    }).catch(function() {});
+  }
 }
 
 function addTag() {

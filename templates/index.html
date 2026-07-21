@@ -208,12 +208,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .annotations-sidebar .ann-empty { color: #475569; font-size: 0.7rem; text-align: center; padding: 12px 0; }
   .annotations-sidebar .ann-input-row { display: flex; gap: 6px; margin-bottom: 6px; }
   /* Fullscreen reader */
-  .reader-layout:fullscreen .reading-list-sidebar,
-  .reader-layout:fullscreen .annotations-sidebar { display: none; }
+  .reader-layout:fullscreen .reading-list-sidebar { display: none; }
   .reader-layout:fullscreen .reader-main { max-width: 100%; }
   .reader-layout:fullscreen #readerArea { max-width: 100%; height: calc(100vh - 60px); }
-  .reader-layout:-webkit-full-screen .reading-list-sidebar,
-  .reader-layout:-webkit-full-screen .annotations-sidebar { display: none; }
+  .reader-layout:-webkit-full-screen .reading-list-sidebar { display: none; }
   .reader-layout:-webkit-full-screen .reader-main { max-width: 100%; }
   .reader-layout:-webkit-full-screen #readerArea { max-width: 100%; height: calc(100vh - 60px); }
 </style>
@@ -2102,7 +2100,8 @@ function openReader(bookId) {
     document.getElementById("readerProgressWrap").style.display = "";
     document.getElementById("readerProgressFill").style.width = "0%";
     document.getElementById("readingListBtn").style.display = "";
-    document.getElementById("exportHighlightsBtn").style.display = ext === "epub" ? "" : "none";
+    var epubLike = ["epub", "azw3", "mobi", "fb2"].indexOf(ext) !== -1;
+    document.getElementById("exportHighlightsBtn").style.display = epubLike ? "" : "none";
     document.getElementById("annotationsSidebar").style.display = "block";
     loadAnnotations(bookId);
     // Check reading list
@@ -2113,7 +2112,7 @@ function openReader(bookId) {
       else { btn.textContent = "+ List"; btn.style.background = "#0ea5e9"; }
     }).catch(function() {});
     switchTab("reader");
-    if (ext === "epub") {
+    if (epubLike) {
       loadReader(bookId, b);
     } else if (ext === "pdf") {
       loadPdfReader(bookId, b);
@@ -2236,15 +2235,17 @@ function showComicPage(bookId, idx) {
   readerSaveTimer = setTimeout(function() { saveReaderState(); }, 2000);
 }
 
+function isEpubFormat(f) { return ["epub","azw3","mobi","fb2"].indexOf(f) !== -1; }
+
 function readerPrev() {
-  if (readerFormat === "epub" && readerRendition) { readerRendition.prev(); }
+  if (isEpubFormat(readerFormat) && readerRendition) { readerRendition.prev(); }
   else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPage > 0) {
     showComicPage(readerBookId, readerPage - 1);
   }
 }
 
 function readerNext() {
-  if (readerFormat === "epub" && readerRendition) { readerRendition.next(); }
+  if (isEpubFormat(readerFormat) && readerRendition) { readerRendition.next(); }
   else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPage < readerPages.length - 1) {
     showComicPage(readerBookId, readerPage + 1);
   }

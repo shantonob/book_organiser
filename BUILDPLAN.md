@@ -1057,14 +1057,15 @@ Add a fullscreen button to the reader toolbar that uses the Fullscreen API.
 
 **Implementation:**
 - New button in `#readerToolbar`: `⛶ Fullscreen` (or a fullscreen icon)
-- On click: `document.getElementById("readerMain").requestFullscreen()` (or `document.documentElement`)
-- Style adjustment: in fullscreen, hide the reading list sidebar, maximise the reader area, adjust heights to `100vh`
-- Esc or a "Exit Fullscreen" button returns to normal layout
+- On click: `document.querySelector(".reader-layout").requestFullscreen()`
+- Style adjustment: in fullscreen, hide the reading list sidebar, **keep the annotations sidebar visible** so the user can refer to notes/highlights while reading
+- Maximise the reader area to fill remaining space, adjust heights to `100vh`
+- Esc or button click returns to normal layout
 - Keyboard shortcuts still work in fullscreen (Arrow keys, Space)
 
 **Changes needed:**
 - `templates/index.html`: add fullscreen toggle button + Fullscreen API JS
-- CSS: `.reader-main:fullscreen` overrides for max width, sidebar hiding
+- CSS: `:fullscreen` override hides `.reading-list-sidebar` only, keeps `.annotations-sidebar` visible, maxes reader area width and height
 
 #### P4.2b — Close (×) Button vs Back
 
@@ -1222,12 +1223,12 @@ The Library tab uses a 3-column flex layout:
 
 ## Recommended Order
 
-| Order | Feature | Effort | Rationale |
-|-------|---------|--------|-----------|
-| 1 | **P4.1a** — Folder Tag Script | Low | Standalone Python script, no UI changes. Quick win |
-| 2 | **P4.1b** — Custom Tags in Tag Tree | Low | Small backend query + minor frontend change. Builds on P4.1a |
-| 3 | **P4.2c** — Right-Side Annotation Sidebar | Medium | Restructures reader layout. Good foundation for P4.2d |
-| 4 | **P4.2a** — Fullscreen Mode | Low | Mostly CSS + Fullscreen API. Independent but uses reader layout from P4.2c |
-| 5 | **P4.2b** — Close (×) Button | Trivial | Replace button text. Can be done anytime |
-| 6 | **P4.2d** — Cross-Format Highlighting | High | PDF.js integration, comic canvas overlay, floating toolbar, persistence. Most complex item |
-| 7 | **P4.3** — Synchronised Scrolling | Low | CSS-only fix. Remove independent scroll on left panel, cap all 3 panels to viewport height with internal scroll. Quick win |
+| Order | Feature | Effort | Status | Rationale |
+|-------|---------|--------|--------|-----------|
+| 1 | **P4.1a** — Folder Tag Script | Low | ✅ Done | Standalone Python script, no UI changes. Quick win |
+| 2 | **P4.1b** — Custom Tags in Tag Tree | Low | ✅ Done | Small backend query + minor frontend change. Builds on P4.1a |
+| 3 | **P4.2c** — Right-Side Annotation Sidebar | Medium | ✅ Done | Restructures reader layout. Good foundation for P4.2d |
+| 4 | **P4.2a** — Fullscreen Mode | Low | ✅ Done | Fullscreen API. Hides reading list, keeps annotations sidebar visible for immersive reading |
+| 5 | **P4.2b** — Close (×) Button | Trivial | ✅ Done | Replaced "Back" with ✕. Saves state on close |
+| 6 | **P4.3** — Synchronised Scrolling | Low | ✅ Done | CSS-only. All 3 Library panels capped to viewport with internal scroll |
+| 7 | **P4.2d** — Cross-Format Highlighting | High | ⬜ Pending | PDF.js integration, comic canvas overlay, floating toolbar, persistence. Most complex item |

@@ -5,6 +5,9 @@ import time
 import argparse
 import io
 import logging
+import shutil
+import subprocess
+import tempfile
 from flask import Flask, render_template, jsonify, Response, request, send_file, session
 import pandas as pd
 
@@ -1058,6 +1061,25 @@ def _extract_comic(book_id, filepath):
     return pages
 
 
+# ── Ebook conversion (AZW3, MOBI, FB2 → EPUB) via calibre ──
+CONVERT_EXTS = {".azw3", ".mobi", ".fb2"}
+
+def _convert_to_epub(filepath):
+    """Convert a non-EPUB ebook to EPUB using calibre's ebook-convert."""
+    exe = shutil.which("ebook-convert")
+    if not exe:
+        return None
+    fd, outpath = tempfile.mkstemp(suffix=".epub")
+    os.close(fd)
+    try:
+        subprocess.run([exe, filepath, outpath], capture_output=True, timeout=120, check=True)
+        return outpath
+    except Exception:
+        try: os.unlink(outpath)
+        except Exception: pass
+        return None
+
+
 @app.route("/api/book/<int:book_id>/read")
 def api_book_read(book_id):
     conn = get_connection(DB_PATH)
@@ -1081,6 +1103,11 @@ def api_book_read(book_id):
         elif ext in (".cbz", ".cbr"):
             pages = _extract_comic(book_id, filepath)
             return jsonify({"format": ext, "total": len(pages), "book_id": book_id})
+        elif ext in CONVERT_EXTS:
+            epub_path = _convert_to_epub(filepath)
+            if epub_path:
+                return send_file(epub_path, mimetype="application/epub+zip")
+            return jsonify({"error": "Conversion tool (calibre) not available. Use Download instead."}), 400
         else:
             return jsonify({"error": "format not supported for in-browser reading, use Download instead"}), 400
     finally:

@@ -24,7 +24,7 @@ for noisy in ("werkzeug", "flask"):
     log.handlers.clear()
 from db import get_connection, init_db, get_pipeline_summary, get_recent_books, get_pipeline_log, get_book_by_id
 from db import get_phase_counts, get_survivors, get_tags, add_custom_tag, remove_custom_tag, search_tags
-from db import get_summary, get_book_pipeline_log, rebuild_fts, search_books, get_funnel, get_daemon_status
+from db import get_summary, get_book_pipeline_log, rebuild_fts, search_books, get_funnel, get_daemon_status, daemon_heartbeat
 from db import get_quarantined, resolve_quarantine, QUARANTINE_ERRORS, get_quarantine_counts_by_error, get_quarantine_formats, bulk_dismiss, bulk_keep_both, bulk_delete_files, get_quarantine_rules, set_quarantine_rule, get_config_overrides, set_config_override, delete_config_override, get_all_config, load_config_overrides
 from db import get_reading_list, add_to_reading_list, update_reading_list_status, remove_from_reading_list
 from db import get_reader_state, save_reader_state
@@ -398,6 +398,59 @@ def api_sources():
 @app.route("/api/daemon")
 def api_daemon_status():
     return jsonify(get_daemon_status(DB_PATH))
+
+
+# ── In-process Watcher ──────────────────────────────────────
+
+_watcher_thread = None
+_watcher_observer = None
+
+
+@app.route("/api/daemon/watch", methods=["POST"])
+def api_daemon_watch_start():
+    global _watcher_thread, _watcher_observer
+    if _watcher_thread and _watcher_thread.is_alive():
+        return jsonify({"status": "already running"})
+    from watcher import start_watcher
+    import threading
+    watch_dir = getattr(config, "WATCH_DIR", config.INBOX_DIR)
+    recursive = getattr(config, "WATCH_RECURSIVE", True)
+    init_db(config.DB_PATH)
+    os.makedirs(config.FLAT_DIR, exist_ok=True)
+    load_config_overrides(get_connection(config.DB_PATH))
+    _watcher_observer = start_watcher(watch_dir, recursive=recursive)
+    def _run():
+        global _watcher_observer
+        try:
+            _watcher_observer.join()
+        except Exception:
+            pass
+    _watcher_thread = threading.Thread(target=_run, daemon=True)
+    _watcher_thread.start()
+    daemon_heartbeat(config.DB_PATH, "watch", "running", current_phase="watch", current_stage="watching")
+    return jsonify({"status": "started", "watch_dir": watch_dir, "recursive": recursive})
+
+
+@app.route("/api/daemon/watch", methods=["DELETE"])
+def api_daemon_watch_stop():
+    global _watcher_thread, _watcher_observer
+    if not _watcher_observer:
+        return jsonify({"status": "not running"})
+    try:
+        _watcher_observer.stop()
+        _watcher_observer.join(timeout=5)
+    except Exception:
+        pass
+    _watcher_observer = None
+    _watcher_thread = None
+    daemon_heartbeat(config.DB_PATH, "watch", "done")
+    return jsonify({"status": "stopped"})
+
+
+@app.route("/api/daemon/watch/running")
+def api_daemon_watch_running():
+    alive = _watcher_thread is not None and _watcher_thread.is_alive()
+    return jsonify({"running": alive})
 
 
 # ── Manual metadata update ───────────────────────────────────

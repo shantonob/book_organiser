@@ -580,6 +580,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       <button onclick="loadConfig()" style="padding:8px 16px;border:none;border-radius:6px;background:#334155;color:#e2e8f0;cursor:pointer;font-size:0.78rem;margin-left:8px">Discard Changes</button>
       <span id="configRestartBanner" style="display:none;margin-left:12px;font-size:0.75rem;color:#f59e0b">&#x26A0; Some changes require restarting the app</span>
     </div>
+
+    <!-- Daemon Watcher Controls -->
+    <div style="margin-top:16px;padding:12px;background:#0f172a;border:1px solid #334155;border-radius:6px">
+      <h3 style="color:#94a3b8;font-size:0.82rem;margin:0 0 8px 0">File Watcher</h3>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span id="watcherStatus" style="font-size:0.78rem;color:#64748b">Checking...</span>
+        <button id="watcherStartBtn" onclick="watcherStart()" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a;font-weight:600;display:none">Start Watcher</button>
+        <button id="watcherStopBtn" onclick="watcherStop()" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#ef4444;color:#fff;font-weight:600;display:none">Stop Watcher</button>
+      </div>
+      <div style="font-size:0.65rem;color:#475569;margin-top:6px">Watches <code id="watcherDirLabel" style="background:#1a2332;padding:1px 4px;border-radius:2px">-</code> for new ebook files and auto-runs the pipeline. Runs inside the web process; restarts with the app.</div>
+    </div>
   </div>
 
   <!-- Login modal (P3.2) -->
@@ -644,7 +655,7 @@ function switchTab(name, filters) {
   if (name === "reader") { loadReadingList(); }
   if (name === "quarantine") { loadQuarantine(); }
   if (name === "gallery") { loadGallery(); }
-  if (name === "settings") { loadConfig(); }
+  if (name === "settings") { loadConfig(); refreshWatcherStatus(); }
 }
 
 // ── Auth (P3.2) ──
@@ -1689,6 +1700,41 @@ function importConfig(input) {
   };
   reader.readAsText(file);
   input.value = "";
+}
+
+// ── Daemon Watcher Controls ──
+function refreshWatcherStatus() {
+  fetch(API + "/api/daemon/watch/running").then(r => r.json()).then(d => {
+    const statusEl = document.getElementById("watcherStatus");
+    const startBtn = document.getElementById("watcherStartBtn");
+    const stopBtn = document.getElementById("watcherStopBtn");
+    if (d.running) {
+      statusEl.innerHTML = '<span style="color:#22c55e">&#x25CF;</span> Running';
+      startBtn.style.display = "none";
+      stopBtn.style.display = "";
+    } else {
+      statusEl.innerHTML = '<span style="color:#64748b">&#x25CB;</span> Stopped';
+      startBtn.style.display = "";
+      stopBtn.style.display = "none";
+    }
+  }).catch(() => {
+    document.getElementById("watcherStatus").textContent = "Error checking status";
+  });
+  // Show watch dir from config
+  fetch(API + "/api/config").then(r => r.json()).then(data => {
+    const wd = data.find(f => f.name === "watch_dir");
+    if (wd) document.getElementById("watcherDirLabel").textContent = wd.value || wd.default;
+  }).catch(() => {});
+}
+function watcherStart() {
+  fetch(API + "/api/daemon/watch", {method: "POST"}).then(r => r.json()).then(d => {
+    refreshWatcherStatus();
+  }).catch(() => {});
+}
+function watcherStop() {
+  fetch(API + "/api/daemon/watch", {method: "DELETE"}).then(r => r.json()).then(d => {
+    refreshWatcherStatus();
+  }).catch(() => {});
 }
 
 function renderAmbiguousPairs(pairs, ambigIds) {

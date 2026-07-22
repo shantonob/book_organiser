@@ -894,6 +894,8 @@ CONFIG_SCHEMA = [
      "label": "Source Directories", "desc": "Semicolon-separated list of directories to scan"},
     {"name": "flat_dir", "default": "", "type": "path", "category": "paths",
      "label": "Flat Output Directory", "desc": "Destination for copied survivor files"},
+    {"name": "archive_dir", "default": "", "type": "path", "category": "paths",
+     "label": "Archive Directory", "desc": "Non-processed files moved here after pipeline runs"},
     {"name": "inbox_dir", "default": "", "type": "path", "category": "paths",
      "label": "Inbox Directory", "desc": "Watched directory for auto-processing"},
     {"name": "watch_dir", "default": "", "type": "path", "category": "paths",
@@ -961,6 +963,7 @@ def load_config_overrides(conn):
     attr_map = {
         "source_dirs": "SOURCE_DIRS",
         "flat_dir": "FLAT_DIR",
+        "archive_dir": "ARCHIVE_DIR",
         "inbox_dir": "INBOX_DIR",
         "watch_dir": "WATCH_DIR",
         "watch_recursive": "WATCH_RECURSIVE",
@@ -1012,6 +1015,7 @@ def get_all_config(conn):
         default_map = {
             "source_dirs": ";".join(cfg.SOURCE_DIRS),
             "flat_dir": cfg.FLAT_DIR,
+            "archive_dir": getattr(cfg, "ARCHIVE_DIR", os.path.join(cfg.PROCESSED_DIR, "archive")),
             "inbox_dir": cfg.INBOX_DIR,
             "watch_dir": getattr(cfg, "WATCH_DIR", cfg.INBOX_DIR),
             "watch_recursive": getattr(cfg, "WATCH_RECURSIVE", "true"),

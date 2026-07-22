@@ -22,6 +22,7 @@ WATCH_DIR = os.environ.get("BOOK_WATCH_DIR", INBOX_DIR)
 WATCH_RECURSIVE = os.environ.get("BOOK_WATCH_RECURSIVE", "true").lower() in ("true", "1", "yes")
 PROCESSED_DIR = os.environ.get("BOOK_PROCESSED_DIR", os.path.join(DATA_DIR, "processed"))
 FLAT_DIR = os.environ.get("BOOK_FLAT_DIR", os.path.join(PROCESSED_DIR, "flat"))
+ARCHIVE_DIR = os.environ.get("BOOK_ARCHIVE_DIR", os.path.join(PROCESSED_DIR, "archive"))
 DB_PATH = os.environ.get("BOOK_DB_PATH", os.path.join(DATA_DIR, "catalog.db"))
 EXCLUDE_DIRS = set(
     os.environ.get("BOOK_EXCLUDE_DIRS", ".git,__pycache__,data,templates,extractors,inbox,processed,covers").split(",")

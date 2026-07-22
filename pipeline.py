@@ -653,7 +653,62 @@ def run_all_phases(source=None, inbox_files=None):
         run_phase_metadata(source, inbox_files)
         run_phase_dedup()
         run_phase_copy()
+        # Move originals out of source dir
+        if source:
+            cleanup_source_dir(source)
     finally:
         state.running = False
         elapsed = _fmt_dur(state.get_snapshot().get("elapsed"))
         state.update(log_msg=f"✓ Full pipeline complete ({elapsed})")
+
+
+def cleanup_source_dir(source_dir):
+    """Move processed originals from source_dir to PROCESSED_DIR / ARCHIVE_DIR."""
+    if not source_dir or not os.path.isdir(source_dir):
+        return
+    conn = get_connection(config.DB_PATH)
+    try:
+        norm_source = os.path.normpath(source_dir)
+        rows = conn.execute(
+            "SELECT id, source_path, stage FROM files WHERE source_path LIKE ?",
+            (norm_source + "%",)
+        ).fetchall()
+        if not rows:
+            return
+
+        processed_dir = getattr(config, "PROCESSED_DIR", config.FLAT_DIR)
+        archive_dir = getattr(config, "ARCHIVE_DIR", os.path.join(processed_dir, "archive"))
+        os.makedirs(processed_dir, exist_ok=True)
+        os.makedirs(archive_dir, exist_ok=True)
+
+        moved_proc = 0
+        moved_arch = 0
+        errors = 0
+        for row in rows:
+            sp = row["source_path"]
+            if not sp or not os.path.isfile(sp):
+                continue
+            rel = os.path.relpath(sp, norm_source)
+            if row["stage"] == "copied":
+                dest_dir = os.path.join(processed_dir, os.path.dirname(rel))
+            else:
+                dest_dir = os.path.join(archive_dir, os.path.dirname(rel))
+            os.makedirs(dest_dir, exist_ok=True)
+            dest = os.path.join(dest_dir, os.path.basename(rel))
+            if os.path.exists(dest):
+                base, ext = os.path.splitext(os.path.basename(rel))
+                dest = os.path.join(dest_dir, f"{base}_{row['id']}{ext}")
+            try:
+                shutil.move(sp, dest)
+                if row["stage"] == "copied":
+                    moved_proc += 1
+                else:
+                    moved_arch += 1
+            except Exception as e:
+                logger.warning(f"cleanup: failed to move {sp}: {e}")
+                errors += 1
+
+        if moved_proc or moved_arch:
+            state.update(log_msg=f"  📦 Cleanup: {moved_proc} → processed, {moved_arch} → archive, {errors} errors")
+    finally:
+        conn.close()

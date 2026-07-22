@@ -2,6 +2,7 @@
 
 import os
 import time
+import threading
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import config
@@ -42,11 +43,31 @@ class InboxHandler(FileSystemEventHandler):
         logger.info(f"Pipeline complete for {fname}")
 
 
-def start_watcher(watch_dir, recursive=False):
+def _scan_existing(watch_dir):
+    """Background: run pipeline on existing files once."""
+    has_files = False
+    for root, dirs, files in os.walk(watch_dir):
+        for f in files:
+            if os.path.splitext(f)[1].lower() in config.EBOOK_EXTS:
+                has_files = True
+                break
+        if has_files:
+            break
+    if has_files:
+        logger.info("Found existing ebooks — running initial pipeline scan...")
+        run_all_phases(source=watch_dir)
+        logger.info("Initial scan complete.")
+    else:
+        logger.info("No existing ebooks found in watch directory.")
+
+
+def start_watcher(watch_dir, recursive=False, scan_existing=True):
     os.makedirs(watch_dir, exist_ok=True)
     event_handler = InboxHandler(watch_dir)
     observer = Observer()
     observer.schedule(event_handler, watch_dir, recursive=recursive)
     observer.start()
     logger.info(f"Watching {watch_dir} for new ebooks (recursive={recursive}, debounce=5s)...")
+    if scan_existing:
+        threading.Thread(target=_scan_existing, args=(watch_dir,), daemon=True).start()
     return observer

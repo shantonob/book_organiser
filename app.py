@@ -418,6 +418,7 @@ def api_daemon_watch_start():
     init_db(config.DB_PATH)
     os.makedirs(config.FLAT_DIR, exist_ok=True)
     load_config_overrides(get_connection(config.DB_PATH))
+    state.watcher_active = True
     _watcher_observer = start_watcher(watch_dir, recursive=recursive)
     def _run():
         global _watcher_observer
@@ -427,7 +428,6 @@ def api_daemon_watch_start():
             pass
     _watcher_thread = threading.Thread(target=_run, daemon=True)
     _watcher_thread.start()
-    state.watcher_active = True
     daemon_heartbeat(config.DB_PATH, "watch", "running", current_phase="watch", current_stage="watching")
     return jsonify({"status": "started", "watch_dir": watch_dir, "recursive": recursive})
 

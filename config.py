@@ -18,6 +18,8 @@ else:
 SOURCE_DIR = os.environ.get("BOOK_SOURCE_DIR", r"Z:\books")
 SOURCE_DIRS = [d.strip() for d in SOURCE_DIR.split(";") if d.strip()]
 INBOX_DIR = os.environ.get("BOOK_INBOX_DIR", os.path.join(DATA_DIR, "inbox"))
+WATCH_DIR = os.environ.get("BOOK_WATCH_DIR", INBOX_DIR)
+WATCH_RECURSIVE = os.environ.get("BOOK_WATCH_RECURSIVE", "true").lower() in ("true", "1", "yes")
 PROCESSED_DIR = os.environ.get("BOOK_PROCESSED_DIR", os.path.join(DATA_DIR, "processed"))
 FLAT_DIR = os.environ.get("BOOK_FLAT_DIR", os.path.join(PROCESSED_DIR, "flat"))
 DB_PATH = os.environ.get("BOOK_DB_PATH", os.path.join(DATA_DIR, "catalog.db"))

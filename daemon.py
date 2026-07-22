@@ -21,7 +21,7 @@ from datetime import datetime
 
 import config
 from config import DB_PATH
-from db import get_connection, init_db, daemon_heartbeat, get_daemon_status
+from db import get_connection, init_db, daemon_heartbeat, get_daemon_status, load_config_overrides
 from pipeline import run_phase_metadata, run_phase_dedup, run_phase_copy, run_all_phases, state
 from log_utils import setup_logger
 
@@ -118,12 +118,18 @@ def cmd_watch(args):
     """Watch inbox directory and auto-trigger pipeline."""
     from watcher import start_watcher
     init_db(DB_PATH)
+    # Load config overrides from DB (sets config.WATCH_DIR etc.)
+    conn = get_connection(DB_PATH)
+    load_config_overrides(conn)
+    conn.close()
     os.makedirs(config.FLAT_DIR, exist_ok=True)
-    logger.info(f"Daemon watching inbox: {config.INBOX_DIR}")
+    watch_dir = getattr(config, "WATCH_DIR", config.INBOX_DIR)
+    recursive = getattr(config, "WATCH_RECURSIVE", True)
+    logger.info(f"Daemon watching: {watch_dir} (recursive={recursive})")
     logger.info("Press Ctrl+C to stop.")
     daemon_heartbeat(DB_PATH, "watch", "running", pid=os.getpid(),
                      current_phase="watch", current_stage="watching")
-    observer = start_watcher(config.INBOX_DIR)
+    observer = start_watcher(watch_dir, recursive=recursive)
     try:
         while True:
             time.sleep(1)

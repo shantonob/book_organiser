@@ -1589,7 +1589,7 @@ function loadConfig() {
   fetch(API + "/api/config").then(r => r.json()).then(data => {
     configData = data;
     const groups = document.getElementById("configGroups");
-    const categories = { "paths": "Paths", "processing": "Processing", "enrichment": "Enrichment" };
+    const categories = { "paths": "Paths", "processing": "Processing", "enrichment": "Enrichment", "daemon": "Daemon" };
     let html = "";
     for (const [catKey, catLabel] of Object.entries(categories)) {
       const items = data.filter(f => f.category === catKey);
@@ -1603,6 +1603,13 @@ function loadConfig() {
             '<label style="font-size:0.72rem;color:#64748b;display:block;margin-bottom:2px">' + esc(f.label) + restartTag + '</label>' +
             '<input type="password" id="cfg_' + f.name + '" value="' + esc(val) + '" ' + isOverridden + ' style="width:100%;padding:5px 8px;font-size:0.78rem;border:1px solid #334155;border-radius:4px;background:#0f172a;color:#e2e8f0;font-family:monospace">' +
             '<div style="font-size:0.65rem;color:#64748b;margin-top:2px">' + esc(f.desc) + '</div></div>';
+        }
+        if (f.type === "boolean") {
+          const checked = (val === "true" || val === "1" || val === "yes") ? " checked" : "";
+          return '<div style="margin-bottom:8px">' +
+            '<label style="font-size:0.72rem;color:#64748b;display:block;margin-bottom:2px">' + esc(f.label) + restartTag + '</label>' +
+            '<label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="cfg_' + f.name + '"' + checked + ' ' + isOverridden + ' style="width:16px;height:16px;accent-color:#0ea5e9">' +
+            '<span style="font-size:0.78rem;color:#e2e8f0">' + esc(f.desc) + '</span></label></div>';
         }
         return '<div style="margin-bottom:8px">' +
           '<label style="font-size:0.72rem;color:#64748b;display:block;margin-bottom:2px">' + esc(f.label) + restartTag + '</label>' +
@@ -1625,7 +1632,7 @@ function saveConfig() {
   configData.forEach(f => {
     const el = document.getElementById("cfg_" + f.name);
     if (!el) return;
-    const newVal = el.value.trim();
+    const newVal = f.type === "boolean" ? (el.checked ? "true" : "false") : el.value.trim();
     if (newVal !== f.default) {
       overrides[f.name] = newVal;
       if (f.restart) needsRestart = true;

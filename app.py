@@ -25,7 +25,7 @@ for noisy in ("werkzeug", "flask"):
 from db import get_connection, init_db, get_pipeline_summary, get_recent_books, get_pipeline_log, get_book_by_id
 from db import get_phase_counts, get_survivors, get_tags, add_custom_tag, remove_custom_tag, search_tags
 from db import get_summary, get_book_pipeline_log, rebuild_fts, search_books, get_funnel, get_daemon_status
-from db import get_quarantined, resolve_quarantine, QUARANTINE_ERRORS, get_quarantine_counts_by_error, get_quarantine_formats, bulk_dismiss, bulk_keep_both, bulk_delete_files, get_quarantine_rules, set_quarantine_rule, get_config_overrides, set_config_override, delete_config_override, get_all_config
+from db import get_quarantined, resolve_quarantine, QUARANTINE_ERRORS, get_quarantine_counts_by_error, get_quarantine_formats, bulk_dismiss, bulk_keep_both, bulk_delete_files, get_quarantine_rules, set_quarantine_rule, get_config_overrides, set_config_override, delete_config_override, get_all_config, load_config_overrides
 from db import get_reading_list, add_to_reading_list, update_reading_list_status, remove_from_reading_list
 from db import get_reader_state, save_reader_state
 from db import get_annotations, add_annotation, delete_annotation, export_annotations_markdown
@@ -1455,7 +1455,14 @@ if __name__ == "__main__":
     config.SOURCE_DIR = sources[0] if sources else r"Z:\books"
     config.SOURCE_DIRS = sources
     config.INBOX_DIR = args.inbox
+    config.WATCH_DIR = getattr(config, "WATCH_DIR", config.INBOX_DIR)
     config.DB_PATH = args.db
+
+    # Apply config overrides from DB
+    init_db(config.DB_PATH)
+    _conn = get_connection(config.DB_PATH)
+    load_config_overrides(_conn)
+    _conn.close()
 
     if args.phase:
         init_db(config.DB_PATH)
@@ -1484,7 +1491,9 @@ if __name__ == "__main__":
         os.makedirs(config.FLAT_DIR, exist_ok=True)
         if args.watch:
             from watcher import start_watcher
-            observer = start_watcher(args.inbox)
+            watch_dir = getattr(config, "WATCH_DIR", config.INBOX_DIR)
+            recursive = getattr(config, "WATCH_RECURSIVE", True)
+            observer = start_watcher(watch_dir, recursive=recursive)
             try:
                 app.run(host="0.0.0.0", port=args.port, debug=False, threaded=True)
             finally:

@@ -896,6 +896,10 @@ CONFIG_SCHEMA = [
      "label": "Flat Output Directory", "desc": "Destination for copied survivor files"},
     {"name": "inbox_dir", "default": "", "type": "path", "category": "paths",
      "label": "Inbox Directory", "desc": "Watched directory for auto-processing"},
+    {"name": "watch_dir", "default": "", "type": "path", "category": "paths",
+     "label": "Watch Directory", "desc": "Directory the daemon watches for new files (leave empty to use Inbox)"},
+    {"name": "watch_recursive", "default": "true", "type": "boolean", "category": "daemon",
+     "label": "Watch Recursive", "desc": "Scan subdirectories when watching for new files"},
     {"name": "db_path", "default": "", "type": "path", "category": "paths",
      "label": "Database Path", "desc": "SQLite database file location", "restart": True},
     {"name": "log_dir", "default": "", "type": "path", "category": "paths",
@@ -949,6 +953,54 @@ def delete_config_override(conn, name):
     conn.execute("DELETE FROM config_overrides WHERE name=?", (name,))
 
 
+def load_config_overrides(conn):
+    """Apply config overrides from DB to the config module."""
+    import config as cfg
+    overrides = get_config_overrides(conn)
+    # Map override names to config module attributes
+    attr_map = {
+        "source_dirs": "SOURCE_DIRS",
+        "flat_dir": "FLAT_DIR",
+        "inbox_dir": "INBOX_DIR",
+        "watch_dir": "WATCH_DIR",
+        "watch_recursive": "WATCH_RECURSIVE",
+        "db_path": "DB_PATH",
+        "log_dir": "LOG_DIR",
+        "ebook_exts": "EBOOK_EXTS",
+        "exclude_exts": "EXCLUDE_EXTS",
+        "exclude_dirs": "EXCLUDE_DIRS",
+        "dup_similarity": "DUPLICATE_SIMILARITY_THRESHOLD",
+        "enrich_rate_limit": "ENRICH_RATE_LIMIT",
+        "google_books_api_key": "GOOGLE_BOOKS_API_KEY",
+    }
+    for name, value in overrides.items():
+        attr = attr_map.get(name)
+        if not attr or not value:
+            continue
+        if name == "source_dirs":
+            cfg.SOURCE_DIRS = [d.strip() for d in value.split(";") if d.strip()]
+            if cfg.SOURCE_DIRS:
+                cfg.SOURCE_DIR = cfg.SOURCE_DIRS[0]
+        elif name == "watch_dir":
+            cfg.WATCH_DIR = value
+        elif name == "watch_recursive":
+            cfg.WATCH_RECURSIVE = value.lower() in ("true", "1", "yes")
+        elif name == "ebook_exts":
+            cfg.EBOOK_EXTS = set(e.strip() for e in value.split(",") if e.strip())
+        elif name == "exclude_exts":
+            cfg.EXCLUDE_EXTS = set(e.strip() for e in value.split(",") if e.strip())
+        elif name == "exclude_dirs":
+            cfg.EXCLUDE_DIRS = set(e.strip() for e in value.split(",") if e.strip())
+        elif name == "dup_similarity":
+            try: cfg.DUPLICATE_SIMILARITY_THRESHOLD = float(value)
+            except ValueError: pass
+        elif name == "enrich_rate_limit":
+            try: cfg.ENRICH_RATE_LIMIT = float(value)
+            except ValueError: pass
+        else:
+            setattr(cfg, attr.upper() if name == "google_books_api_key" else attr, value)
+
+
 def get_all_config(conn):
     import config as cfg
     overrides = get_config_overrides(conn)
@@ -961,6 +1013,8 @@ def get_all_config(conn):
             "source_dirs": ";".join(cfg.SOURCE_DIRS),
             "flat_dir": cfg.FLAT_DIR,
             "inbox_dir": cfg.INBOX_DIR,
+            "watch_dir": getattr(cfg, "WATCH_DIR", cfg.INBOX_DIR),
+            "watch_recursive": getattr(cfg, "WATCH_RECURSIVE", "true"),
             "db_path": cfg.DB_PATH,
             "log_dir": cfg.LOG_DIR,
             "ebook_exts": ",".join(sorted(cfg.EBOOK_EXTS)),

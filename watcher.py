@@ -1,4 +1,4 @@
-"""watchdog-based filesystem watcher for the inbox directory."""
+"""watchdog-based filesystem watcher for the inbox/watch directory."""
 
 import os
 import time
@@ -12,8 +12,8 @@ logger = setup_logger("watcher", also_stdout=False)
 
 
 class InboxHandler(FileSystemEventHandler):
-    def __init__(self, inbox_dir, debounce=5):
-        self.inbox_dir = inbox_dir
+    def __init__(self, watch_dir, debounce=5):
+        self.watch_dir = watch_dir
         self.debounce = debounce
         self._last_trigger = 0
 
@@ -37,16 +37,16 @@ class InboxHandler(FileSystemEventHandler):
         self._last_trigger = now
         fname = os.path.basename(path)
         logger.info(f"New ebook detected: {fname}")
-        logger.info(f"Running pipeline (source={self.inbox_dir}) ...")
-        run_all_phases(source=self.inbox_dir)
+        logger.info(f"Running pipeline (source={self.watch_dir}) ...")
+        run_all_phases(source=self.watch_dir)
         logger.info(f"Pipeline complete for {fname}")
 
 
-def start_watcher(inbox_dir):
-    os.makedirs(inbox_dir, exist_ok=True)
-    event_handler = InboxHandler(inbox_dir)
+def start_watcher(watch_dir, recursive=False):
+    os.makedirs(watch_dir, exist_ok=True)
+    event_handler = InboxHandler(watch_dir)
     observer = Observer()
-    observer.schedule(event_handler, inbox_dir, recursive=False)
+    observer.schedule(event_handler, watch_dir, recursive=recursive)
     observer.start()
-    logger.info(f"Watching {inbox_dir} for new ebooks (debounce=5s)...")
+    logger.info(f"Watching {watch_dir} for new ebooks (recursive={recursive}, debounce=5s)...")
     return observer

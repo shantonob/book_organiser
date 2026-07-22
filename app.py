@@ -427,6 +427,7 @@ def api_daemon_watch_start():
             pass
     _watcher_thread = threading.Thread(target=_run, daemon=True)
     _watcher_thread.start()
+    state.watcher_active = True
     daemon_heartbeat(config.DB_PATH, "watch", "running", current_phase="watch", current_stage="watching")
     return jsonify({"status": "started", "watch_dir": watch_dir, "recursive": recursive})
 
@@ -443,6 +444,7 @@ def api_daemon_watch_stop():
         pass
     _watcher_observer = None
     _watcher_thread = None
+    state.watcher_active = False
     daemon_heartbeat(config.DB_PATH, "watch", "done")
     return jsonify({"status": "stopped"})
 

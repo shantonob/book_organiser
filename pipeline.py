@@ -32,6 +32,7 @@ class PipelineState:
         self.total_scanned = 0
         self.total_discovered = 0
         self.running = False
+        self.watcher_active = False
 
         # timing
         self.phase_start_time = None
@@ -112,6 +113,7 @@ class PipelineState:
                 "total_scanned": self.total_scanned,
                 "total_discovered": self.total_discovered,
                 "running": self.running,
+                "watcher_active": self.watcher_active,
                 "elapsed": elapsed,
                 "stage_elapsed": stage_elapsed,
                 "phase_timings": list(self.phase_timings),

@@ -51,6 +51,23 @@ flask_log.addHandler(log_handler)
 flask_log.setLevel(logging.INFO)
 
 
+def resolve_book_path(book):
+    """Resolve book file path — checks original, processed, archive, and flat dirs."""
+    sp = book["source_path"]
+    if sp and os.path.isfile(sp):
+        return sp
+    fname = book["filename"] or ""
+    if not fname:
+        return None
+    for d in (config.FLAT_DIR,
+              getattr(config, "PROCESSED_DIR", config.FLAT_DIR),
+              getattr(config, "ARCHIVE_DIR", os.path.join(config.FLAT_DIR, "archive"))):
+        candidate = os.path.join(d, fname)
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -1068,17 +1085,12 @@ def api_book_download(book_id):
         from filename_cleaner import clean_filename
         import mimetypes
 
-        filepath = book["source_path"]
-        if filepath and os.path.isfile(filepath):
+        filepath = resolve_book_path(book)
+        if filepath:
             fname = clean_filename(os.path.basename(filepath))
         else:
             fname_orig = book["filename"] or f"book_{book_id}"
-            dest = os.path.join(config.FLAT_DIR, clean_filename(os.path.basename(fname_orig)))
-            if os.path.isfile(dest):
-                filepath = dest
-                fname = os.path.basename(dest)
-            else:
-                return jsonify({"error": "file not found on disk"}), 404
+            return jsonify({"error": "file not found on disk"}), 404
 
         mt, _ = mimetypes.guess_type(filepath)
         return send_file(filepath, as_attachment=True, download_name=fname, mimetype=mt or "application/octet-stream")
@@ -1143,8 +1155,8 @@ def api_book_read(book_id):
         if not book:
             return jsonify({"error": "not found"}), 404
 
-        filepath = book["source_path"]
-        if not filepath or not os.path.isfile(filepath):
+        filepath = resolve_book_path(book)
+        if not filepath:
             return jsonify({"error": "file not found on disk"}), 404
 
         ext = os.path.splitext(filepath)[1].lower()
@@ -1298,13 +1310,16 @@ def api_search():
     masters_only = request.args.get("masters_only", type=int) == 1
     limit = request.args.get("limit", default=100, type=int)
     offset = request.args.get("offset", default=0, type=int)
+    sort = request.args.get("sort") or None
+    order = request.args.get("order") or None
 
     conn = get_connection(DB_PATH)
     try:
         results, total = search_books(conn, q, stage=stage, udc=udc, tag=tag,
                                        fmt=fmt, year_min=year_min, year_max=year_max,
                                        min_size=min_size, max_size=max_size,
-                                       masters_only=masters_only, source=source, limit=limit, offset=offset)
+                                       masters_only=masters_only, source=source, limit=limit, offset=offset,
+                                       sort=sort, order=order)
         return jsonify({"results": results, "total": total, "query": q})
     finally:
         conn.close()

@@ -13,6 +13,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 * { scrollbar-width: thin; scrollbar-color: #475569 transparent; }
   .container { max-width: 1400px; margin: 0 auto; }
+  body.reader-open .container { max-width: none; }
 
   /* Tabs */
   .tab-bar { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 1px solid #334155; }
@@ -393,6 +394,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       <button onclick="toggleAdvancedSearch()" id="advToggleBtn" style="padding:5px 12px;font-size:0.78rem;background:#334155;border:none;border-radius:4px;color:#e2e8f0;cursor:pointer">&#x25BC; Advanced</button>
       <button onclick="loadLibrary(); return false" style="padding:5px 12px">Search</button>
       <button onclick="resetLibrary()" style="padding:5px 12px;background:#334155;color:#e2e8f0;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem">Reset</button>
+      <select id="libSort" onchange="loadLibrary()" style="padding:4px 6px;font-size:0.78rem;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px">
+        <option value="created_at:DESC">Date Added (newest)</option>
+        <option value="created_at:ASC">Date Added (oldest)</option>
+        <option value="title:ASC">Title A-Z</option>
+        <option value="title:DESC">Title Z-A</option>
+        <option value="authors:ASC">Author A-Z</option>
+        <option value="authors:DESC">Author Z-A</option>
+        <option value="year:DESC">Year (newest)</option>
+        <option value="year:ASC">Year (oldest)</option>
+        <option value="file_size:DESC">Size (largest)</option>
+        <option value="file_size:ASC">Size (smallest)</option>
+        <option value="format:ASC">Format</option>
+      </select>
       <span id="libTotal" style="color:#64748b;font-size:0.75rem;align-self:center"></span>
     </div>
 
@@ -632,6 +646,7 @@ function switchTab(name, filters) {
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
   document.querySelector(`.tab-btn[onclick*="${name}"]`).classList.add("active");
   document.getElementById("tab-" + name).classList.add("active");
+  document.body.classList.toggle("reader-open", name === "reader");
   if (name === "pipeline") {
     loadSummary();
   }
@@ -1855,6 +1870,9 @@ function loadLibrary(filters) {
   if (maxSize) url += "&max_size=" + (parseFloat(maxSize) * 1024 * 1024);
   if (masterOnly) url += "&masters_only=1";
   if (source) url += "&source=" + encodeURIComponent(source);
+  var sortVal = document.getElementById("libSort").value || "created_at:DESC";
+  var sortParts = sortVal.split(":");
+  url += "&sort=" + encodeURIComponent(sortParts[0]) + "&order=" + encodeURIComponent(sortParts[1]);
   fetch(url).then(r => r.json()).then(d => {
     document.getElementById("libTotal").textContent = d.total + " results" + (d.query ? " for \"" + d.query + "\"" : "");
     renderLibrary(d.results);

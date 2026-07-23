@@ -456,7 +456,8 @@ def rebuild_fts(conn):
 
 def search_books(conn, fts_query, stage=None, udc=None, tag=None, fmt=None,
                  year_min=None, year_max=None, min_size=None, max_size=None,
-                 masters_only=False, source=None, limit=100, offset=0):
+                 masters_only=False, source=None, limit=100, offset=0,
+                 sort=None, order=None):
     """Full-text search across books with faceted filters.
 
     Returns (results_list, total_count).
@@ -526,7 +527,15 @@ def search_books(conn, fts_query, stage=None, udc=None, tag=None, fmt=None,
     count_sql = f"SELECT COUNT(DISTINCT f.id) as c {base}{where}"
     total = conn.execute(count_sql, params).fetchone()["c"]
 
-    # Results
+    # Results — map sort columns to correct table alias
+    _sort_map = {"title": "m.title", "authors": "m.authors", "year": "m.year",
+                 "format": "f.format", "file_size": "f.file_size", "stage": "f.stage",
+                 "created_at": "f.created_at"}
+    safe_sort = _sort_map.get(sort, "f.id")
+    safe_order = "DESC" if (order or "").upper() not in ("ASC", "DESC") else order.upper()
+    if not sort:
+        safe_order = "DESC"
+
     select_sql = f"""
         SELECT DISTINCT f.id, f.uuid, f.filename, f.format, f.stage, f.file_size,
                f.is_master, f.source_path, f.source_group,
@@ -534,7 +543,7 @@ def search_books(conn, fts_query, stage=None, udc=None, tag=None, fmt=None,
                m.pages, m.description, m.udc_code, m.udc_label, m.enrich_source,
                m.cover_path
         {base}{where}
-        ORDER BY f.id DESC
+        ORDER BY {safe_sort} {safe_order}
         LIMIT ? OFFSET ?
     """
     results = conn.execute(select_sql, params + [limit, offset]).fetchall()

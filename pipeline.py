@@ -671,10 +671,27 @@ def cleanup_source_dir(source_dir):
     conn = get_connection(config.DB_PATH)
     try:
         norm_source = os.path.normpath(source_dir)
-        rows = conn.execute(
-            "SELECT id, source_path, stage FROM files WHERE source_path LIKE ?",
-            (norm_source + "%",)
+        # Resolve the real device path so Z:\books and \\raspberrypi\...\books compare equal
+        real_source = os.path.realpath(norm_source)
+
+        all_files = conn.execute(
+            "SELECT id, source_path, stage FROM files"
         ).fetchall()
+        rows = []
+        for f in all_files:
+            sp = f["source_path"]
+            if not sp:
+                continue
+            if not os.path.isfile(sp):
+                continue
+            # Check if this file lives under source_dir (handles drive ↔ UNC mismatch)
+            try:
+                real_sp = os.path.realpath(sp)
+                os.path.relpath(real_sp, real_source)  # throws ValueError if different drives
+                rows.append(f)
+            except ValueError:
+                continue
+
         if not rows:
             return
 
@@ -690,7 +707,11 @@ def cleanup_source_dir(source_dir):
             sp = row["source_path"]
             if not sp or not os.path.isfile(sp):
                 continue
-            rel = os.path.relpath(sp, norm_source)
+            norm_sp = os.path.realpath(sp)
+            try:
+                rel = os.path.relpath(norm_sp, real_source)
+            except ValueError:
+                rel = os.path.basename(norm_sp)
             if row["stage"] == "copied":
                 dest_dir = os.path.join(processed_dir, os.path.dirname(rel))
             else:

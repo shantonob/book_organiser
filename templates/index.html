@@ -211,10 +211,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   /* Fullscreen reader */
   .reader-layout:fullscreen .reading-list-sidebar { display: none; }
   .reader-layout:fullscreen .reader-main { max-width: 100%; }
-  .reader-layout:fullscreen #readerArea { max-width: 100%; height: calc(100vh - 60px); }
+  .reader-layout:fullscreen #readerArea { width: 100%; height: calc(100vh - 60px); }
   .reader-layout:-webkit-full-screen .reading-list-sidebar { display: none; }
   .reader-layout:-webkit-full-screen .reader-main { max-width: 100%; }
-  .reader-layout:-webkit-full-screen #readerArea { max-width: 100%; height: calc(100vh - 60px); }
+  .reader-layout:-webkit-full-screen #readerArea { width: 100%; height: calc(100vh - 60px); }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.88/epub.min.js"></script>
 </head>
@@ -551,7 +551,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <p style="font-size:0.85rem;margin-bottom:16px">Use the <strong>Download</strong> button on the detail page to open it in your ebook reader.</p>
           <button onclick="switchTab('library')" style="padding:8px 20px;border:none;border-radius:6px;background:#0ea5e9;color:#0f172a;font-weight:600;cursor:pointer">Back to Library</button>
         </div>
-        <div id="readerArea" style="max-width:850px;margin:0 auto;min-height:70vh;border:1px solid #334155;border-radius:6px;background:#f8fafc;overflow-y:auto"></div>
+        <div id="readerArea" style="width:100%;margin:0 auto;min-height:70vh;border:1px solid #334155;border-radius:6px;background:#f8fafc;overflow-y:auto"></div>
       </div>
       <!-- Annotations sidebar (right side, P4.2c) -->
       <div id="annotationsSidebar" class="annotations-sidebar">

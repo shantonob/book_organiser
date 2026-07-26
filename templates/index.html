@@ -216,6 +216,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .reader-layout:-webkit-full-screen .reading-list-sidebar { display: none; }
   .reader-layout:-webkit-full-screen .reader-main { max-width: 100%; }
   .reader-layout:-webkit-full-screen #readerArea { width: 100%; height: calc(100vh - 60px); }
+  /* Highlight popup */
+  .hl-popup { position: fixed; z-index: 1000; background: #1e293b; border: 1px solid #475569; border-radius: 8px; padding: 8px 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: none; min-width: 220px; }
+  .hl-popup .hl-colors { display: flex; gap: 6px; margin-bottom: 6px; }
+  .hl-popup .hl-dot { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: border-color 0.15s; }
+  .hl-popup .hl-dot:hover, .hl-popup .hl-dot.sel { border-color: #e2e8f0; }
+  .hl-popup input { width: 100%; padding: 4px 8px; border-radius: 4px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 0.75rem; margin-bottom: 6px; }
+  .hl-popup .hl-actions { display: flex; gap: 4px; }
+  .hl-popup .hl-actions button { flex: 1; padding: 4px 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.72rem; font-weight: 600; }
+  /* Annotation sidebar toggle */
+  #annToggleBtn { position: relative; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.88/epub.min.js"></script>
 </head>
@@ -236,7 +246,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   <div class="tab-bar">
     <button class="tab-btn active" onclick="switchTab('library')">Library</button>
     <button class="tab-btn" onclick="switchTab('reader')">Reader</button>
-    <button class="tab-btn" onclick="switchTab('gallery')">Gallery</button>
     <button class="tab-btn admin-tab" onclick="switchTab('pipeline')" style="display:none">Pipeline</button>
     <button class="tab-btn admin-tab" onclick="switchTab('quarantine')" id="quarantineTabBtn" style="display:none">Quarantine <span id="quarantineBadge" style="display:none;background:#701a22;color:#fca5a5;padding:1px 6px;border-radius:8px;font-size:0.65rem;margin-left:4px"></span></button>
     <button class="tab-btn admin-tab" onclick="switchTab('settings')" style="display:none">Settings</button>
@@ -248,7 +257,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   <!-- ════ PIPELINE TAB ════ -->
   <div class="tab-panel" id="tab-pipeline">
     <div class="row">
-      <input type="text" id="sourcePath" value="Z:\books" placeholder="Source path (e.g. Z:\books)">
+      <input type="text" id="sourcePath" value="" placeholder="Source path (set in Settings)">
       <button class="primary" onclick="runAll()">A+B: Metadata + Dedup</button>
       <button onclick="phaseMetadata()">A: Metadata</button>
       <button onclick="phaseDedup()">B: Dedup</button>
@@ -407,6 +416,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         <option value="file_size:ASC">Size (smallest)</option>
         <option value="format:ASC">Format</option>
       </select>
+      <button id="viewToggleBtn" onclick="toggleLibraryView()" title="Toggle table / cover view" style="padding:4px 10px;font-size:0.85rem;background:#334155;border:none;border-radius:4px;color:#e2e8f0;cursor:pointer">&#x25A6; Covers</button>
       <span id="libTotal" style="color:#64748b;font-size:0.75rem;align-self:center"></span>
     </div>
 
@@ -504,6 +514,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         <table id="libTable">
           <tr><th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th><th style="width:34px">Cover</th><th>ID</th><th>UUID</th><th>Title</th><th>Author</th><th>UDC</th><th>Format</th><th>Stage</th></tr>
         </table>
+        <div id="libGrid" class="gallery-grid" style="display:none"></div>
       </div>
       <div style="width:320px;flex-shrink:0">
         <div class="panel visible library-panel" id="detailPanel">
@@ -516,23 +527,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     </div>
   </div>
 
-  <!-- ════ GALLERY TAB ════ -->
-  <div class="tab-panel" id="tab-gallery">
-    <div class="row">
-      <span style="color:#94a3b8;font-size:0.85rem;font-weight:600">Cover Gallery</span>
-      <select id="galleryUdcFilter" onchange="loadGallery()" style="padding:5px 8px;border-radius:4px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.8rem">
-        <option value="">All UDC</option>
-      </select>
-      <select id="galleryStageFilter" onchange="loadGallery()" style="padding:5px 8px;border-radius:4px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.8rem">
-        <option value="">All Stages</option>
-        <option value="cataloged">Cataloged</option>
-        <option value="survivor">Survivor</option>
-        <option value="copied">Copied</option>
-      </select>
-      <span id="galleryCount" style="color:#64748b;font-size:0.78rem"></span>
-    </div>
-    <div class="gallery-grid" id="galleryGrid"></div>
-  </div>
 
   <!-- ════ READER TAB (P3.1 Enhanced) ════ -->
   <div class="tab-panel" id="tab-reader">
@@ -559,6 +553,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <button id="readingListBtn" onclick="toggleReadingListForBook()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#0ea5e9;color:#0f172a;font-weight:600;display:none">+ List</button>
           <button id="exportHighlightsBtn" onclick="exportHighlights()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#22c55e;color:#0f172a;font-weight:600;display:none">Export</button>
           <button id="fullscreenBtn" onclick="toggleFullscreen()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0;font-weight:600">&#x26F6; Fullscreen</button>
+          <button id="annToggleBtn" onclick="toggleAnnotationsSidebar()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0;font-weight:600;display:none">&#x1F4DD; Notes</button>
+          <button id="bookmarkBtn" onclick="addBookmark()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#eab308;color:#0f172a;font-weight:600;display:none">&#x1F516; Bookmark</button>
+          <button id="pageNoteBtn" onclick="addPageNote()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#a78bfa;color:#0f172a;font-weight:600;display:none">&#x1F4DD; Page Note</button>
         </div>
         <div id="readerFallback" style="display:none;text-align:center;padding:40px;color:#64748b">
           <div style="font-size:1.1rem;margin-bottom:12px">Cannot preview this format in the browser</div>
@@ -575,6 +572,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <button onclick="addNote()" style="padding:4px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#0ea5e9;color:#0f172a;font-weight:600">Add Note</button>
         </div>
         <div id="annotationsList"></div>
+        <div style="margin-top:12px;border-top:1px solid #334155;padding-top:8px">
+          <strong style="color:#94a3b8;font-size:0.72rem">Bookmarks</strong>
+          <div id="bookmarksList"></div>
+        </div>
+      </div>
+    </div>
+    <!-- Highlight selection popup -->
+    <div id="hlPopup" class="hl-popup">
+      <div class="hl-colors" id="hlColors"></div>
+      <input type="text" id="hlNoteInput" placeholder="Add a note (optional)..." onkeydown="if(event.key==='Enter')saveHighlightFromPopup()">
+      <div class="hl-actions">
+        <button onclick="saveHighlightFromPopup()" style="background:#0ea5e9;color:#0f172a">Highlight</button>
+        <button onclick="saveHighlightNoteOnly()" style="background:#334155;color:#e2e8f0">Note only</button>
+        <button onclick="hideHighlightPopup()" style="background:#334155;color:#94a3b8">Cancel</button>
       </div>
     </div>
   </div>
@@ -649,6 +660,7 @@ function switchTab(name, filters) {
   document.body.classList.toggle("reader-open", name === "reader");
   if (name === "pipeline") {
     loadSummary();
+    fetchSourceConfig();
   }
   if (name === "library") {
     if (!filters) {
@@ -670,7 +682,6 @@ function switchTab(name, filters) {
   }
   if (name === "reader") { loadReadingList(); }
   if (name === "quarantine") { loadQuarantine(); }
-  if (name === "gallery") { loadGallery(); }
   if (name === "settings") { loadConfig(); refreshWatcherStatus(); }
 }
 
@@ -920,6 +931,16 @@ function updateCurrent(p) {
     + '<span class="file">' + esc(file) + '</span> '
     + '<span class="badge">' + prog[0] + "/" + prog[1] + "</span>"
     + (globInfo ? ' <span style="color:#64748b;font-size:0.72rem">' + globInfo + "</span>" : "");
+  // Remaining + ETA
+  if (prog[1] > 0 && prog[0] > 0) {
+    var remaining = prog[1] - prog[0];
+    var eta = "";
+    if (p.elapsed && prog[0] > 0) {
+      var secsLeft = Math.round(p.elapsed / prog[0] * remaining);
+      eta = fmtDur(secsLeft) + " left";
+    }
+    el.innerHTML += ' <span style="color:#64748b;font-size:0.72rem;margin-left:6px">— ' + remaining.toLocaleString() + ' remaining' + (eta ? " · ETA " + eta : "") + '</span>';
+  }
   if (elapsedEl) {
     elapsedEl.textContent = elapsedText ? (elapsedText + (stageTime ? " \xb7 " + stageTime : "")) : "";
   }
@@ -954,7 +975,17 @@ function renderLog(log) {
 
 function esc(s) { return String(s).replace(/[&<>"]/g, function(m) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]; }); }
 
-function getSource() { return document.getElementById("sourcePath").value.trim() || "Z:\\books"; }
+function getSource() { return document.getElementById("sourcePath").value.trim() || ""; }
+
+function fetchSourceConfig() {
+  fetch(API + "/api/config").then(r => r.json()).then(data => {
+    const src = data.find(f => f.name === "source_dirs");
+    const srcInput = document.getElementById("sourcePath");
+    if (src && src.value && srcInput && !srcInput.value) {
+      srcInput.value = src.value;
+    }
+  }).catch(() => {});
+}
 
 // ── Quick Search ──
 let searchHideTimer = null;
@@ -976,9 +1007,13 @@ function doQuickSearch() {
         const t = b.title || b.filename || "?";
         const a = b.authors || "\u2014";
         const s = b.stage || "?";
+        const skipBtn = (s === "skipped" || b.is_master === 0)
+          ? '<button onclick="event.stopPropagation();forceKeepBook(' + b.id + ')" style="padding:2px 8px;border:none;border-radius:3px;cursor:pointer;font-size:0.7rem;background:#22c55e;color:#0f172a;font-weight:600;white-space:nowrap">Keep</button>'
+          : '';
         return `<div onclick="showDetail(${b.id});switchTab('library');document.getElementById('searchResults').style.display='none'" style="padding:8px 12px;border-bottom:1px solid #1a2332;cursor:pointer;display:flex;gap:8px;align-items:center">
           <span style="flex:1"><strong style="color:#e2e8f0">${esc(t)}</strong> <span style="color:#64748b;font-size:0.75rem">${esc(a)}</span></span>
           <span class="badge badge-purple">${esc(b.udc_code || "")} ${b.udc_label ? "- " + esc(b.udc_label) : ""}</span>
+          ${skipBtn}
           <span class="tag ${s}">${s}</span>
         </div>`;
       }).join("");
@@ -1059,6 +1094,7 @@ function fetchStatus() {
     updateCurrent(d.pipeline);
     updateGlobalStatus(d.pipeline);
     phaseBadges(d.pipeline);
+    if (d.pipeline && d.pipeline.log) renderLog(d.pipeline.log);
     // Update quarantine badge
     const badge = document.getElementById("quarantineBadge");
     if (badge) {
@@ -1201,53 +1237,6 @@ function renderUdcTree(byUdc, udcLabels, byCustomTags) {
 }
 
 // ── Gallery tab ──
-function loadGallery() {
-  const sel = document.getElementById("galleryUdcFilter");
-  if (sel.options.length <= 1) {
-    fetch(API + "/api/udc-labels").then(r => r.json()).then(labels => {
-      Object.entries(labels).sort(([a],[b]) => a.localeCompare(b)).forEach(([code, label]) => {
-        const opt = document.createElement("option");
-        opt.value = code; opt.textContent = code + " - " + label;
-        sel.appendChild(opt);
-      });
-    }).catch(() => {});
-  }
-  const grid = document.getElementById("galleryGrid");
-  const countEl = document.getElementById("galleryCount");
-  const udc = sel.value;
-  const stage = document.getElementById("galleryStageFilter").value;
-  let url = API + "/api/covers?limit=500";
-  if (udc) url += "&udc=" + udc;
-  if (stage) url += "&stage=" + stage;
-  fetch(url).then(r => r.json()).then(books => {
-    if (!books || !books.length) {
-      grid.innerHTML = '<div style="color:#64748b;grid-column:1/-1;text-align:center;padding:40px;font-size:0.85rem">No covers found</div>';
-      countEl.textContent = "0 covers";
-      return;
-    }
-    countEl.textContent = books.length + " covers";
-    const html = books.map(b => {
-      const coverUrl = `/api/cover/${b.id}`;
-      const meta = [];
-      if (b.authors) meta.push(esc(b.authors));
-      if (b.year) meta.push(b.year);
-      if (b.format) meta.push(b.format.replace('.','').toUpperCase());
-      if (b.udc_code) meta.push(b.udc_code + (b.udc_label ? " " + esc(b.udc_label) : ""));
-      return `<div class="gallery-item" onclick="showDetail(${b.id});switchTab('library')">
-        <img src="${coverUrl}" alt="${esc(b.title || '')}" loading="lazy"
-             onerror="this.outerHTML='<div class=cover-missing>${(b.format||'?').replace('.','').toUpperCase()}</div>'">
-        <div class="info">
-          <div class="gt" title="${esc(b.title || '')}">${esc(b.title || b.filename || '?')}</div>
-          <div class="ga">${esc(b.authors || '')}</div>
-          <div class="gmeta">${meta.join(' · ')}</div>
-        </div>
-      </div>`;
-    }).join("");
-    grid.innerHTML = html;
-  }).catch(() => {
-    grid.innerHTML = '<div style="color:#ef4444;grid-column:1/-1;text-align:center;padding:40px">Error loading gallery</div>';
-  });
-}
 
 // ── Quarantine tab ──
 let quarSelectedSet = new Set();
@@ -1875,11 +1864,64 @@ function loadLibrary(filters) {
   url += "&sort=" + encodeURIComponent(sortParts[0]) + "&order=" + encodeURIComponent(sortParts[1]);
   fetch(url).then(r => r.json()).then(d => {
     document.getElementById("libTotal").textContent = d.total + " results" + (d.query ? " for \"" + d.query + "\"" : "");
-    renderLibrary(d.results);
+    _libCurrentResults = d.results || [];
+    if (_libViewMode === "grid") {
+      renderLibraryGrid(_libCurrentResults);
+    } else {
+      renderLibrary(_libCurrentResults);
+    }
   }).catch(() => {});
 }
 
 let _selectedIds = {};
+let _libViewMode = "table"; // "table" or "grid"
+let _libCurrentResults = [];
+
+function toggleLibraryView() {
+  _libViewMode = _libViewMode === "table" ? "grid" : "table";
+  var btn = document.getElementById("viewToggleBtn");
+  var tbl = document.getElementById("libTable");
+  var grid = document.getElementById("libGrid");
+  var bulk = document.getElementById("bulkToolbar");
+  if (_libViewMode === "grid") {
+    btn.innerHTML = "&#x2630; List";
+    tbl.style.display = "none";
+    grid.style.display = "";
+    if (bulk) bulk.style.display = "none";
+    renderLibraryGrid(_libCurrentResults);
+  } else {
+    btn.innerHTML = "&#x25A6; Covers";
+    tbl.style.display = "";
+    grid.style.display = "none";
+    if (bulk) bulk.style.display = "";
+    renderLibrary(_libCurrentResults);
+  }
+}
+
+function renderLibraryGrid(books) {
+  var grid = document.getElementById("libGrid");
+  if (!books || !books.length) {
+    grid.innerHTML = '<div style="color:#64748b;grid-column:1/-1;text-align:center;padding:40px;font-size:0.85rem">No books found</div>';
+    return;
+  }
+  grid.innerHTML = books.map(function(b) {
+    var coverUrl = API + "/api/cover/" + b.id;
+    var meta = [];
+    if (b.authors) meta.push(esc(b.authors));
+    if (b.year) meta.push(b.year);
+    if (b.format) meta.push(b.format.replace('.','').toUpperCase());
+    if (b.udc_code) meta.push(b.udc_code + (b.udc_label ? " " + esc(b.udc_label) : ""));
+    var stageClass = b.stage || "";
+    return '<div class="gallery-item" onclick="showDetail(' + b.id + ')">'
+      + '<img src="' + coverUrl + '" alt="' + esc(b.title || '') + '" loading="lazy"'
+      + ' onerror="this.outerHTML=\'<div class=cover-missing>' + (b.format||'?').replace('.','').toUpperCase() + '</div>\'">'
+      + '<div class="info">'
+      + '<div class="gt" title="' + esc(b.title || '') + '">' + esc(b.title || b.filename || '?') + '</div>'
+      + '<div class="ga">' + esc(b.authors || '') + '</div>'
+      + '<div class="gmeta">' + meta.join(' · ') + ' <span class="tag ' + stageClass + '" style="font-size:0.6rem;padding:1px 5px">' + esc(b.stage || '') + '</span></div>'
+      + '</div></div>';
+  }).join("");
+}
 
 function renderLibrary(books) {
   const tbl = document.getElementById("libTable");
@@ -1985,7 +2027,12 @@ function showDetail(bookId) {
       const udcTags = tags.filter(t => t.tag_type === "udc");
       const customTags = tags.filter(t => t.tag_type === "custom");
 
-      let html = '<div class="detail-grid" id="detailGrid">';
+      // Cover image
+      let html = '';
+      if (b.cover_path) {
+        html += '<div style="margin-bottom:12px;text-align:center"><img src="' + API + '/api/cover/' + b.id + '" onerror="this.style.display=\'none\'" alt="Cover" style="max-width:180px;max-height:260px;border-radius:6px;border:1px solid #334155;box-shadow:0 2px 8px rgba(0,0,0,0.3)"></div>';
+      }
+      html += '<div class="detail-grid" id="detailGrid">';
       html += `<span class="dl">UUID</span><span class="dd" style="font-family:monospace;font-size:0.7rem">${esc(b.uuid || "\u2014")}</span>`;
       html += `<span class="dl">Title</span><span class="dd" id="dv_title">${esc(b.title || "\u2014")}</span>`;
       html += `<span class="dl">Author</span><span class="dd" id="dv_author">${esc(b.authors || "\u2014")}</span>`;
@@ -2011,6 +2058,9 @@ function showDetail(bookId) {
       html += '<button onclick="editBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#0ea5e9;color:#0f172a">Edit</button>';
       html += '<button onclick="reExtractBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f59e0b;color:#0f172a">Re-extract</button>';
       html += '<button onclick="reDedupBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#8b5cf6;color:#0f172a">Re-dedup</button>';
+      if (b.stage === "skipped" || b.is_master === 0) {
+        html += '<button onclick="forceKeepBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a;font-weight:600">Force Keep</button>';
+      }
       html += '<button onclick="reCopyBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a">Re-copy</button>';
       html += '<button onclick="window.location.href=API+\'/api/book/' + bookId + '/download\'" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#6366f1;color:#f8fafc;font-weight:600">Download</button>';
       html += '<button onclick="openReader(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f97316;color:#0f172a;font-weight:600">Read Online</button>';
@@ -2128,6 +2178,7 @@ function toggleReadingListForBook() {
       btn.textContent = "+ Reading List";
       btn.style.background = "#0ea5e9";
       loadReadingList();
+      closeReader();
     }).catch(function() {});
   } else {
     fetch(API + "/api/reading-list/" + bid, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({status: "reading"})}).then(function(r) { return r.json(); }).then(function() {
@@ -2237,12 +2288,31 @@ function loadReader(bookId, book) {
     var pct = loc && loc.start ? (loc.start.percentage * 100).toFixed(0) : 0;
     document.getElementById("readerLocation").textContent = pct + "%";
     document.getElementById("readerProgressFill").style.width = pct + "%";
-    // Auto-save position (debounced)
     if (readerSaveTimer) clearTimeout(readerSaveTimer);
     readerSaveTimer = setTimeout(function() { saveReaderState(); }, 2000);
   });
 
-  // Restore saved position (R2)
+  readerRendition.on("selected", function(cfiRange, contents) {
+    var text = "";
+    try {
+      var range = contents.range(cfiRange);
+      if (range) text = range.toString();
+    } catch(e) {}
+    if (text) showHighlightPopup(cfiRange, text);
+  });
+
+  document.getElementById("bookmarkBtn").style.display = "";
+  document.getElementById("pageNoteBtn").style.display = "";
+  document.getElementById("annToggleBtn").style.display = "";
+  document.getElementById("exportHighlightsBtn").style.display = "";
+
+  // Show annotations sidebar, load highlights + bookmarks + annotations
+  document.getElementById("annotationsSidebar").style.display = "block";
+  loadAnnotations(bookId);
+  renderAllHighlights(bookId);
+  loadBookmarks(bookId);
+
+  // Restore saved position
   fetch(API + "/api/book/" + bookId + "/reader-state").then(r => r.json()).then(function(state) {
     if (state && state.location) {
       try { readerRendition.display(state.location); } catch(e) {}
@@ -2263,6 +2333,13 @@ function loadPdfReader(bookId, book) {
   document.getElementById("readerNext").style.display = "none";
   document.getElementById("readerProgressFill").style.width = "0%";
   document.removeEventListener("keydown", readerKeyHandler);
+  document.getElementById("bookmarkBtn").style.display = "";
+  document.getElementById("annToggleBtn").style.display = "";
+  document.getElementById("pageNoteBtn").style.display = "";
+  document.getElementById("exportHighlightsBtn").style.display = "";
+  document.getElementById("annotationsSidebar").style.display = "block";
+  loadAnnotations(bookId);
+  loadBookmarks(bookId);
   area.innerHTML = '<iframe src="' + API + '/api/book/' + bookId + '/read" style="width:100%;height:' + (window.innerHeight - 200) + 'px;border:none;border-radius:4px"></iframe>';
 }
 
@@ -2279,6 +2356,13 @@ function loadComicReader(bookId, book) {
   document.getElementById("readerLocation").textContent = "Loading pages...";
   document.getElementById("readerPrev").onclick = function() { readerPrev(); };
   document.getElementById("readerNext").onclick = function() { readerNext(); };
+  document.getElementById("bookmarkBtn").style.display = "";
+  document.getElementById("annToggleBtn").style.display = "";
+  document.getElementById("pageNoteBtn").style.display = "";
+  document.getElementById("exportHighlightsBtn").style.display = "";
+  document.getElementById("annotationsSidebar").style.display = "block";
+  loadAnnotations(bookId);
+  loadBookmarks(bookId);
   document.addEventListener("keydown", readerKeyHandler);
 
   fetch(API + "/api/book/" + bookId + "/read").then(r => r.json()).then(data => {
@@ -2348,6 +2432,11 @@ function closeReader() {
   if (bid && (readerFormat === "cbz" || readerFormat === "cbr")) {
     fetch(API + "/api/book/" + bid + "/read/cache", {method: "DELETE"}).catch(function(){});
   }
+  document.getElementById("bookmarkBtn").style.display = "none";
+  document.getElementById("annToggleBtn").style.display = "none";
+  document.getElementById("pageNoteBtn").style.display = "none";
+  document.getElementById("exportHighlightsBtn").style.display = "none";
+  document.getElementById("annotationsSidebar").style.display = "none";
   switchTab("library");
 }
 
@@ -2367,14 +2456,17 @@ function loadAnnotations(bookId) {
   fetch(API + "/api/book/" + bookId + "/annotations").then(r => r.json()).then(function(anns) {
     var el = document.getElementById("annotationsList");
     var countEl = document.getElementById("annCount");
-    if (!anns.length) { el.innerHTML = '<div class="ann-empty">No annotations yet. Highlight text in the EPUB to add.</div>'; if (countEl) countEl.textContent = ""; return; }
+    if (!anns.length) { el.innerHTML = '<div class="ann-empty">No annotations yet. Select text to highlight, or add a note below.</div>'; if (countEl) countEl.textContent = ""; return; }
     if (countEl) countEl.textContent = "(" + anns.length + ")";
-    var html = "";
+    var html = '<div style="margin-bottom:6px"><strong style="color:#94a3b8;font-size:0.72rem">Highlights &amp; Notes</strong></div>';
     anns.forEach(function(a) {
-      html += '<div class="ann-item" style="border-left-color:' + (a.color || "#fef08a") + '">';
-      html += '<span class="ann-del" onclick="deleteAnnotation(' + a.id + ',' + bookId + ')" title="Delete">&times;</span>';
+      var navFn = a.cfi_range
+        ? "navigateToAnnotation('" + esc(a.cfi_range) + "')"
+        : "";
+      html += '<div class="ann-item" style="border-left-color:' + (a.color || "#fef08a") + (navFn ? ';cursor:pointer' : '') + '"' + (navFn ? ' onclick="' + navFn + '"' : '') + '>';
+      html += '<span class="ann-del" onclick="event.stopPropagation();deleteAnnotation(' + a.id + ',' + bookId + ')" title="Delete">&times;</span>';
       if (a.type === "highlight") {
-        html += '<div class="ann-text">"' + esc(a.text || "") + '"</div>';
+        html += '<div class="ann-text">"' + esc(a.text || "").substring(0, 120) + (a.text && a.text.length > 120 ? "..." : "") + '"</div>';
         if (a.note) html += '<div class="ann-note">\u2014 ' + esc(a.note) + '</div>';
       } else {
         html += '<div class="ann-text"><strong>Note:</strong> ' + esc(a.note || a.text || "") + '</div>';
@@ -2405,14 +2497,194 @@ function addNote() {
   if (!bid) return;
   var text = document.getElementById("annInput").value.trim();
   if (!text) return;
+  var cfi = readerFormat === "epub" && readerRendition ? (readerRendition.currentLocation() || {}).start : null;
+  var cfiRange = cfi && cfi.cfi ? cfi.cfi : null;
+  var pct = 0;
+  try { pct = cfi && cfi.percentage ? cfi.percentage * 100 : (parseFloat(document.getElementById("readerLocation").textContent) || 0); } catch(e) {}
   fetch(API + "/api/book/" + bid + "/annotations", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({type: "note", text: text, note: text})
+    body: JSON.stringify({type: "note", text: text, note: text, cfi_range: cfiRange, color: "#94a3b8"})
   }).then(function(r) { return r.json(); }).then(function() {
     document.getElementById("annInput").value = "";
     loadAnnotations(bid);
   }).catch(function() {});
+}
+
+// ═══ Highlight popup ═══
+var _hlPopup = { cfiRange: null, selectedText: null, color: "#fef08a" };
+var HL_COLORS = ["#fef08a","#86efac","#93c5fd","#fca5a5","#c4b5fd","#fdba74","#ffffff"];
+
+function initHighlightColors() {
+  var el = document.getElementById("hlColors");
+  el.innerHTML = HL_COLORS.map(function(c) {
+    var sel = c === _hlPopup.color ? " sel" : "";
+    return '<div class="hl-dot' + sel + '" style="background:' + c + '" onclick="pickHlColor(\'' + c + '\')"></div>';
+  }).join("");
+}
+
+function pickHlColor(color) {
+  _hlPopup.color = color;
+  document.querySelectorAll("#hlColors .hl-dot").forEach(function(d) {
+    d.classList.toggle("sel", d.style.background === color || d.getAttribute("onclick").indexOf(color) >= 0);
+  });
+}
+
+function showHighlightPopup(cfiRange, selectedText) {
+  var popup = document.getElementById("hlPopup");
+  var sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  var range = sel.getRangeAt(0);
+  var rect = range.getBoundingClientRect();
+  popup.style.left = Math.min(rect.left, window.innerWidth - 240) + "px";
+  popup.style.top = (rect.bottom + 8 + window.scrollY) + "px";
+  popup.style.display = "block";
+  document.getElementById("hlNoteInput").value = "";
+  _hlPopup.cfiRange = cfiRange;
+  _hlPopup.selectedText = selectedText;
+  initHighlightColors();
+  document.getElementById("hlNoteInput").focus();
+}
+
+function hideHighlightPopup() {
+  document.getElementById("hlPopup").style.display = "none";
+  _hlPopup.cfiRange = null;
+  _hlPopup.selectedText = null;
+}
+
+function saveHighlightFromPopup() {
+  var bid = readerBookId;
+  if (!bid || !_hlPopup.cfiRange) return;
+  var note = document.getElementById("hlNoteInput").value.trim();
+  fetch(API + "/api/book/" + bid + "/annotations", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      type: "highlight", text: _hlPopup.selectedText, note: note || null,
+      cfi_range: _hlPopup.cfiRange, color: _hlPopup.color
+    })
+  }).then(function(r) { return r.json(); }).then(function() {
+    hideHighlightPopup();
+    loadAnnotations(bid);
+    renderEpubHighlight(_hlPopup.cfiRange, _hlPopup.color);
+  }).catch(function() {});
+}
+
+function saveHighlightNoteOnly() {
+  var bid = readerBookId;
+  if (!bid) return;
+  var note = document.getElementById("hlNoteInput").value.trim();
+  if (!note) return;
+  var cfi = null;
+  try { var loc = readerRendition.currentLocation(); cfi = loc && loc.start ? loc.start.cfi : null; } catch(e) {}
+  fetch(API + "/api/book/" + bid + "/annotations", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({type: "note", text: note, note: note, cfi_range: cfi, color: "#94a3b8"})
+  }).then(function(r) { return r.json(); }).then(function() {
+    hideHighlightPopup();
+    loadAnnotations(bid);
+  }).catch(function() {});
+}
+
+function renderEpubHighlight(cfiRange, color) {
+  if (!readerRendition || !cfiRange) return;
+  try { readerRendition.annotations.highlight(cfiRange, {}, null, "hl-" + Date.now(), {"fill": color, "fill-opacity": "0.35"}); } catch(e) {}
+}
+
+// ═══ Render existing highlights on EPUB load ═══
+function renderAllHighlights(bookId) {
+  fetch(API + "/api/book/" + bookId + "/annotations").then(function(r) { return r.json(); }).then(function(anns) {
+    anns.forEach(function(a) {
+      if (a.type === "highlight" && a.cfi_range) {
+        renderEpubHighlight(a.cfi_range, a.color || "#fef08a");
+      }
+    });
+  }).catch(function() {});
+}
+
+// ═══ Bookmarks ═══
+function addBookmark() {
+  var bid = readerBookId;
+  if (!bid) return;
+  var data = { label: prompt("Bookmark name (optional):") || null };
+  if (readerFormat === "epub" && readerRendition) {
+    var loc = readerRendition.currentLocation();
+    if (loc && loc.start) { data.cfi_loc = loc.start.cfi; data.progress_pct = loc.start.percentage ? loc.start.percentage * 100 : 0; }
+  } else if (readerFormat === "pdf" || readerFormat === "cbz" || readerFormat === "cbr") {
+    data.page_num = readerPage || 0;
+    data.progress_pct = readerPages && readerPages.length ? (readerPage / readerPages.length * 100) : 0;
+  }
+  fetch(API + "/api/book/" + bid + "/bookmarks", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(data)
+  }).then(function(r) { return r.json(); }).then(function() {
+    loadBookmarks(bid);
+  }).catch(function() {});
+}
+
+function addPageNote() {
+  var bid = readerBookId;
+  if (!bid) return;
+  var note = prompt("Add a note for this page:");
+  if (!note) return;
+  var data = { type: "note", text: note, note: note };
+  if (readerFormat === "epub" && readerRendition) {
+    var loc = readerRendition.currentLocation();
+    if (loc && loc.start) data.cfi_range = loc.start.cfi;
+  } else if (readerFormat === "pdf" || readerFormat === "cbz" || readerFormat === "cbr") {
+    data.cfi_range = "page:" + (readerPage || 0);
+  }
+  fetch(API + "/api/book/" + bid + "/annotations", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(data)
+  }).then(function(r) { return r.json(); }).then(function() {
+    loadAnnotations(bid);
+  }).catch(function() {});
+}
+
+function loadBookmarks(bookId) {
+  fetch(API + "/api/book/" + bookId + "/bookmarks").then(function(r) { return r.json(); }).then(function(bms) {
+    var el = document.getElementById("bookmarksList");
+    if (!el) return;
+    if (!bms.length) { el.innerHTML = '<div class="ann-empty">No bookmarks yet</div>'; return; }
+    el.innerHTML = bms.map(function(b) {
+      var pct = b.progress_pct ? Math.round(b.progress_pct) + "%" : "";
+      var label = b.label || ("Bookmark #" + b.id);
+      var loc = b.cfi_loc ? "EPUB" : b.page_num != null ? "Page " + (b.page_num + 1) : pct;
+      return '<div class="ann-item" style="border-left-color:#eab308;cursor:pointer" onclick="navigateToBookmark(\'' + (b.cfi_loc||'') + '\',' + (b.page_num||0) + ')">'
+        + '<span class="ann-del" onclick="event.stopPropagation();deleteBookmark(' + b.id + ',' + bookId + ')" title="Delete">&times;</span>'
+        + '<div class="ann-text">' + esc(label) + '</div>'
+        + '<div class="ann-note">' + esc(loc) + ' \xb7 ' + pct + '</div>'
+        + '</div>';
+    }).join("");
+  }).catch(function() {});
+}
+
+function deleteBookmark(bmId, bookId) {
+  fetch(API + "/api/book/" + bookId + "/bookmarks/" + bmId, {method: "DELETE"})
+    .then(function() { loadBookmarks(bookId); }).catch(function() {});
+}
+
+function navigateToBookmark(cfiLoc, pageNum) {
+  if (cfiLoc && readerRendition) {
+    try { readerRendition.display(cfiLoc); } catch(e) {}
+  } else if (readerFormat === "cbz" || readerFormat === "cbr") {
+    showComicPage(readerBookId, pageNum);
+  }
+}
+
+// ═══ Annotations sidebar toggle ═══
+function toggleAnnotationsSidebar() {
+  var sb = document.getElementById("annotationsSidebar");
+  sb.style.display = sb.style.display === "none" ? "block" : "none";
+}
+
+// ═══ Navigate to annotation ═══
+function navigateToAnnotation(cfiRange, pageNum) {
+  if (cfiRange && readerRendition) {
+    try { readerRendition.display(cfiRange); } catch(e) {}
+  }
 }
 
 function addDetailToReadingList(bookId) {
@@ -2528,6 +2800,13 @@ function reExtractBook(bookId) {
 
 function reDedupBook(bookId) {
   fetch(API + "/api/book/" + bookId + "/re-dedup", {method:"POST"})
+    .then(r => r.json()).then(d => { showDetail(bookId); loadLibrary(); })
+    .catch(() => { showDetail(bookId); });
+}
+
+function forceKeepBook(bookId) {
+  if (!confirm("Mark this book as master? It will be kept regardless of duplicates.")) return;
+  fetch(API + "/api/book/" + bookId + "/force-keep", {method:"POST"})
     .then(r => r.json()).then(d => { showDetail(bookId); loadLibrary(); })
     .catch(() => { showDetail(bookId); });
 }

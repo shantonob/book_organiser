@@ -16,11 +16,13 @@ from db import set_tags, quarantine_file, QUARANTINE_ERRORS
 from extractors import extract_metadata
 from filename_cleaner import clean_filename, extract_year_from_filename, file_hash, is_duplicate_title, normalize_title, title_similarity
 from enrich_filename import enrich_from_filename
-from enricher import enrich_book
+from enricher import enrich_book, _download_cover
 from classifier import classify, classify_all
 
 
 class PipelineState:
+    _persist_path = None
+
     def __init__(self):
         self.lock = threading.Lock()
         self.stage_counts = {}
@@ -65,6 +67,27 @@ class PipelineState:
             if len(self.stage_timings) > 50:
                 self.stage_timings = self.stage_timings[-50:]
 
+    def _persist(self):
+        if not self._persist_path:
+            return
+        try:
+            import json
+            data = {
+                "stage_counts": dict(self.stage_counts),
+                "current_file": self.current_file,
+                "current_stage": self.current_stage,
+                "current_phase": self.current_phase,
+                "phase_progress": self.phase_progress,
+                "total_scanned": self.total_scanned,
+                "total_discovered": self.total_discovered,
+                "running": self.running,
+                "log": [e for e in self.log[-50:]],
+            }
+            with open(self._persist_path, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+        except Exception as e:
+            logger.warning(f"state persist failed: {e}")
+
     def update(self, phase=None, stage=None, file=None, counts=None, log_msg=None, progress=None):
         with self.lock:
             now = datetime.utcnow()
@@ -93,6 +116,7 @@ class PipelineState:
                 # Mirror important log messages to file
                 if log_msg.startswith("▶") or log_msg.startswith("✓") or log_msg.startswith("✗") or log_msg.startswith("  ⚠"):
                     logger.info(log_msg)
+            self._persist()
 
     def get_snapshot(self):
         with self.lock:
@@ -122,6 +146,7 @@ class PipelineState:
 
 
 state = PipelineState()
+state._persist_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "pipeline_state.json")
 
 
 def add_to_inbox(filepath):
@@ -231,8 +256,12 @@ def run_phase_metadata(source=None, inbox_files=None):
         state.update(file=fname, stage="arriving", progress=(processed, total),
                      log_msg=f"  [{processed}/{total}] {fname}")
 
-        h = file_hash(filepath)
-        fsize = os.path.getsize(filepath)
+        try:
+            h = file_hash(filepath)
+            fsize = os.path.getsize(filepath)
+        except (OSError, FileNotFoundError):
+            state.update(log_msg=f"  ~ skipped (vanished): {fname}")
+            continue
         file_id = upsert_file(conn, filepath, fname, fsize, h, ext.lstrip("."), source_group=source_group)
         conn.commit()
         set_stage(conn, file_id, "arrived")
@@ -283,6 +312,9 @@ def run_phase_metadata(source=None, inbox_files=None):
             enrich_source = "filename"
         elif not raw_meta.get("title") and not enriched.get("title"):
             enrich_source = "filename"  # fallback to fname_stem
+        subjects = raw_meta.get("subjects")
+        if isinstance(subjects, list):
+            subjects = "; ".join(subjects)
         upsert_metadata(conn, file_id,
                         title=clean_title,
                         authors=clean_authors,
@@ -292,7 +324,7 @@ def run_phase_metadata(source=None, inbox_files=None):
                         pages=raw_meta.get("pages"),
                         year=year,
                         description=raw_meta.get("description"),
-                        subjects=raw_meta.get("subjects"),
+                        subjects=subjects,
                         enrich_source=enrich_source,
                         enriched_at=datetime.utcnow().isoformat())
         set_stage(conn, file_id, "cleaned")
@@ -308,8 +340,14 @@ def run_phase_metadata(source=None, inbox_files=None):
 
         state.update(stage="enriching", log_msg=f"  ▶ enriching {fname}")
 
-        # External API enrichment (only when metadata is sparse)
-        if not raw_meta.get("title") or not raw_meta.get("authors") or not raw_meta.get("description"):
+        # External API enrichment (when key metadata is missing)
+        enriched = None
+        need_enrich = (
+            not raw_meta.get("title") or not raw_meta.get("authors")
+            or not raw_meta.get("description") or not raw_meta.get("isbn")
+            or not raw_meta.get("publisher")
+        )
+        if need_enrich:
             try:
                 enriched = enrich_book(
                     isbn=raw_meta.get("isbn"),
@@ -340,6 +378,19 @@ def run_phase_metadata(source=None, inbox_files=None):
                     state.update(log_msg=f"  ✓ API enriched: {fname}")
             except Exception:
                 state.update(log_msg=f"  ~ API enrichment failed: {fname}")
+
+        # Download cover from API if no embedded cover exists
+        try:
+            row_meta = conn.execute("SELECT cover_path FROM metadata WHERE file_id=?", (file_id,)).fetchone()
+            if not row_meta or not row_meta["cover_path"]:
+                cover_url = enriched.get("cover_url") if enriched else None
+                if cover_url:
+                    cover_dir = os.path.join(config.PROCESSED_DIR, "covers")
+                    downloaded = _download_cover(cover_url, cover_dir)
+                    if downloaded:
+                        upsert_metadata(conn, file_id, cover_path=downloaded)
+        except Exception:
+            pass
 
         state.update(log_msg=f"  ▶ classifying {fname}")
         udc_code, udc_label = classify(
@@ -411,7 +462,7 @@ def run_phase_dedup():
             return
 
         # ── Pass 1: hash dedup ──
-        state.update(stage="dedup_hash", log_msg="  ▶ Pass 1: hash-based dedup")
+        state.update(stage="dedup_hash", progress=[0, total], log_msg="  ▶ Pass 1: hash-based dedup")
         by_hash = {}
         for row in files:
             h = row["file_hash"]
@@ -455,47 +506,63 @@ def run_phase_dedup():
         survivors = [r for r in files if r["id"] not in skip_ids]
         survivors.sort(key=lambda r: r["id"])
 
-        title_dup_count = 0
-        for i, current in enumerate(survivors):
-            if current["id"] in skip_ids:
-                continue
-            cur_title = normalize_title(current["title"] or "")
-            if not cur_title:
-                continue
-            cur_udc = current["udc_code"] or ""
-            cur_score = _metadata_richness(current)
+        # Group survivors by UDC for O(n) within-group comparison
+        udc_groups = {}
+        for r in survivors:
+            udc = r["udc_code"] or ""
+            udc_groups.setdefault(udc, []).append(r)
 
-            for j in range(i):
-                prev = survivors[j]
-                if prev["id"] in skip_ids:
+        threshold = config.DUPLICATE_SIMILARITY_THRESHOLD
+        ambiguous_min = 0.85
+
+        title_dup_count = 0
+        total_survivors = len(survivors)
+        checked = 0
+        for udc, group in udc_groups.items():
+            for i, current in enumerate(group):
+                if current["id"] in skip_ids:
                     continue
-                prev_title = normalize_title(prev["title"] or "")
-                if not prev_title:
+                cur_title = normalize_title(current["title"] or "")
+                if not cur_title:
                     continue
-                prev_udc = prev["udc_code"] or ""
-                if cur_udc != prev_udc:
-                    continue
-                sim = title_similarity(prev_title, cur_title)
-                threshold = config.DUPLICATE_SIMILARITY_THRESHOLD
-                ambiguous_min = 0.70
-                if sim >= threshold:
-                    if cur_score <= _metadata_richness(prev):
-                        mark_duplicate(conn, current["id"], "duplicate_by_title")
-                        skip_ids.add(current["id"])
-                        title_dup_count += 1
-                        state.update(log_msg=f"    title dup vs #{prev['id']}: {current['filename']}")
-                    else:
-                        mark_duplicate(conn, prev["id"], "duplicate_by_title")
-                        skip_ids.add(prev["id"])
-                        title_dup_count += 1
-                        state.update(log_msg=f"    title dup vs #{current['id']}: {prev['filename']}")
-                    break
-                elif sim >= ambiguous_min:
-                    qdetail = f"Title sim {sim:.0%} between #{current['id']} '{cur_title[:40]}' and #{prev['id']} '{prev_title[:40]}'"
-                    quarantine_file(conn, prev["id"], "DEDUP_AMBIGUOUS", qdetail)
-                    quarantine_file(conn, current["id"], "DEDUP_AMBIGUOUS", qdetail)
+                cur_score = _metadata_richness(current)
+                cur_first4 = cur_title[:4]
+                cur_len = len(cur_title)
+
+                for j in range(i):
+                    prev = group[j]
+                    if prev["id"] in skip_ids:
+                        continue
+                    prev_title = normalize_title(prev["title"] or "")
+                    if not prev_title:
+                        continue
+                    # Fast pre-filter: skip if titles differ too much in length or prefix
+                    if abs(cur_len - len(prev_title)) > max(cur_len // 3, 10):
+                        continue
+                    if cur_first4 and prev_title[:4] != cur_first4:
+                        continue
+                    # Also require same author for title dedup
+                    if (current["authors"] or "").strip().lower() != (prev["authors"] or "").strip().lower():
+                        continue
+                    sim = title_similarity(prev_title, cur_title)
+                    if sim >= threshold:
+                        if cur_score <= _metadata_richness(prev):
+                            mark_duplicate(conn, current["id"], "duplicate_by_title")
+                            skip_ids.add(current["id"])
+                            title_dup_count += 1
+                            state.update(log_msg=f"    title dup vs #{prev['id']}: {current['filename']}")
+                        else:
+                            mark_duplicate(conn, prev["id"], "duplicate_by_title")
+                            skip_ids.add(prev["id"])
+                            title_dup_count += 1
+                            state.update(log_msg=f"    title dup vs #{current['id']}: {prev['filename']}")
+                        break
+                    elif sim >= ambiguous_min:
+                        state.update(log_msg=f"  ~ title ambiguous ({sim:.0%}): {current['filename'][:60]} vs {prev['filename'][:60]}")
+                checked += 1
+                if checked % 1000 == 0:
                     conn.commit()
-                    state.update(log_msg=f"  ⚠ quarantined (ambiguous dedup): {current['filename']} vs #{prev['id']}")
+                    state.update(progress=[checked, total_survivors], log_msg=f"  title dedup: {checked}/{total_survivors} checked, {title_dup_count} dups found")
 
         conn.commit()
 
@@ -733,5 +800,19 @@ def cleanup_source_dir(source_dir):
 
         if moved_proc or moved_arch:
             state.update(log_msg=f"  📦 Cleanup: {moved_proc} → processed, {moved_arch} → archive, {errors} errors")
+
+        # Remove empty directories left behind (bottom-up so children are removed first)
+        removed_dirs = 0
+        for dirpath, dirnames, filenames in os.walk(source_dir, topdown=False):
+            if os.path.normpath(dirpath) == os.path.normpath(source_dir):
+                continue
+            try:
+                if not os.listdir(dirpath):
+                    os.rmdir(dirpath)
+                    removed_dirs += 1
+            except OSError:
+                pass
+        if removed_dirs:
+            state.update(log_msg=f"  🗑 Cleanup: removed {removed_dirs} empty directories")
     finally:
         conn.close()

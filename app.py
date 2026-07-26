@@ -17,6 +17,8 @@ from log_utils import setup_logger
 
 logger = setup_logger("app", also_stdout=False)
 
+_active_threads = []
+
 # Silence noisy loggers
 for noisy in ("werkzeug", "flask"):
     log = logging.getLogger(noisy)
@@ -29,6 +31,7 @@ from db import get_quarantined, resolve_quarantine, QUARANTINE_ERRORS, get_quara
 from db import get_reading_list, add_to_reading_list, update_reading_list_status, remove_from_reading_list
 from db import get_reader_state, save_reader_state
 from db import get_annotations, add_annotation, delete_annotation, export_annotations_markdown
+from db import get_bookmarks, add_bookmark, delete_bookmark
 from pipeline import state, run_pipeline, run_all_phases, run_phase_metadata, run_phase_dedup, run_phase_copy, discover_source_files, add_to_inbox
 
 app = Flask(__name__)
@@ -52,7 +55,7 @@ flask_log.setLevel(logging.INFO)
 
 
 def resolve_book_path(book):
-    """Resolve book file path — checks original, processed, archive, and flat dirs."""
+    """Resolve book file path â€” checks original, processed, archive, and flat dirs."""
     sp = book["source_path"]
     if sp and os.path.isfile(sp):
         return sp
@@ -73,7 +76,7 @@ def index():
     return render_template("index.html")
 
 
-# ── Auth (P3.2) ──
+# â”€â”€ Auth (P3.2) â”€â”€
 
 def is_authenticated():
     if not config.AUTH_ENABLED:
@@ -116,8 +119,22 @@ def api_status():
         pcounts = get_phase_counts(conn)
         recent = [dict(r) for r in get_recent_books(conn, 20)]
         plog = [dict(r) for r in get_pipeline_log(conn, 20)]
+        snap = state.get_snapshot()
+        if _pipeline_proc and _pipeline_proc.poll() is None:
+            snap["running"] = True
+            snap["log_msg"] = f"Pipeline subprocess PID={_pipeline_proc.pid} running"
+            # Load persisted state from subprocess
+            try:
+                import json
+                persist_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "pipeline_state.json")
+                with open(persist_path, "r", encoding="utf-8") as f:
+                    sub_snap = json.load(f)
+                snap.update(sub_snap)
+                snap["running"] = True
+            except (FileNotFoundError, json.JSONDecodeError, OSError):
+                pass
         return jsonify({
-            "pipeline": state.get_snapshot(),
+            "pipeline": snap,
             "summary": summary,
             "phase_counts": pcounts,
             "recent": recent,
@@ -199,65 +216,85 @@ def api_survivors():
         conn.close()
 
 
-# ── Phase triggers ───────────────────────────────────────────
+# â”€â”€ Phase triggers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/scan")
 def api_scan():
     """Run Phase A (metadata) + Phase B (dedup). Copy is NOT included."""
     source = request.args.get("source") or config.SOURCE_DIR
-    t = threading.Thread(target=run_pipeline, args=(source,), daemon=True)
-    t.start()
+    if not source:
+        return jsonify({"error": "No source directory configured. Set one in Settings."}), 400
+    _start_pipeline_subprocess("metadata", source)
     return jsonify({"status": "started", "source": source, "phases": "metadata+dedup"})
 
 @app.route("/api/scan_all")
 def api_scan_all():
     """Run all three phases: metadata + dedup + copy."""
     source = request.args.get("source") or config.SOURCE_DIR
-    t = threading.Thread(target=run_all_phases, args=(source,), daemon=True)
-    t.start()
+    if not source:
+        return jsonify({"error": "No source directory configured. Set one in Settings."}), 400
+    if not config.FLAT_DIR:
+        return jsonify({"error": "No output directory configured. Set Flat Output Directory in Settings."}), 400
+    _start_pipeline_subprocess("all", source)
     return jsonify({"status": "started", "source": source, "phases": "metadata+dedup+copy"})
 
 
 @app.route("/api/scan_inbox")
 def api_scan_inbox():
-    inbox_path = os.path.join(os.path.dirname(__file__), "inbox")
+    inbox_path = getattr(config, "WATCH_DIR", config.INBOX_DIR)
+    if not os.path.isdir(inbox_path):
+        inbox_path = os.path.join(os.path.dirname(__file__), "inbox")
     if not os.path.isdir(inbox_path):
         return jsonify({"status": "no_inbox"})
     files = []
-    for f in os.listdir(inbox_path):
-        fp = os.path.join(inbox_path, f)
-        if os.path.isfile(fp):
+    for dirpath, _, filenames in os.walk(inbox_path):
+        for f in filenames:
             ext = os.path.splitext(f)[1].lower()
             if ext in EBOOK_EXTS:
-                files.append(fp)
-    t = threading.Thread(target=run_pipeline, args=(None, files), daemon=True)
-    t.start()
+                files.append(os.path.join(dirpath, f))
+    _start_pipeline_subprocess("all", inbox_path)
     return jsonify({"status": "started", "count": len(files)})
+
+
+_pipeline_proc = None
+
+def _start_pipeline_subprocess(phase, source=None):
+    global _pipeline_proc
+    import sys
+    args = [sys.executable, "app.py", "--phase", phase]
+    if source:
+        args.extend(["--source", source])
+    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "logs", "pipeline.log")
+    log_fh = open(log_path, "a", encoding="utf-8")
+    _pipeline_proc = subprocess.Popen(args, cwd=os.path.dirname(os.path.abspath(__file__)),
+                                       stdout=log_fh, stderr=subprocess.STDOUT)
+    logger.info(f"Started pipeline subprocess PID={_pipeline_proc.pid} phase={phase}")
 
 
 @app.route("/api/phase/metadata")
 def api_phase_metadata():
     source = request.args.get("source") or config.SOURCE_DIR
-    t = threading.Thread(target=run_phase_metadata, args=(source,), daemon=True)
-    t.start()
+    if not source:
+        return jsonify({"error": "No source directory configured. Set one in Settings."}), 400
+    _start_pipeline_subprocess("metadata", source)
     return jsonify({"status": "started", "phase": "metadata", "source": source})
 
 
 @app.route("/api/phase/dedup")
 def api_phase_dedup():
-    t = threading.Thread(target=run_phase_dedup, daemon=True)
-    t.start()
+    _start_pipeline_subprocess("dedup")
     return jsonify({"status": "started", "phase": "dedup"})
 
 
 @app.route("/api/phase/copy")
 def api_phase_copy():
-    t = threading.Thread(target=run_phase_copy, daemon=True)
-    t.start()
+    if not config.FLAT_DIR:
+        return jsonify({"error": "No output directory configured. Set Flat Output Directory in Settings."}), 400
+    _start_pipeline_subprocess("copy")
     return jsonify({"status": "started", "phase": "copy"})
 
 
-# ── Tag endpoints ────────────────────────────────────────────
+# â”€â”€ Tag endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/tags/<int:file_id>")
 def api_get_tags(file_id):
@@ -307,7 +344,7 @@ def api_search_tags():
         conn.close()
 
 
-# ── Summary ──────────────────────────────────────────────────
+# â”€â”€ Summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/summary")
 def api_summary():
@@ -327,7 +364,7 @@ def api_udc_labels():
     return jsonify(UDC_LABELS)
 
 
-# ── Pipeline funnel ──────────────────────────────────────────
+# â”€â”€ Pipeline funnel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/funnel")
 def api_funnel():
@@ -338,7 +375,7 @@ def api_funnel():
         conn.close()
 
 
-# ── Per-file pipeline log ────────────────────────────────────
+# â”€â”€ Per-file pipeline log â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/book/<int:book_id>/log")
 def api_book_log(book_id):
@@ -350,7 +387,7 @@ def api_book_log(book_id):
         conn.close()
 
 
-# ── Cover gallery ────────────────────────────────────────────
+# â”€â”€ Cover gallery â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/covers")
 def api_covers():
@@ -396,7 +433,7 @@ def api_cover(book_id):
         conn.close()
 
 
-# ── Sources list ─────────────────────────────────────────────
+# â”€â”€ Sources list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/sources")
 def api_sources():
@@ -410,14 +447,14 @@ def api_sources():
         conn.close()
 
 
-# ── Daemon IPC ───────────────────────────────────────────────
+# â”€â”€ Daemon IPC â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/daemon")
 def api_daemon_status():
     return jsonify(get_daemon_status(DB_PATH))
 
 
-# ── In-process Watcher ──────────────────────────────────────
+# â”€â”€ In-process Watcher â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _watcher_thread = None
 _watcher_observer = None
@@ -433,7 +470,7 @@ def api_daemon_watch_start():
     watch_dir = getattr(config, "WATCH_DIR", config.INBOX_DIR)
     recursive = getattr(config, "WATCH_RECURSIVE", True)
     init_db(config.DB_PATH)
-    os.makedirs(config.FLAT_DIR, exist_ok=True)
+    if config.FLAT_DIR: os.makedirs(config.FLAT_DIR, exist_ok=True)
     load_config_overrides(get_connection(config.DB_PATH))
     state.watcher_active = True
     _watcher_observer = start_watcher(watch_dir, recursive=recursive)
@@ -472,7 +509,7 @@ def api_daemon_watch_running():
     return jsonify({"running": alive})
 
 
-# ── Manual metadata update ───────────────────────────────────
+# â”€â”€ Manual metadata update â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/book/<int:book_id>/update", methods=["POST"])
 def api_book_update(book_id):
@@ -511,7 +548,7 @@ def api_book_update(book_id):
         conn.close()
 
 
-# ── Quarantine ────────────────────────────────────────────────
+# â”€â”€ Quarantine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/quarantine")
 def api_quarantine():
@@ -772,7 +809,7 @@ def api_quarantine_undo_keep_both():
         conn.close()
 
 
-# ── Config ───────────────────────────────────────────────────
+# â”€â”€ Config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/config", methods=["GET", "POST"])
 def api_config():
@@ -826,7 +863,7 @@ def api_config_import():
         conn.close()
 
 
-# ── Per-book re-processing ───────────────────────────────────
+# â”€â”€ Per-book re-processing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/book/<int:book_id>/re-extract", methods=["POST"])
 def api_book_re_extract(book_id):
@@ -847,11 +884,11 @@ def api_book_re_extract(book_id):
         from classifier import classify, classify_all
         from db import upsert_metadata, set_tags, rebuild_fts, set_stage
 
-        state.update(log_msg=f"  ▶ re-extracting book #{book_id}")
+        state.update(log_msg=f"  â–¶ re-extracting book #{book_id}")
 
         raw_meta = extract_metadata(filepath)
         if "_error" in raw_meta:
-            state.update(log_msg=f"  ✗ re-extract failed: {raw_meta['_error']}")
+            state.update(log_msg=f"  âœ— re-extract failed: {raw_meta['_error']}")
             return jsonify({"error": raw_meta["_error"]}), 400
 
         fname = os.path.basename(filepath)
@@ -877,14 +914,19 @@ def api_book_re_extract(book_id):
                         enriched_at=datetime.utcnow().isoformat())
 
         # External enrichment
-        if not raw_meta.get("title") or not raw_meta.get("authors") or not raw_meta.get("description"):
+        need_enrich = (
+            not raw_meta.get("title") or not raw_meta.get("authors")
+            or not raw_meta.get("description") or not raw_meta.get("isbn")
+            or not raw_meta.get("publisher")
+        )
+        if need_enrich:
             try:
                 api_enriched = enrich_book(
                     isbn=raw_meta.get("isbn"),
                     title=clean_title,
                     author=clean_authors,
                 )
-                api_source = api_enriched.get("_source", "openlibrary")
+                api_source = api_enriched.get("source", "openlibrary")
                 upsert_metadata(conn, book_id,
                                 title=api_enriched.get("title") or None,
                                 authors=api_enriched.get("authors") or None,
@@ -923,7 +965,7 @@ def api_book_re_extract(book_id):
         rebuilt = rebuild_fts(conn)
         conn.commit()
 
-        state.update(log_msg=f"  ✓ re-extracted book #{book_id} (FTS: {rebuilt} docs)")
+        state.update(log_msg=f"  âœ“ re-extracted book #{book_id} (FTS: {rebuilt} docs)")
         return jsonify({"status": "ok", "stage": "cataloged"})
     finally:
         conn.close()
@@ -949,7 +991,7 @@ def api_book_re_dedup(book_id):
                      (book_id, "cataloged", "done", "reset for re-dedup"))
         conn.commit()
 
-        state.update(log_msg=f"  ▶ re-dedup book #{book_id}")
+        state.update(log_msg=f"  â–¶ re-dedup book #{book_id}")
 
         all_cataloged = get_cataloged_files(conn)
         target = None
@@ -968,7 +1010,7 @@ def api_book_re_dedup(book_id):
                 if r["id"] != book_id and r["file_hash"] == th:
                     mark_duplicate(conn, book_id, "duplicate_by_hash")
                     conn.commit()
-                    state.update(log_msg=f"  ✗ re-dedup: hash dup of #{r['id']}")
+                    state.update(log_msg=f"  âœ— re-dedup: hash dup of #{r['id']}")
                     return jsonify({"status": "skipped", "reason": "duplicate_by_hash", "dup_id": r["id"]})
 
         # ISBN check
@@ -981,7 +1023,7 @@ def api_book_re_dedup(book_id):
                 if risbn == tisbn:
                     mark_duplicate(conn, book_id, "duplicate_by_isbn")
                     conn.commit()
-                    state.update(log_msg=f"  ✗ re-dedup: isbn dup of #{r['id']}")
+                    state.update(log_msg=f"  âœ— re-dedup: isbn dup of #{r['id']}")
                     return jsonify({"status": "skipped", "reason": "duplicate_by_isbn", "dup_id": r["id"]})
 
         # Title + UDC check
@@ -999,7 +1041,7 @@ def api_book_re_dedup(book_id):
                         if _metadata_richness(target) <= _metadata_richness(r):
                             mark_duplicate(conn, book_id, "duplicate_by_title")
                             conn.commit()
-                            state.update(log_msg=f"  ✗ re-dedup: title dup of #{r['id']}")
+                            state.update(log_msg=f"  âœ— re-dedup: title dup of #{r['id']}")
                             return jsonify({"status": "skipped", "reason": "duplicate_by_title", "dup_id": r["id"]})
 
         # Author + Year + Title check
@@ -1019,13 +1061,35 @@ def api_book_re_dedup(book_id):
                             if _metadata_richness(target) <= _metadata_richness(r):
                                 mark_duplicate(conn, book_id, "duplicate_by_author_year_title")
                                 conn.commit()
-                                state.update(log_msg=f"  ✗ re-dedup: author+year+title dup of #{r['id']}")
+                                state.update(log_msg=f"  âœ— re-dedup: author+year+title dup of #{r['id']}")
                                 return jsonify({"status": "skipped", "reason": "duplicate_by_author_year_title", "dup_id": r["id"]})
 
         # Passed all checks
         mark_survivor(conn, book_id)
         conn.commit()
-        state.update(log_msg=f"  ✓ re-dedup: book #{book_id} confirmed survivor")
+        state.update(log_msg=f"  âœ“ re-dedup: book #{book_id} confirmed survivor")
+        return jsonify({"status": "survivor"})
+    finally:
+        conn.close()
+
+
+@app.route("/api/book/<int:book_id>/force-keep", methods=["POST"])
+def api_book_force_keep(book_id):
+    """Mark a book as survivor/master, overriding any dedup decision."""
+    conn = get_connection(DB_PATH)
+    try:
+        book = get_book_by_id(conn, book_id)
+        if not book:
+            return jsonify({"error": "not found"}), 404
+        from datetime import datetime as dt
+        now = dt.utcnow().isoformat()
+        conn.execute(
+            "UPDATE files SET stage='survivor', is_master=1, stage_error=NULL, updated_at=? WHERE id=?",
+            (now, book_id))
+        conn.execute(
+            "INSERT INTO pipeline_log (file_id, stage, status, message) VALUES (?,?,?,?)",
+            (book_id, "survivor", "done", "force-kept by user"))
+        conn.commit()
         return jsonify({"status": "survivor"})
     finally:
         conn.close()
@@ -1066,7 +1130,7 @@ def api_book_re_copy(book_id):
                      (book_id, "copied", "done", f"copied to {dest}"))
 
         from pipeline import state
-        state.update(log_msg=f"  ✓ re-copied book #{book_id} → {dest}")
+        state.update(log_msg=f"  âœ“ re-copied book #{book_id} â†’ {dest}")
 
         conn.commit()
         return jsonify({"status": "copied", "dest": dest})
@@ -1128,7 +1192,7 @@ def _extract_comic(book_id, filepath):
     return pages
 
 
-# ── Ebook conversion (AZW3, MOBI, FB2 → EPUB) via calibre ──
+# â”€â”€ Ebook conversion (AZW3, MOBI, FB2 â†’ EPUB) via calibre â”€â”€
 CONVERT_EXTS = {".azw3", ".mobi", ".fb2"}
 
 def _convert_to_epub(filepath):
@@ -1200,7 +1264,7 @@ def api_book_clear_reader_cache(book_id):
     return jsonify({"status": "cleared"})
 
 
-# ── Reading List (P3.1) ────────────────────────────────────
+# â”€â”€ Reading List (P3.1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/reading-list")
 def api_reading_list():
@@ -1289,7 +1353,36 @@ def api_annotations_export(book_id):
         conn.close()
 
 
-# ── FTS5 Search ──────────────────────────────────────────────
+@app.route("/api/book/<int:book_id>/bookmarks", methods=["GET", "POST"])
+def api_bookmarks(book_id):
+    conn = get_connection(DB_PATH)
+    try:
+        if request.method == "POST":
+            data = request.json or {}
+            bm_id = add_bookmark(conn, book_id,
+                                 label=data.get("label"),
+                                 cfi_loc=data.get("cfi_loc"),
+                                 page_num=data.get("page_num"),
+                                 progress_pct=data.get("progress_pct"))
+            conn.commit()
+            return jsonify({"id": bm_id, "status": "ok"})
+        return jsonify(get_bookmarks(conn, book_id))
+    finally:
+        conn.close()
+
+
+@app.route("/api/book/<int:book_id>/bookmarks/<int:bm_id>", methods=["DELETE"])
+def api_bookmark_delete(book_id, bm_id):
+    conn = get_connection(DB_PATH)
+    try:
+        delete_bookmark(conn, bm_id)
+        conn.commit()
+        return jsonify({"status": "ok"})
+    finally:
+        conn.close()
+
+
+# â”€â”€ FTS5 Search â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/search")
 def api_search():
@@ -1336,7 +1429,7 @@ def api_rebuild_fts():
         conn.close()
 
 
-# ── Bulk operations ─────────────────────────────────────────
+# â”€â”€ Bulk operations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/bulk/tags/add", methods=["POST"])
 def api_bulk_tag_add():
@@ -1395,7 +1488,7 @@ def api_bulk_classify():
         conn.close()
 
 
-# ── Excel export ─────────────────────────────────────────────
+# â”€â”€ Excel export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 STAGE_LABELS = {
     "arrived": "1_Arrived", "extracted": "2_Extracted", "cleaned": "3_Cleaned",
@@ -1476,7 +1569,7 @@ def api_export_excel():
         conn.close()
 
 
-# ── SSE events ───────────────────────────────────────────────
+# â”€â”€ SSE events â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/events")
 def api_events():
@@ -1486,8 +1579,18 @@ def api_events():
             try:
                 summary = get_pipeline_summary(conn)
                 funnel = get_funnel(conn)
+                snap = state.get_snapshot()
+                if _pipeline_proc and _pipeline_proc.poll() is None:
+                    try:
+                        persist_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "pipeline_state.json")
+                        with open(persist_path, "r", encoding="utf-8") as f:
+                            sub_snap = json.load(f)
+                        snap.update(sub_snap)
+                        snap["running"] = True
+                    except (FileNotFoundError, json.JSONDecodeError, OSError):
+                        pass
                 data = {
-                    "pipeline": state.get_snapshot(),
+                    "pipeline": snap,
                     "summary": summary,
                     "funnel": funnel,
                     "recent": [dict(r) for r in get_recent_books(conn, 10)],
@@ -1501,17 +1604,17 @@ def api_events():
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Book Organiser — catalog, deduplicate, and organise ebooks")
-    parser.add_argument("--source", "-s", default=r"Z:\books",
-                        help="Source path(s) to scan; separate multiple with semicolon (default: Z:\\books)")
-    parser.add_argument("--inbox", "-i", default=config.INBOX_DIR,
-                        help="Inbox directory for ad-hoc files (default: ./inbox)")
+    parser = argparse.ArgumentParser(description="Book Organiser â€” catalog, deduplicate, and organise ebooks")
+    parser.add_argument("--source", "-s", default="",
+                        help="Source path(s) to scan; separate multiple with semicolon")
+    parser.add_argument("--inbox", "-i", default="",
+                        help="Inbox directory for ad-hoc files")
     parser.add_argument("--port", "-p", type=int, default=5000,
                         help="Web UI port (default: 5000)")
     parser.add_argument("--phase", choices=["metadata", "dedup", "copy", "all"],
                         help="Run a specific phase headless and exit")
-    parser.add_argument("--db", default=config.DB_PATH,
-                        help="Path to SQLite database (default: ./data/catalog.db)")
+    parser.add_argument("--db", default="",
+                        help="Path to SQLite database")
     parser.add_argument("--watch", "-w", action="store_true",
                         help="Watch inbox directory and auto-trigger pipeline on new files")
     parser.add_argument("--run", choices=["metadata", "dedup", "copy", "all"],
@@ -1521,22 +1624,29 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    sources = [s.strip() for s in args.source.split(";") if s.strip()]
-    config.SOURCE_DIR = sources[0] if sources else r"Z:\books"
-    config.SOURCE_DIRS = sources
-    config.INBOX_DIR = args.inbox
-    config.WATCH_DIR = getattr(config, "WATCH_DIR", config.INBOX_DIR)
-    config.DB_PATH = args.db
+    # Only override config with CLI args if explicitly provided (non-empty)
+    if args.source:
+        sources = [s.strip() for s in args.source.split(";") if s.strip()]
+        config.SOURCE_DIR = sources[0]
+        config.SOURCE_DIRS = sources
+    if args.inbox:
+        config.INBOX_DIR = args.inbox
+    if args.db:
+        config.DB_PATH = args.db
 
-    # Apply config overrides from DB
+    # Apply config overrides from DB (takes precedence over config.py defaults)
     init_db(config.DB_PATH)
     _conn = get_connection(config.DB_PATH)
     load_config_overrides(_conn)
     _conn.close()
 
+    # Derive WATCH_DIR if not set
+    if not config.WATCH_DIR:
+        config.WATCH_DIR = config.INBOX_DIR
+
     if args.phase:
         init_db(config.DB_PATH)
-        os.makedirs(config.FLAT_DIR, exist_ok=True)
+        if config.FLAT_DIR: os.makedirs(config.FLAT_DIR, exist_ok=True)
         if args.phase == "all":
             run_all_phases(source=args.source)
         elif args.phase == "metadata":
@@ -1549,7 +1659,7 @@ if __name__ == "__main__":
         # Delegate to daemon.py
         from daemon import cmd_run, cmd_watch, cmd_status
         init_db(config.DB_PATH)
-        os.makedirs(config.FLAT_DIR, exist_ok=True)
+        if config.FLAT_DIR: os.makedirs(config.FLAT_DIR, exist_ok=True)
         if args.watch:
             cmd_watch(args)
         elif args.run:
@@ -1558,7 +1668,7 @@ if __name__ == "__main__":
             cmd_status()
     else:
         init_db(config.DB_PATH)
-        os.makedirs(config.FLAT_DIR, exist_ok=True)
+        if config.FLAT_DIR: os.makedirs(config.FLAT_DIR, exist_ok=True)
         if args.watch:
             from watcher import start_watcher
             watch_dir = getattr(config, "WATCH_DIR", config.INBOX_DIR)

@@ -76,18 +76,22 @@ def _ol_search(isbn=None, title=None, author=None):
 
 # ── Google Books ─────────────────────────────────────────────
 
-def _gb_search(title, author):
+def _gb_search(title=None, author=None, isbn=None):
     if not config.GOOGLE_BOOKS_API_KEY:
         return None
-    query = title or ""
-    if author:
-        query += f" {author}"
+    # Prefer ISBN lookup for precision
+    if isbn:
+        query = f"isbn:{isbn}"
+    else:
+        query = title or ""
+        if author:
+            query += f" {author}"
     url = f"https://www.googleapis.com/books/v1/volumes?q={urllib.parse.quote(query)}&key={config.GOOGLE_BOOKS_API_KEY}"
     data = _fetch_json(url)
     if not data or not data.get("items"):
         return None
     vol = data["items"][0].get("volumeInfo", {})
-    return {
+    result = {
         "title": vol.get("title"),
         "authors": ", ".join(vol.get("authors", [])),
         "publisher": vol.get("publisher"),
@@ -98,8 +102,29 @@ def _gb_search(title, author):
         "pages": vol.get("pageCount"),
         "language": vol.get("language"),
         "description": vol.get("description"),
+        "cover_url": vol.get("imageLinks", {}).get("thumbnail"),
         "source": "google_books",
     }
+    return result
+
+
+def _download_cover(cover_url, dest_dir):
+    """Download a cover image URL to dest_dir, return the local path or None."""
+    if not cover_url:
+        return None
+    try:
+        os.makedirs(dest_dir, exist_ok=True)
+        fname = hashlib.md5(cover_url.encode()).hexdigest() + ".jpg"
+        dest = os.path.join(dest_dir, fname)
+        if os.path.exists(dest):
+            return dest
+        req = urllib.request.Request(cover_url, headers={"User-Agent": "BookOrganiser/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            with open(dest, "wb") as f:
+                f.write(resp.read())
+        return dest
+    except Exception:
+        return None
 
 
 # ── Public API ───────────────────────────────────────────────
@@ -107,7 +132,8 @@ def _gb_search(title, author):
 def enrich_book(isbn=None, title=None, author=None):
     """Query external APIs to fill missing metadata.
 
-    Lookup chain: ISBN → Open Library, Title+Author → Open Library, Title+Author → Google Books.
+    Lookup chain: Open Library (ISBN or title+author), then Google Books (ISBN or title+author).
+    Google Books is tried when OL returns nothing OR when OL results lack description.
     Returns dict with any enriched fields, or empty dict.
     """
     cache = _load_cache()
@@ -123,10 +149,17 @@ def enrich_book(isbn=None, title=None, author=None):
         _rate_limit()
         result = _ol_search(isbn=isbn, title=title, author=author) or {}
 
-    # 2. Google Books (fallback)
-    if not result.get("title") and (title or author):
+    # 2. Google Books fallback — try when OL returned nothing, or when description is missing
+    need_gb = not result.get("title") or not result.get("description")
+    if need_gb and (isbn or title or author):
         _rate_limit()
-        result = _gb_search(title, author) or {}
+        gb_result = _gb_search(title=title, author=author, isbn=isbn) or {}
+        if gb_result:
+            # Merge: fill gaps from OL with GB data, but prefer OL for fields OL already has
+            for field in ("title", "authors", "publisher", "year", "subjects", "isbn", "pages", "language", "description", "cover_url"):
+                if not result.get(field) and gb_result.get(field):
+                    result[field] = gb_result[field]
+            result["source"] = result.get("source") or gb_result.get("source", "google_books")
 
     if result:
         cache[key] = result

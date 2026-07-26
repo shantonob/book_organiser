@@ -15,17 +15,20 @@ else:
     DATA_DIR = os.path.join(BASE_DIR, "data")
     CONFIG_DIR = os.path.join(BASE_DIR, "data")
 
-SOURCE_DIR = os.environ.get("BOOK_SOURCE_DIR", r"Z:\books")
-SOURCE_DIRS = [d.strip() for d in SOURCE_DIR.split(";") if d.strip()]
-INBOX_DIR = os.environ.get("BOOK_INBOX_DIR", os.path.join(DATA_DIR, "inbox"))
-WATCH_DIR = os.environ.get("BOOK_WATCH_DIR", INBOX_DIR)
-WATCH_RECURSIVE = os.environ.get("BOOK_WATCH_RECURSIVE", "true").lower() in ("true", "1", "yes")
-PROCESSED_DIR = os.environ.get("BOOK_PROCESSED_DIR", os.path.join(DATA_DIR, "processed"))
-FLAT_DIR = os.environ.get("BOOK_FLAT_DIR", os.path.join(PROCESSED_DIR, "flat"))
-ARCHIVE_DIR = os.environ.get("BOOK_ARCHIVE_DIR", os.path.join(PROCESSED_DIR, "archive"))
+# ── All paths are blank by default — user provides them via Settings tab ──
+# Required: source_dirs, flat_dir, inbox_dir
+# Optional with derived defaults: archive_dir (flat_dir/archive), watch_dir (inbox_dir)
+SOURCE_DIR = ""
+SOURCE_DIRS = []
+INBOX_DIR = ""
+WATCH_DIR = ""
+WATCH_RECURSIVE = True
+PROCESSED_DIR = ""
+FLAT_DIR = ""
+ARCHIVE_DIR = ""
 DB_PATH = os.environ.get("BOOK_DB_PATH", os.path.join(DATA_DIR, "catalog.db"))
 EXCLUDE_DIRS = set(
-    os.environ.get("BOOK_EXCLUDE_DIRS", ".git,__pycache__,data,templates,extractors,inbox,processed,covers").split(",")
+    os.environ.get("BOOK_EXCLUDE_DIRS", ".git,__pycache__,data,templates,extractors").split(",")
 )
 EXCLUDE_EXTS = set(
     os.environ.get("BOOK_EXCLUDE_EXTS", ".ini,.db,.lnk,.url,.tmp,.dat,.exe,.dll").split(",")

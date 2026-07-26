@@ -168,6 +168,10 @@ def upsert_file(conn, source_path, filename, file_size, file_hash, fmt, source_g
 
 
 def upsert_metadata(conn, file_id, **kw):
+    def _str(v):
+        if isinstance(v, list):
+            return "; ".join(str(x) for x in v)
+        return v
     conn.execute("""
         INSERT INTO metadata (file_id, title, authors, publisher, isbn, language, pages, year, description, subjects, udc_code, udc_label, cover_path, enrich_source, enriched_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
@@ -187,11 +191,11 @@ def upsert_metadata(conn, file_id, **kw):
             enrich_source = COALESCE(excluded.enrich_source, metadata.enrich_source),
             enriched_at   = COALESCE(excluded.enriched_at, metadata.enriched_at)
     """, (
-        file_id, kw.get("title"), kw.get("authors"), kw.get("publisher"),
-        kw.get("isbn"), kw.get("language"), kw.get("pages"), kw.get("year"),
-        kw.get("description"), kw.get("subjects"), kw.get("udc_code"),
-        kw.get("udc_label"), kw.get("cover_path"), kw.get("enrich_source"),
-        kw.get("enriched_at")
+        file_id, _str(kw.get("title")), _str(kw.get("authors")), _str(kw.get("publisher")),
+        _str(kw.get("isbn")), _str(kw.get("language")), kw.get("pages"), kw.get("year"),
+        _str(kw.get("description")), _str(kw.get("subjects")), _str(kw.get("udc_code")),
+        _str(kw.get("udc_label")), _str(kw.get("cover_path")), _str(kw.get("enrich_source")),
+        _str(kw.get("enriched_at"))
     ))
 
 
@@ -801,6 +805,18 @@ def ensure_reading_tables(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_reading_list_book ON reading_list(book_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_reader_state_book ON reader_state(book_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_annotations_book ON annotations(book_id)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS bookmarks (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            book_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+            label       TEXT,
+            cfi_loc     TEXT,
+            page_num    INTEGER,
+            progress_pct REAL,
+            created_at  TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_bookmarks_book ON bookmarks(book_id)")
 
 
 def get_reading_list(conn, status=None):
@@ -896,19 +912,38 @@ def export_annotations_markdown(conn, book_id):
     return "\n".join(lines)
 
 
+def get_bookmarks(conn, book_id):
+    rows = conn.execute(
+        "SELECT * FROM bookmarks WHERE book_id=? ORDER BY created_at DESC", (book_id,)
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_bookmark(conn, book_id, label=None, cfi_loc=None, page_num=None, progress_pct=None):
+    conn.execute(
+        "INSERT INTO bookmarks (book_id, label, cfi_loc, page_num, progress_pct) VALUES (?,?,?,?,?)",
+        (book_id, label, cfi_loc, page_num, progress_pct)
+    )
+    return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+
+def delete_bookmark(conn, bm_id):
+    conn.execute("DELETE FROM bookmarks WHERE id=?", (bm_id,))
+
+
 # ── Config overrides ───────────────────────────────────────
 
 CONFIG_SCHEMA = [
     {"name": "source_dirs", "default": "", "type": "text", "category": "paths",
-     "label": "Source Directories", "desc": "Semicolon-separated list of directories to scan"},
-    {"name": "flat_dir", "default": "", "type": "path", "category": "paths",
-     "label": "Flat Output Directory", "desc": "Destination for copied survivor files"},
-    {"name": "archive_dir", "default": "", "type": "path", "category": "paths",
-     "label": "Archive Directory", "desc": "Non-processed files moved here after pipeline runs"},
+     "label": "Source Directories", "desc": "Semicolon-separated list of directories to scan for ebooks"},
     {"name": "inbox_dir", "default": "", "type": "path", "category": "paths",
-     "label": "Inbox Directory", "desc": "Watched directory for auto-processing"},
+     "label": "Inbox / To Be Sorted", "desc": "Incoming unprocessed books (e.g. Z:\\books\\to be sorted)"},
+    {"name": "flat_dir", "default": "", "type": "path", "category": "paths",
+     "label": "Flat Output Directory", "desc": "Where processed/survivor books are copied (e.g. Z:\\books\\processed)"},
+    {"name": "archive_dir", "default": "", "type": "path", "category": "paths",
+     "label": "Archive Directory", "desc": "Non-processed files moved here (leave empty = flat_dir/archive)"},
     {"name": "watch_dir", "default": "", "type": "path", "category": "paths",
-     "label": "Watch Directory", "desc": "Directory the daemon watches for new files (leave empty to use Inbox)"},
+     "label": "Watch Directory", "desc": "Directory the daemon watches for new files (leave empty = inbox_dir)"},
     {"name": "watch_recursive", "default": "true", "type": "boolean", "category": "daemon",
      "label": "Watch Recursive", "desc": "Scan subdirectories when watching for new files"},
     {"name": "db_path", "default": "", "type": "path", "category": "paths",
@@ -921,7 +956,7 @@ CONFIG_SCHEMA = [
     {"name": "exclude_exts", "default": ".ini,.db,.lnk,.url,.tmp,.dat,.exe,.dll",
      "type": "text", "category": "processing", "label": "Exclude Extensions",
      "desc": "Comma-separated file extensions to skip during scan"},
-    {"name": "exclude_dirs", "default": ".git,__pycache__,data,templates,extractors,inbox,processed,covers",
+    {"name": "exclude_dirs", "default": ".git,__pycache__,data,templates,extractors",
      "type": "text", "category": "processing", "label": "Exclude Directories",
      "desc": "Comma-separated directory names to skip during scan"},
     {"name": "dup_similarity", "default": "0.85", "type": "number", "category": "processing",
@@ -968,7 +1003,6 @@ def load_config_overrides(conn):
     """Apply config overrides from DB to the config module."""
     import config as cfg
     overrides = get_config_overrides(conn)
-    # Map override names to config module attributes
     attr_map = {
         "source_dirs": "SOURCE_DIRS",
         "flat_dir": "FLAT_DIR",
@@ -1012,6 +1046,16 @@ def load_config_overrides(conn):
         else:
             setattr(cfg, attr.upper() if name == "google_books_api_key" else attr, value)
 
+    # Derive dependent paths from their parents if not overridden
+    if cfg.FLAT_DIR:
+        cfg.PROCESSED_DIR = cfg.FLAT_DIR
+        if not overrides.get("archive_dir"):
+            cfg.ARCHIVE_DIR = os.path.join(cfg.FLAT_DIR, "archive")
+        if not overrides.get("watch_dir"):
+            cfg.WATCH_DIR = cfg.INBOX_DIR if cfg.INBOX_DIR else cfg.WATCH_DIR
+    # If archive_dir override was set but flat_dir was not, derive processed from flat
+    # (both point to the same root)
+
 
 def get_all_config(conn):
     import config as cfg
@@ -1019,26 +1063,9 @@ def get_all_config(conn):
     result = []
     for field in CONFIG_SCHEMA:
         entry = dict(field)
-        # Fill in the current runtime default from config.py
         key = field["name"]
-        default_map = {
-            "source_dirs": ";".join(cfg.SOURCE_DIRS),
-            "flat_dir": cfg.FLAT_DIR,
-            "archive_dir": getattr(cfg, "ARCHIVE_DIR", os.path.join(cfg.PROCESSED_DIR, "archive")),
-            "inbox_dir": cfg.INBOX_DIR,
-            "watch_dir": getattr(cfg, "WATCH_DIR", cfg.INBOX_DIR),
-            "watch_recursive": getattr(cfg, "WATCH_RECURSIVE", "true"),
-            "db_path": cfg.DB_PATH,
-            "log_dir": cfg.LOG_DIR,
-            "ebook_exts": ",".join(sorted(cfg.EBOOK_EXTS)),
-            "exclude_exts": ",".join(sorted(cfg.EXCLUDE_EXTS)),
-            "exclude_dirs": ",".join(sorted(cfg.EXCLUDE_DIRS)),
-            "dup_similarity": str(cfg.DUPLICATE_SIMILARITY_THRESHOLD),
-            "enrich_rate_limit": str(cfg.ENRICH_RATE_LIMIT),
-            "google_books_api_key": cfg.GOOGLE_BOOKS_API_KEY,
-        }
-        entry["default"] = default_map.get(key, field.get("default", ""))
-        entry["value"] = overrides.get(key, entry["default"])
+        # "default" in the schema is the hardcoded default — show that to the user
+        entry["value"] = overrides.get(key, "")
         entry["overridden"] = key in overrides
         result.append(entry)
     return result

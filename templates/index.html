@@ -296,7 +296,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     </div>
 
     <div class="panel">
-      <h2>Pipeline Log</h2>
+      <h2>Pipeline Log <button onclick="runRecon()" style="float:right;padding:2px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#6366f1;color:#f8fafc">Recon</button></h2>
       <div class="log" id="logPanel"></div>
     </div>
 
@@ -881,6 +881,39 @@ function filterLibraryByFormat(fmt) {
   }
 }
 
+function filterLibraryByUntagged() {
+  document.getElementById("libUdcFilter").value = "";
+  document.getElementById("libTagFilter").value = "";
+  document.getElementById("libStageFilter").value = "";
+  if (document.getElementById("tab-library").classList.contains("active")) {
+    loadLibrary({untagged: true});
+  } else {
+    switchTab("library", {untagged: true});
+  }
+}
+
+function filterLibraryByArchive() {
+  document.getElementById("libUdcFilter").value = "";
+  document.getElementById("libTagFilter").value = "";
+  document.getElementById("libStageFilter").value = "";
+  if (document.getElementById("tab-library").classList.contains("active")) {
+    loadLibrary({archive_only: true});
+  } else {
+    switchTab("library", {archive_only: true});
+  }
+}
+
+function filterLibraryByDuplicate() {
+  document.getElementById("libUdcFilter").value = "";
+  document.getElementById("libTagFilter").value = "";
+  document.getElementById("libStageFilter").value = "";
+  if (document.getElementById("tab-library").classList.contains("active")) {
+    loadLibrary({duplicate_only: true});
+  } else {
+    switchTab("library", {duplicate_only: true});
+  }
+}
+
 // ── Sources ──
 function loadSources() {
   fetch(API + "/api/sources").then(r => r.json()).then(sources => {
@@ -1131,6 +1164,76 @@ function fetchStatus() {
   }).catch(() => {});
 }
 
+// ── Recon ──
+function runRecon() {
+  var modal = document.getElementById("reconModal");
+  var body = document.getElementById("reconBody");
+  var status = document.getElementById("reconStatus");
+  if (!modal || !body) return;
+  modal.style.display = "flex";
+  body.innerHTML = '<div style="color:#64748b;text-align:center;padding:20px">Running coherence audit... <span class="spinner" style="display:inline-block;animation:spin 1s linear infinite;margin-left:8px">&#x21bb;</span></div>';
+  status.textContent = "scanning...";
+  fetch(API + "/api/recon").then(function(r) { return r.json(); }).then(function(d) {
+    var html = "";
+    // Summary
+    var s = d.summary || {};
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:16px">';
+    html += '<div style="background:#0f172a;border-radius:8px;padding:10px;text-align:center"><div style="color:#64748b;font-size:0.7rem">Total Books</div><div style="font-size:1.2rem;font-weight:700;color:#e2e8f0">' + (s.total_db_books||"") + '</div></div>';
+    html += '<div style="background:#0f172a;border-radius:8px;padding:10px;text-align:center"><div style="color:#64748b;font-size:0.7rem">Masters</div><div style="font-size:1.2rem;font-weight:700;color:#22c55e">' + (s.total_masters||"") + '</div></div>';
+    html += '<div style="background:#0f172a;border-radius:8px;padding:10px;text-align:center"><div style="color:#64748b;font-size:0.7rem">Duplicates</div><div style="font-size:1.2rem;font-weight:700;color:#eab308">' + (s.total_duplicates||"") + '</div></div>';
+    html += '<div style="background:#0f172a;border-radius:8px;padding:10px;text-align:center"><div style="color:#64748b;font-size:0.7rem">Missing Source</div><div style="font-size:1.2rem;font-weight:700;color:' + ((d.db_integrity&&d.db_integrity.missing_source>0)?"#ef4444":"#22c55e") + '">' + ((d.db_integrity&&d.db_integrity.missing_source)||"0") + '</div></div>';
+    html += '</div>';
+    // Directory counts
+    var dirs = d.directories || {};
+    html += '<h3 style="color:#94a3b8;font-size:0.78rem;margin:12px 0 6px 0">Directory Audit</h3>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">';
+    ["to_be_sorted","processed","archive"].forEach(function(label) {
+      var info = dirs[label] || {};
+      var err = info.error;
+      html += '<div style="background:#0f172a;border-radius:8px;padding:8px"><div style="color:#64748b;font-size:0.7rem">' + label + '</div>';
+      if (err) {
+        html += '<div style="color:#ef4444;font-size:0.75rem">' + err + '</div>';
+      } else {
+        html += '<div style="font-size:0.78rem"><span title="Files on disk">D:' + (info.files_found||0) + '</span> <span style="color:#64748b">|</span> <span title="In DB" style="color:#22c55e">DB:' + (info.in_db||0) + '</span> <span style="color:#64748b">|</span> <span title="Not in DB" style="color:#f59e0b">O:' + (info.not_in_db||0) + '</span></div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+    // Anomalies
+    var anomalies = d.anomalies || [];
+    html += '<h3 style="color:#94a3b8;font-size:0.78rem;margin:12px 0 6px 0">Anomalies <span style="color:' + (anomalies.length>0?"#ef4444":"#22c55e") + '">(' + anomalies.length + ')</span></h3>';
+    if (anomalies.length === 0) {
+      html += '<div style="color:#22c55e;padding:12px;text-align:center;background:#0f172a;border-radius:8px;font-size:0.82rem">&#x2713; No anomalies found — all coherent</div>';
+    } else {
+      html += '<div style="background:#0f172a;border-radius:8px;padding:8px">';
+      anomalies.forEach(function(a) {
+        var isErr = a.indexOf("not on disk") !== -1 || a.indexOf("not_in_db") !== -1;
+        html += '<div style="padding:6px 8px;border-bottom:1px solid #1e293b;font-size:0.78rem;color:' + (isErr?"#fca5a5":"#fbbf24") + '"><span style="margin-right:6px">' + (isErr?"&#x26A0;":"&#x2139;") + '</span>' + esc(a) + '</div>';
+      });
+      html += '</div>';
+    }
+    // Missing source orphans
+    var missingList = [];
+    anomalies.forEach(function(a) {
+      var m = a.match(/Book #(\d+):/);
+      if (m) missingList.push(m[1]);
+    });
+    if (missingList.length > 0 && missingList.length <= 20) {
+      html += '<div style="margin-top:8px;font-size:0.75rem;color:#64748b">Missing book IDs: ' + missingList.join(", ") + '</div>';
+    }
+    body.innerHTML = html;
+    status.textContent = "complete (" + anomalies.length + " anomalies)";
+  }).catch(function(err) {
+    body.innerHTML = '<div style="color:#ef4444;text-align:center;padding:20px">Error: ' + esc(err.message) + '</div>';
+    status.textContent = "error";
+  });
+}
+
+function closeReconModal() {
+  var modal = document.getElementById("reconModal");
+  if (modal) modal.style.display = "none";
+}
+
 // ── Summary ──
 function loadSummary() {
   Promise.all([
@@ -1139,7 +1242,7 @@ function loadSummary() {
   ]).then(([s, q]) => {
       const area = document.getElementById("summaryArea");
       if (area) area.style.display = "block";
-      renderUdcTree(s.by_udc || {}, s.udc_labels || {}, s.by_custom_tags || {}, s.total, s.untagged);
+      renderUdcTree(s.by_udc || {}, s.udc_labels || {}, s.by_custom_tags || {}, s.total, s.untagged, s.duplicates || 0, s.archive || 0);
       const grid = document.getElementById("summaryGrid");
       const udcLabels = s.udc_labels || {};
 
@@ -1220,22 +1323,29 @@ const UDC_TREE = [
   {code:"900", label:"History", subs:[{code:"910", label:"Geography"},{code:"920", label:"Biography"}]},
 ];
 
-function renderUdcTree(byUdc, udcLabels, byCustomTags, total, untagged) {
+function renderUdcTree(byUdc, udcLabels, byCustomTags, total, untagged, duplicates, archiveCount) {
   const el = document.getElementById("udcTree");
   if (!el) return;
   // Lazily fetch counts if not provided
   if (!byUdc) {
     fetch(API + "/api/summary").then(r => r.json()).then(s => {
-      renderUdcTree(s.by_udc || {}, s.udc_labels || {}, s.by_custom_tags || {}, s.total, s.untagged);
+      renderUdcTree(s.by_udc || {}, s.udc_labels || {}, s.by_custom_tags || {}, s.total, s.untagged, s.duplicates || 0, s.archive || 0);
     }).catch(() => {});
     return;
   }
   const currentFilter = document.getElementById("libUdcFilter").value;
   const currentTagFilter = document.getElementById("libTagFilter").value;
+  const currentStage = document.getElementById("libStageFilter").value;
   let html = "";
-  // Total + untagged header
-  html += '<div class="udc-tree-node" onclick="filterLibraryByUdc(\'\')" style="border-bottom:1px solid #334155;margin-bottom:6px;padding-bottom:6px"><span><strong style="color:#e2e8f0">Total</strong></span><span class="utcnt" style="color:#e2e8f0">' + (total || 0) + '</span></div>';
-  html += '<div class="udc-tree-node" onclick="filterLibraryByUdc(\'\')" style="margin-bottom:8px;font-size:0.72rem"><span style="color:#64748b">Untagged</span><span class="utcnt" style="color:#64748b">' + (untagged || 0) + '</span></div>';
+  // Total — clickable to refresh & clear all filters
+  var totalActive = (!currentFilter && !currentTagFilter && !currentStage && !document.getElementById("libMasterOnly").checked) ? " active" : "";
+  html += '<div class="udc-tree-node' + totalActive + '" onclick="resetLibrary()" style="border-bottom:1px solid #334155;margin-bottom:6px;padding-bottom:6px" title="Show all books"><span><strong style="color:#e2e8f0">Total</strong></span><span class="utcnt" style="color:#e2e8f0">' + (total || 0) + '</span></div>';
+  // Untagged — clickable to filter
+  html += '<div class="udc-tree-node" onclick="filterLibraryByUntagged()" style="margin-bottom:4px;font-size:0.72rem" title="Show books with no custom tags"><span style="color:#64748b">Untagged</span><span class="utcnt" style="color:#64748b">' + (untagged || 0) + '</span></div>';
+  // Archive — clickable to filter
+  html += '<div class="udc-tree-node" onclick="filterLibraryByArchive()" style="margin-bottom:4px;font-size:0.72rem" title="Show archived books"><span style="color:#a855f7">Archived</span><span class="utcnt" style="color:#a855f7">' + (archiveCount || 0) + '</span></div>';
+  // Duplicates — clickable to filter
+  html += '<div class="udc-tree-node" onclick="filterLibraryByDuplicate()" style="margin-bottom:8px;font-size:0.72rem;border-bottom:1px solid #334155;padding-bottom:6px" title="Show duplicate books"><span style="color:#eab308">Duplicates</span><span class="utcnt" style="color:#eab308">' + (duplicates || 0) + '</span></div>';
   UDC_TREE.forEach(group => {
     const cnt = byUdc[group.code] || 0;
     const active = currentFilter === group.code ? " active" : "";
@@ -1888,6 +1998,9 @@ function loadLibrary(filters) {
   if (maxSize) url += "&max_size=" + (parseFloat(maxSize) * 1024 * 1024);
   if (masterOnly) url += "&masters_only=1";
   if (source) url += "&source=" + encodeURIComponent(source);
+  if (filters.untagged) url += "&untagged=1";
+  if (filters.archive_only) url += "&archive_only=1";
+  if (filters.duplicate_only) url += "&duplicate_only=1";
   var sortVal = document.getElementById("libSort").value || "created_at:DESC";
   var sortParts = sortVal.split(":");
   url += "&sort=" + encodeURIComponent(sortParts[0]) + "&order=" + encodeURIComponent(sortParts[1]);
@@ -2085,7 +2198,7 @@ function showDetail(bookId) {
       html += `<span class="dl">Pages</span><span class="dd" id="dv_pages">${b.pages || "\u2014"}</span>`;
       html += `<span class="dl">Description</span><span class="dd" id="dv_description" style="max-height:80px;overflow-y:auto">${esc((b.description||"").substring(0,500)) || "\u2014"}</span>`;
       html += `<span class="dl">Source</span><span class="dd" style="font-size:0.7rem;word-break:break-all">${esc(b.source_path || "")}</span>`;
-      html += `<span class="dl">Stage</span><span class="dd"><span class="tag ${b.stage}">${b.stage}</span>${b.stage_error ? " <span style='color:#ef4444;font-size:0.75rem'>" + esc(b.stage_error) + "</span>" : ""}${b.master_id ? ' <a href="#" onclick="showDetail(' + b.master_id + ');return false" style="color:#0ea5e9;font-size:0.75rem;margin-left:4px">\u2190 Master #' + b.master_id + '</a>' : ""}`;
+      html += `<span class="dl">Stage</span><span class="dd"><span class="tag ${b.stage}">${b.stage}</span>${b.stage_error ? " <span style='color:#ef4444;font-size:0.75rem'>" + esc(b.stage_error) + "</span>" : ""}${b.master_id ? ' <a href="#" onclick="showDetail(' + b.master_id + ');return false" style="color:#0ea5e9;font-size:0.75rem;margin-left:4px">\u2190 Master #' + b.master_id + '</a>' : ""}${(b.source_path && b.source_path.indexOf("/archive") !== -1) ? ' <span class="tag quarantined">Archived</span>' : ""}`;
       html += `<span class="dl">Enrichment</span><span class="dd">${b.enrich_source ? '<span class="source-badge source-' + b.enrich_source + '">' + b.enrich_source + "</span>" : "\u2014"}</span>`;
       if (b.is_master === 1) html += ' <span class="tag survivor">Master</span>';
       else if (b.is_master === 0) html += ' <span class="tag skipped">Duplicate</span>';
@@ -3130,6 +3243,24 @@ function deleteBook(bookId) {
 // ── SSE events ── (disabled: using fetchStatus polling instead)
 // EventSource kept disabled to avoid IPv6 localhost timeout issues
 
+<!-- Recon modal -->
+<div id="reconModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;justify-content:center;align-items:center" onclick="if(event.target===this)closeReconModal()">
+  <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:20px;max-width:800px;width:90%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="margin:0">Coherence Recon <span id="reconStatus" style="color:#64748b;font-size:0.7rem">scanning...</span></h2>
+      <button onclick="closeReconModal()" style="background:none;border:none;color:#94a3b8;font-size:1.2rem;cursor:pointer">&times;</button>
+    </div>
+    <div id="reconBody" style="overflow-y:auto;flex:1;font-size:0.82rem">
+      <div style="color:#64748b;text-align:center;padding:20px">Running coherence audit...</div>
+    </div>
+    <div style="margin-top:12px;text-align:right">
+      <button onclick="closeReconModal()" style="padding:6px 16px;border:none;border-radius:4px;cursor:pointer;background:#334155;color:#e2e8f0;font-size:0.82rem">Close</button>
+      <button onclick="runRecon()" style="margin-left:8px;padding:6px 16px;border:none;border-radius:4px;cursor:pointer;background:#6366f1;color:#f8fafc;font-size:0.82rem">Re-run</button>
+    </div>
+  </div>
+</div>
+
+<script>
 fetchStatus();
 checkAuth();
 setInterval(fetchStatus, 5000);

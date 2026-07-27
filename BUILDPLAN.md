@@ -1333,7 +1333,56 @@ Add the ability to export all annotations, highlights, and notes for a book as a
 
 ---
 
-### P4.4 — Duplicate Book Link to Original
+### P5.5 — Reader View Controls
+
+Add zoom, page layout, and scroll mode controls to the reader toolbar for all formats.
+
+**Zoom controls:**
+- Zoom in/out buttons in the reader toolbar (`+` / `-` / reset)
+- Keyboard shortcuts: `Ctrl+=` / `Ctrl+-` / `Ctrl+0`
+- Zoom level indicator (e.g. "125%")
+- For PDF: adjusts the render scale and re-renders the page
+- For comics: scales the canvas/image via CSS transform
+- For EPUB: uses ePub.js `rendition.themes.fontSize()` or viewport width adjustment
+
+**Page mode:**
+- Toggle between `single page` and `two-page spread` (side-by-side)
+- For EPUB: `spread: "auto"` vs `spread: "none"` in `renderTo()`
+- For PDF: render two pages side by side when in spread mode
+- For comics: show two comic pages adjacent when in spread mode
+- Visual toggle button with icon showing current mode
+
+**Fit mode:**
+- `fit-to-page` (default): scale content to fill the viewport width/height
+- `original-size`: render at 100% with scrollbars
+- Toggle button that cycles or shows a dropdown
+
+**Scroll mode:**
+- `page-by-page` (default): arrow keys / buttons move one page at a time
+- `continuous-scroll`: all pages rendered vertically in a single scrollable container
+- For EPUB: ePub.js has `flow: "scrolled-doc"` vs `flow: "paginated"`
+- For PDF: render all pages stacked vertically
+- For comics: render all pages stacked, use Img or canvas for each
+- Toggle button in toolbar
+
+**Implementation notes:**
+- States stored in reader-level JS variables:
+  - `readerZoom` (float, default 1.0)
+  - `readerSpread` (bool, default false for single page)
+  - `readerFitMode` ("fit" | "original")
+  - `readerScrollMode` ("page" | "continuous")
+- On toggle, re-render current book with new settings
+- Persist preferences in `reader_state` table or localStorage for per-user memory
+- Toolbar buttons should be visible only for appropriate formats (e.g. spread mode only for EPUB/PDF)
+
+**Files to modify:**
+- `templates/index.html`: toolbar buttons, mode state variables, re-render logic per format
+- CSS for continuous scroll layout
+
+**Status**: Planned
+
+---
+
 
 When viewing a duplicate book (skipped, merged, or `is_master=0`), show a clickable link to the original/master book in the detail panel.
 
@@ -1389,14 +1438,15 @@ CSS: `.reader-layout` uses `min-height: calc(100vh - 160px)`, `#readerArea` uses
 | 4 | **P4.2a** — Fullscreen Mode | Low | ✅ Done | Fullscreen API. Hides reading list, keeps annotations sidebar visible for immersive reading |
 | 5 | **P4.2b** — Close (×) Button | Trivial | ✅ Done | Replaced "Back" with ✕. Saves state on close |
 | 6 | **P4.3** — Synchronised Scrolling | Low | ✅ Done | CSS-only. All 3 Library panels capped to viewport with internal scroll |
-| 7 | **P4.2d** — Cross-Format Highlighting | High | ⬜ Pending | PDF.js integration, comic canvas overlay, floating toolbar, persistence. Most complex item |
+| 7 | **P4.2d** — Cross-Format Highlighting | High | ✅ Done | PDF.js canvas rendering + comic canvas overlay + floating toolbar |
 | 8 | **P4.4** — Duplicate Link to Original | Low | ✅ Done | `master_id` column + clickable link in detail panel |
 | 9 | **P5.1** — Reading Pane Full-Space Layout | Low | ✅ Done | CSS flex fix, dynamic reader height |
-| 10 | **P5.2** — Reading List UX (✕ close, active highlight, metadata panel) | Medium | ⬜ Pending | Replace remove btn with ✕, highlight active book, show book info below list |
+| 10 | **P5.2** — Reading List UX (✕ close, active highlight, metadata panel) | Medium | ✅ Done | Inline ✕ close, active highlight, current book info panel |
 | 11 | **P5.3** — Enhanced Highlighting & Bookmarks | High | ⬜ Pending | Text selection for PDF/comic, auto-bookmarks, unified timeline in annotations sidebar |
 | 12 | **P5.4** — Export Annotations as Markdown | Low | ⬜ Pending | Download .md with book metadata + all highlights/notes in sequence |
-| 13 | **P6.1** — Portable Config Module | Medium | ⬜ Pending | Split config/data from code for laptop→Pi transfer workflow |
-| 14 | **P6.2** — Coherence Recon Tool | Low | ✅ Done | `GET /api/recon`, `--phase recon` CLI; scans inbox/processed/archive + DB integrity checks |
+| 13 | **P5.5** — Reader View Controls (zoom, page mode, scroll) | Medium | ⬜ Pending | Zoom in/out, single/2-page spread, fit-to-page/original, page-by-page/continuous scroll |
+| 14 | **P6.1** — Portable Config Module | Medium | ⬜ Pending | Split config/data from code for laptop→Pi transfer workflow |
+| 15 | **P6.2** — Coherence Recon Tool | Low | ✅ Done | `GET /api/recon`, `--phase recon` CLI; scans inbox/processed/archive + DB integrity checks |
 
 ---
 

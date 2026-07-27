@@ -364,6 +364,15 @@ def api_summary():
         result = get_summary(conn)
         from classifier import UDC_LABELS
         result["udc_labels"] = {k: UDC_LABELS.get(k, "") for k in result["by_udc"]}
+        # Archive count: books whose source_path is in the archive dir
+        archive_dir = getattr(config, "ARCHIVE_DIR", None)
+        if archive_dir:
+            result["archive"] = conn.execute(
+                "SELECT COUNT(*) FROM files WHERE source_path LIKE ?",
+                (f"{archive_dir}%",)
+            ).fetchone()[0]
+        else:
+            result["archive"] = 0
         return jsonify(result)
     finally:
         conn.close()
@@ -1530,6 +1539,9 @@ def api_search():
         max_size = int(max_size)
     source = request.args.get("source") or None
     masters_only = request.args.get("masters_only", type=int) == 1
+    untagged = request.args.get("untagged", type=int) == 1
+    duplicate_only = request.args.get("duplicate_only", type=int) == 1
+    archive_only = request.args.get("archive_only", type=int) == 1
     limit = request.args.get("limit", default=100, type=int)
     offset = request.args.get("offset", default=0, type=int)
     sort = request.args.get("sort") or None
@@ -1541,7 +1553,10 @@ def api_search():
                                        fmt=fmt, year_min=year_min, year_max=year_max,
                                        min_size=min_size, max_size=max_size,
                                        masters_only=masters_only, source=source, limit=limit, offset=offset,
-                                       sort=sort, order=order)
+                                       sort=sort, order=order,
+                                       untagged=untagged, duplicate_only=duplicate_only,
+                                       archive_only=archive_only,
+                                       archive_dir=getattr(config, "ARCHIVE_DIR", None))
         return jsonify({"results": results, "total": total, "query": q})
     finally:
         conn.close()

@@ -401,9 +401,13 @@ def get_summary(conn):
     untagged = conn.execute(
         "SELECT COUNT(*) FROM files f WHERE NOT EXISTS (SELECT 1 FROM tags t WHERE t.file_id = f.id AND t.tag_type='custom')"
     ).fetchone()[0]
+    duplicate_count = conn.execute("SELECT COUNT(*) FROM files WHERE is_master = 0").fetchone()[0]
+    masters_count = conn.execute("SELECT COUNT(*) FROM files WHERE is_master = 1").fetchone()[0]
     return {
         "total": total,
         "untagged": untagged,
+        "duplicates": duplicate_count,
+        "masters": masters_count,
         "by_stage": by_stage,
         "by_udc": by_udc,
         "by_format": by_format,
@@ -484,7 +488,8 @@ def rebuild_fts(conn):
 def search_books(conn, fts_query, stage=None, udc=None, tag=None, fmt=None,
                  year_min=None, year_max=None, min_size=None, max_size=None,
                  masters_only=False, source=None, limit=100, offset=0,
-                 sort=None, order=None):
+                 sort=None, order=None, untagged=False, duplicate_only=False,
+                 archive_only=False, archive_dir=None):
     """Full-text search across books with faceted filters.
 
     Returns (results_list, total_count).
@@ -545,6 +550,16 @@ def search_books(conn, fts_query, stage=None, udc=None, tag=None, fmt=None,
     if source:
         where_clauses.append("f.source_group = ?")
         params.append(source)
+
+    if untagged:
+        where_clauses.append("NOT EXISTS (SELECT 1 FROM tags t2 WHERE t2.file_id = f.id AND t2.tag_type='custom')")
+
+    if duplicate_only:
+        where_clauses.append("f.is_master = 0")
+
+    if archive_only and archive_dir:
+        where_clauses.append("f.source_path LIKE ?")
+        params.append(f"{archive_dir}%")
 
     where = ""
     if where_clauses:

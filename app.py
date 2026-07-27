@@ -8,7 +8,7 @@ import logging
 import shutil
 import subprocess
 import tempfile
-from flask import Flask, render_template, jsonify, Response, request, send_file, session
+from flask import Flask, render_template, jsonify, Response, request, send_file, session, make_response
 import pandas as pd
 
 import config
@@ -37,7 +37,7 @@ from enricher import enrich_book, _download_cover
 import enrich_filename
 
 app = Flask(__name__)
-app.config["TEMPLATES_AUTO_RELOAD"] = False
+app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.secret_key = config.SECRET_KEY
 app.permanent_session_lifetime = 86400 * 30  # 30 days
 
@@ -76,7 +76,11 @@ def resolve_book_path(book):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    resp = make_response(render_template("index.html"))
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 @app.route("/api/health")

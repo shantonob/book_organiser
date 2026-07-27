@@ -379,8 +379,12 @@ def get_summary(conn):
     ).fetchall())
     for s in ("arrived", "extracted", "cleaned", "cataloged", "survivor", "skipped", "copied", "quarantined"):
         by_stage.setdefault(s, 0)
+    untagged = conn.execute(
+        "SELECT COUNT(*) FROM files f WHERE NOT EXISTS (SELECT 1 FROM tags t WHERE t.file_id = f.id AND t.tag_type='custom')"
+    ).fetchone()[0]
     return {
         "total": total,
+        "untagged": untagged,
         "by_stage": by_stage,
         "by_udc": by_udc,
         "by_format": by_format,

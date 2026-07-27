@@ -33,6 +33,8 @@ from db import get_reader_state, save_reader_state
 from db import get_annotations, add_annotation, delete_annotation, export_annotations_markdown
 from db import get_bookmarks, add_bookmark, delete_bookmark
 from pipeline import state, run_pipeline, run_all_phases, run_phase_metadata, run_phase_dedup, run_phase_copy, discover_source_files, add_to_inbox
+from enricher import enrich_book, _download_cover
+import enrich_filename
 
 app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = False
@@ -1380,6 +1382,68 @@ def api_bookmark_delete(book_id, bm_id):
         delete_bookmark(conn, bm_id)
         conn.commit()
         return jsonify({"status": "ok"})
+    finally:
+        conn.close()
+
+
+@app.route("/api/book/<int:book_id>/enrich", methods=["POST"])
+def api_book_enrich(book_id):
+    """Re-run enrichment (Open Library + Google Books) for a single book."""
+    conn = get_connection(DB_PATH)
+    try:
+        book_row = get_book_by_id(conn, book_id)
+        if not book_row:
+            return jsonify({"error": "not found"}), 404
+        book = dict(book_row)
+        isbn = book.get("isbn")
+        title = book.get("title") or book.get("filename", "")
+        author = book.get("authors")
+        result = enrich_book(isbn=isbn, title=title, author=author)
+        if not result:
+            return jsonify({"error": "enrichment returned no data"}), 404
+        from datetime import datetime
+        from db import upsert_metadata
+        cover_path = None
+        if result.get("cover_url"):
+            covers_dir = os.path.join(os.path.dirname(config.DB_PATH), "covers")
+            cover_path = _download_cover(result["cover_url"], covers_dir)
+        upsert_metadata(conn, book_id,
+                        title=result.get("title"),
+                        authors=result.get("authors"),
+                        publisher=result.get("publisher"),
+                        year=result.get("year"),
+                        isbn=result.get("isbn"),
+                        pages=result.get("pages"),
+                        language=result.get("language"),
+                        description=result.get("description"),
+                        cover_path=cover_path,
+                        enrich_source=result.get("source", "enrich"),
+                        enriched_at=datetime.utcnow().isoformat())
+        conn.commit()
+        updated = get_book_by_id(conn, book_id)
+        return jsonify({"status": "ok", "book": dict(updated), "enriched": result})
+    finally:
+        conn.close()
+
+
+@app.route("/api/book/<int:book_id>/merge", methods=["POST"])
+def api_book_merge(book_id):
+    """Merge another book entry into this one (mark target as merged)."""
+    data = request.json or {}
+    target_id = data.get("target_id")
+    if not target_id:
+        return jsonify({"error": "target_id required"}), 400
+    conn = get_connection(DB_PATH)
+    try:
+        source = get_book_by_id(conn, book_id)
+        target = get_book_by_id(conn, target_id)
+        if not source or not target:
+            return jsonify({"error": "book not found"}), 404
+        conn.execute("UPDATE files SET stage=?, stage_error=? WHERE id=?",
+                     ("merged", f"Merged into {book_id}", target_id))
+        conn.execute("UPDATE files SET is_master=1 WHERE id=?", (book_id,))
+        conn.commit()
+        return jsonify({"status": "ok", "merged_id": target_id, "into_id": book_id})
     finally:
         conn.close()
 

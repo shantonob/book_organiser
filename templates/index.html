@@ -1117,7 +1117,7 @@ function loadSummary() {
   ]).then(([s, q]) => {
       const area = document.getElementById("summaryArea");
       if (area) area.style.display = "block";
-      renderUdcTree(s.by_udc || {}, s.udc_labels || {}, s.by_custom_tags || {});
+      renderUdcTree(s.by_udc || {}, s.udc_labels || {}, s.by_custom_tags || {}, s.total, s.untagged);
       const grid = document.getElementById("summaryGrid");
       const udcLabels = s.udc_labels || {};
 
@@ -1198,19 +1198,22 @@ const UDC_TREE = [
   {code:"900", label:"History", subs:[{code:"910", label:"Geography"},{code:"920", label:"Biography"}]},
 ];
 
-function renderUdcTree(byUdc, udcLabels, byCustomTags) {
+function renderUdcTree(byUdc, udcLabels, byCustomTags, total, untagged) {
   const el = document.getElementById("udcTree");
   if (!el) return;
   // Lazily fetch counts if not provided
   if (!byUdc) {
     fetch(API + "/api/summary").then(r => r.json()).then(s => {
-      renderUdcTree(s.by_udc || {}, s.udc_labels || {}, s.by_custom_tags || {});
+      renderUdcTree(s.by_udc || {}, s.udc_labels || {}, s.by_custom_tags || {}, s.total, s.untagged);
     }).catch(() => {});
     return;
   }
   const currentFilter = document.getElementById("libUdcFilter").value;
   const currentTagFilter = document.getElementById("libTagFilter").value;
   let html = "";
+  // Total + untagged header
+  html += '<div class="udc-tree-node" onclick="filterLibraryByUdc(\'\')" style="border-bottom:1px solid #334155;margin-bottom:6px;padding-bottom:6px"><span><strong style="color:#e2e8f0">Total</strong></span><span class="utcnt" style="color:#e2e8f0">' + (total || 0) + '</span></div>';
+  html += '<div class="udc-tree-node" onclick="filterLibraryByUdc(\'\')" style="margin-bottom:8px;font-size:0.72rem"><span style="color:#64748b">Untagged</span><span class="utcnt" style="color:#64748b">' + (untagged || 0) + '</span></div>';
   UDC_TREE.forEach(group => {
     const cnt = byUdc[group.code] || 0;
     const active = currentFilter === group.code ? " active" : "";
@@ -2068,6 +2071,8 @@ function showDetail(bookId) {
       html += '<button onclick="reCopyBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a">Re-copy</button>';
       html += '<button onclick="window.location.href=API+\'/api/book/' + bookId + '/download\'" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#6366f1;color:#f8fafc;font-weight:600">Download</button>';
       html += '<button onclick="openReader(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f97316;color:#0f172a;font-weight:600">Read Online</button>';
+      html += '<button onclick="enrichBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f59e0b;color:#0f172a;font-weight:600">Enrich</button>';
+      html += '<button onclick="mergeBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#e11d48;color:#f8fafc;font-weight:600">Merge...</button>';
       html += '<button id="detailRlBtn" onclick="addDetailToReadingList(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#0ea5e9;color:#0f172a;font-weight:600">+ Reading List</button>';
       html += '</div>';
 
@@ -2833,6 +2838,31 @@ function reCopyBook(bookId) {
   fetch(API + "/api/book/" + bookId + "/re-copy", {method:"POST"})
     .then(r => r.json()).then(d => { showDetail(bookId); loadLibrary(); })
     .catch(() => { showDetail(bookId); });
+}
+
+function enrichBook(bookId) {
+  const btn = event && event.target ? event.target : null;
+  if (btn) { btn.disabled = true; btn.textContent = "Enriching..."; }
+  fetch(API + "/api/book/" + bookId + "/enrich", {method:"POST"})
+    .then(r => r.json()).then(d => {
+      if (d.error) { alert("Enrich failed: " + d.error); return; }
+      showDetail(bookId);
+    }).catch(() => { alert("Enrich request failed"); })
+    .finally(function() { if (btn) { btn.disabled = false; btn.textContent = "Enrich"; } });
+}
+
+function mergeBook(bookId) {
+  var target = prompt("Enter the ID of the book to merge INTO this one (the target book will be marked as merged):");
+  if (!target || !target.trim()) return;
+  var tid = parseInt(target.trim());
+  if (isNaN(tid) || tid === bookId) { alert("Invalid target ID"); return; }
+  if (!confirm("Merge book #" + tid + " into #" + bookId + "? Book #" + tid + " will be marked as merged.")) return;
+  fetch(API + "/api/book/" + bookId + "/merge", {method:"POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({target_id: tid})})
+    .then(r => r.json()).then(d => {
+      if (d.error) { alert("Merge failed: " + d.error); return; }
+      showDetail(bookId);
+      loadLibrary();
+    }).catch(() => { alert("Merge request failed"); });
 }
 
 // ── SSE events ── (disabled: using fetchStatus polling instead)

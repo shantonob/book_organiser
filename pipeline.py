@@ -222,6 +222,7 @@ def run_phase_metadata(source=None, inbox_files=None):
 
     if source is not None:
         config.SOURCE_DIR = source
+        config.SOURCE_DIRS = [source]
 
     state.update(phase="metadata", log_msg="▶ Phase A: Metadata pipeline started")
 
@@ -738,28 +739,26 @@ def cleanup_source_dir(source_dir):
     conn = get_connection(config.DB_PATH)
     try:
         norm_source = os.path.normpath(source_dir)
-        # Resolve the real device path so Z:\books and \\raspberrypi\...\books compare equal
         real_source = os.path.realpath(norm_source)
 
-        all_files = conn.execute(
-            "SELECT id, source_path, stage FROM files"
+        like_pattern = norm_source.rstrip("/\\") + "%"
+        rows = conn.execute(
+            "SELECT id, source_path, stage FROM files WHERE source_path LIKE ?",
+            (like_pattern,)
         ).fetchall()
-        rows = []
-        for f in all_files:
+        matched = []
+        for f in rows:
             sp = f["source_path"]
             if not sp:
                 continue
-            if not os.path.isfile(sp):
-                continue
-            # Check if this file lives under source_dir (handles drive ↔ UNC mismatch)
             try:
                 real_sp = os.path.realpath(sp)
-                os.path.relpath(real_sp, real_source)  # throws ValueError if different drives
-                rows.append(f)
+                os.path.relpath(real_sp, real_source)
+                matched.append(f)
             except ValueError:
                 continue
 
-        if not rows:
+        if not matched:
             return
 
         processed_dir = getattr(config, "PROCESSED_DIR", config.FLAT_DIR)
@@ -770,7 +769,7 @@ def cleanup_source_dir(source_dir):
         moved_proc = 0
         moved_arch = 0
         errors = 0
-        for row in rows:
+        for row in matched:
             sp = row["source_path"]
             if not sp or not os.path.isfile(sp):
                 continue
@@ -801,7 +800,6 @@ def cleanup_source_dir(source_dir):
         if moved_proc or moved_arch:
             state.update(log_msg=f"  📦 Cleanup: {moved_proc} → processed, {moved_arch} → archive, {errors} errors")
 
-        # Remove empty directories left behind (bottom-up so children are removed first)
         removed_dirs = 0
         for dirpath, dirnames, filenames in os.walk(source_dir, topdown=False):
             if os.path.normpath(dirpath) == os.path.normpath(source_dir):

@@ -35,15 +35,16 @@ from db import get_bookmarks, add_bookmark, delete_bookmark
 from pipeline import state, run_pipeline, run_all_phases, run_phase_metadata, run_phase_dedup, run_phase_copy, discover_source_files, add_to_inbox
 
 app = Flask(__name__)
-app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.config["TEMPLATES_AUTO_RELOAD"] = False
 app.secret_key = config.SECRET_KEY
 app.permanent_session_lifetime = 86400 * 30  # 30 days
 
 # Ensure log directory exists
 os.makedirs(config.LOG_DIR, exist_ok=True)
 
-# Route all server output to app.log
-log_handler = logging.FileHandler(config.LOG_FILE, encoding="utf-8")
+# Route all server output to app.log (local copy to avoid SMB latency)
+_local_log = os.path.join(os.path.expanduser("~"), "book_organiser_data", "app.log")
+log_handler = logging.FileHandler(_local_log, encoding="utf-8")
 log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
 werkz = logging.getLogger("werkzeug")
 werkz.setLevel(logging.INFO)
@@ -153,7 +154,8 @@ def api_book(book_id):
             return jsonify({"error": "not found"}), 404
         result = dict(book)
         result["tags"] = get_tags(conn, book_id)
-        return jsonify(result)
+        resp = jsonify(result)
+        return resp
     finally:
         conn.close()
 
@@ -1573,32 +1575,31 @@ def api_export_excel():
 
 @app.route("/api/events")
 def api_events():
+    """Legacy SSE endpoint — clients should use /api/status polling instead."""
     def generate():
-        while True:
-            conn = get_connection(DB_PATH)
-            try:
-                summary = get_pipeline_summary(conn)
-                funnel = get_funnel(conn)
-                snap = state.get_snapshot()
-                if _pipeline_proc and _pipeline_proc.poll() is None:
-                    try:
-                        persist_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "pipeline_state.json")
-                        with open(persist_path, "r", encoding="utf-8") as f:
-                            sub_snap = json.load(f)
-                        snap.update(sub_snap)
-                        snap["running"] = True
-                    except (FileNotFoundError, json.JSONDecodeError, OSError):
-                        pass
-                data = {
-                    "pipeline": snap,
-                    "summary": summary,
-                    "funnel": funnel,
-                    "recent": [dict(r) for r in get_recent_books(conn, 10)],
-                }
-                yield f"data: {json.dumps(data)}\n\n"
-            finally:
-                conn.close()
-            time.sleep(2)
+        conn = get_connection(DB_PATH)
+        try:
+            summary = get_pipeline_summary(conn)
+            funnel = get_funnel(conn)
+            snap = state.get_snapshot()
+            if _pipeline_proc and _pipeline_proc.poll() is None:
+                try:
+                    persist_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "pipeline_state.json")
+                    with open(persist_path, "r", encoding="utf-8") as f:
+                        sub_snap = json.load(f)
+                    snap.update(sub_snap)
+                    snap["running"] = True
+                except (FileNotFoundError, json.JSONDecodeError, OSError):
+                    pass
+            data = {
+                "pipeline": snap,
+                "summary": summary,
+                "funnel": funnel,
+                "recent": [dict(r) for r in get_recent_books(conn, 10)],
+            }
+            yield f"data: {json.dumps(data)}\n\n"
+        finally:
+            conn.close()
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-store", "Connection": "keep-open"})
 

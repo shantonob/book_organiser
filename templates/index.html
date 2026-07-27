@@ -634,6 +634,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 </div>
 
 <script>
+// Redirect localhost to 127.0.0.1 to avoid IPv6 timeout
+if (location.hostname === "localhost" || location.hostname === "::1") {
+  location.replace(location.href.replace(/\/\/(localhost|::1)(?=[:/])/, "//127.0.0.1"));
+}
 const API = "";
 
 // ── Tab switching ──
@@ -2450,6 +2454,20 @@ function toggleFullscreen() {
   }
 }
 
+document.addEventListener("fullscreenchange", function() {
+  var isFs = !!document.fullscreenElement;
+  var h = isFs ? window.innerHeight - 60 : window.innerHeight - 200;
+  if (readerRendition) {
+    try { readerRendition.resize("100%", h); } catch(e) {}
+  }
+  var ra = document.getElementById("readerArea");
+  if (ra) ra.style.height = h + "px";
+  var iframe = ra ? ra.querySelector("iframe") : null;
+  if (iframe) iframe.style.height = h + "px";
+  var img = ra ? ra.querySelector("img") : null;
+  if (img) img.style.maxHeight = (isFs ? window.innerHeight - 80 : window.innerHeight - 220) + "px";
+});
+
 // ═══ Annotations (R3 + R5) ═══
 
 function loadAnnotations(bookId) {
@@ -2817,19 +2835,8 @@ function reCopyBook(bookId) {
     .catch(() => { showDetail(bookId); });
 }
 
-// ── SSE events ──
-if (typeof EventSource !== "undefined") {
-  const evt = new EventSource(API + "/api/events");
-  evt.onmessage = function(e) {
-    try {
-      const d = JSON.parse(e.data);
-      if (d.funnel) renderFunnel(d.funnel);
-      updateCurrent(d.pipeline);
-      phaseBadges(d.pipeline);
-      if (d.pipeline && d.pipeline.log) renderLog(d.pipeline.log);
-    } catch(ex) {}
-  };
-}
+// ── SSE events ── (disabled: using fetchStatus polling instead)
+// EventSource kept disabled to avoid IPv6 localhost timeout issues
 
 fetchStatus();
 checkAuth();

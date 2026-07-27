@@ -26,7 +26,12 @@ WATCH_RECURSIVE = True
 PROCESSED_DIR = ""
 FLAT_DIR = ""
 ARCHIVE_DIR = ""
-DB_PATH = os.environ.get("BOOK_DB_PATH", os.path.join(DATA_DIR, "catalog.db"))
+_DEFAULT_DB = os.path.join(DATA_DIR, "catalog.db")
+DB_PATH = os.environ.get("BOOK_DB_PATH", _DEFAULT_DB)
+# If default DB is on a network/SMB path, use a local copy for performance
+if not os.environ.get("BOOK_DB_PATH") and "\\\\" in DB_PATH:
+    _LOCAL_DB = os.path.join(os.path.expanduser("~"), "book_organiser_data", "catalog.db")
+    DB_PATH = _LOCAL_DB
 EXCLUDE_DIRS = set(
     os.environ.get("BOOK_EXCLUDE_DIRS", ".git,__pycache__,data,templates,extractors").split(",")
 )

@@ -9,7 +9,8 @@ import config
 def setup_logger(name, filename=None, level=logging.INFO, also_stdout=False):
     if filename is None:
         filename = f"{name}.log"
-    log_dir = config.LOG_DIR
+    # Use local log dir to avoid SMB latency
+    log_dir = os.path.join(os.path.expanduser("~"), "book_organiser_data", "logs")
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, filename)
 

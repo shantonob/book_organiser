@@ -1426,6 +1426,46 @@ Implementation: Option B — added `master_id` column, updated `mark_duplicate()
 
 **Status**: ✅ Done (a104df9)
 
+
+## Phase 7 — Stability & Quality (Design Gap Fixes)
+
+| # | Item | Severity | Status | Description |
+|---|------|----------|--------|-------------|
+| 1 | **D7.1** — GET endpoints trigger mutations | **High** | ⬜ Pending | `api_scan`, `api_scan_all`, `api_scan_inbox`, `api_phase_*` are GET but start pipelines. Browsers pre-fetch GET — causes duplicate runs |
+| 2 | **D7.2** — Pipeline no mutual exclusion | **High** | ⬜ Pending | No lock prevents concurrent pipeline runs; state corruption risk |
+| 3 | **D7.3** — FTS stale after metadata edits | **High** | ⬜ Pending | `books_fts` not updated when title/author edited via API; search returns stale results |
+| 4 | **D7.4** — Delete doesn't clean covers + flat_path | **High** | ⬜ Pending | `flat_path`/`archive_path` columns don't exist in schema; cover images orphaned; processed copy not deleted |
+| 5 | **D7.5** — Network DB silently redirected | **High** | ⬜ Pending | UNC path auto-switched to local copy with no sync mechanism |
+| 6 | **D7.6** — Config overrides not live-applied | **High** | ⬜ Pending | Path changes stored to DB but not applied until Flask restart |
+| 7 | **D7.7** — Default secret key | **High** | ⬜ Pending | `"change-me-in-production"` — session forgery trivial if not overridden |
+| 8 | **D7.8** — Conversion blocks Flask worker | **High** | ⬜ Pending | MOBI→EPUB `subprocess.run` blocks worker up to 2 minutes synchronously |
+| 9 | **D7.9** — Event listener leaks | **High** | ⬜ Pending | `keydown` readers accumulate on re-open; interval timers never cleaned up on tab switch |
+| 10 | **D7.10** — Pipeline state write not atomic | **Medium** | ⬜ Pending | `json.dump` directly to file — crash mid-write leaves corrupted file |
+| 11 | **D7.11** — Cover download failures silent | **Medium** | ⬜ Pending | Bare `except: pass` swallows cover fetch errors |
+| 12 | **D7.12** — Run recon skips cover integrity | **Medium** | ⬜ Pending | Doesn't check cover_path existence or orphaned covers |
+| 13 | **D7.13** — No request body size limit | **Medium** | ⬜ Pending | `MAX_CONTENT_LENGTH` not set — OOM risk from large payloads |
+| 14 | **D7.14** — SSE endpoint broken | **Medium** | ⬜ Pending | Yields once then hangs; client waits forever. Legacy — replace with polling |
+| 15 | **D7.15** — Inconsistent error response format | **Medium** | ⬜ Pending | Some return `{"error":"msg"}`, others empty body or plain text |
+| 16 | **D7.16** — All POST missing CSRF | **Medium** | ⬜ Pending | No CSRF token; malicious site could trigger actions on authenticated session |
+| 17 | **D7.17** — N+1 in bulk delete | **Medium** | ⬜ Pending | Calls `get_book_by_id` per book_id instead of single `WHERE id IN (...)` |
+| 18 | **D7.18** — Missing indexes on foreign keys | **Medium** | ⬜ Pending | `pipeline_log.file_id`, `quarantined.file_id` unindexed — full table scans |
+| 19 | **D7.19** — Daemon status no unique process key | **Medium** | ⬜ Pending | Two daemons overwrite each other's status rows |
+| 20 | **D7.20** — Comic cache extraction blocks worker | **Medium** | ⬜ Pending | CBZ/CBR extract synchronous in request thread |
+| 21 | **D7.21** — Library search no pagination | **Medium** | ⬜ Pending | `limit=200` hardcoded, no prev/next controls |
+| 22 | **D7.22** — Enrichment cache not thread-safe | **Medium** | ⬜ Pending | JSON file read/rewrite not atomic; concurrent writes corrupt cache |
+| 23 | **D7.23** — FTS rebuild scans all rows | **Medium** | ⬜ Pending | `DELETE+INSERT` all rows instead of incremental upsert |
+| 24 | **D7.24** — Bulk tag ops N individual queries | **Medium** | ⬜ Pending | Loops per book_id instead of `executemany` or batch INSERT |
+| 25 | **D7.25** — Grid view hides bulk toolbar | **Medium** | ⬜ Pending | No checkboxes in grid view; toolbar hidden but book selection persists |
+| 26 | **D7.26** — fetchStatus interval never cleaned | **Medium** | ⬜ Pending | `setInterval` runs 24/7 even when tab hidden |
+| 27 | **D7.27** — Silent promise rejections | **Medium** | ⬜ Pending | `.catch(() => {})` everywhere — network errors invisible to user |
+| 28 | **D7.28** — Archive exclusion leaks on re-load | **Medium** | ⬜ Pending | `EXCLUDE_DIRS` mutates on each `load_config_overrides` call — accumulates stale entries |
+| 29 | **D7.29** — Resolve book path no cover cache | **Medium** | ⬜ Pending | Doesn't check covers directory; download may fail for orphaned files |
+| 30 | **D7.30** — Path traversal not fully mitigated | **Low** | ⬜ Pending | `send_file` path not validated against allowed base dirs |
+| 31 | **D7.31** — Compensating tx for 3-phase pipeline | **Medium** | ⬜ Pending | Phase A+B commit before C runs; C failure leaves inconsistent state |
+| 32 | **D7.32** — Inconsistent confirm dialogs | **Low** | ⬜ Pending | Mix of native `confirm()` and styled modals for destructive actions |
+
+**Status**: In progress — D7.1 and D7.2 being fixed first (most impactful for stability)
+
 CSS: `.reader-layout` uses `min-height: calc(100vh - 160px)`, `#readerArea` uses `flex:1`, EPUB rendition height reads container `offsetHeight` dynamically. Fullscreen handler simplified.
 
 ### P5.2 — Reading List UX Improvements

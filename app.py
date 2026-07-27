@@ -229,19 +229,21 @@ def api_survivors():
 
 # â”€â”€ Phase triggers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-@app.route("/api/scan")
+@app.route("/api/scan", methods=["POST"])
 def api_scan():
     """Run Phase A (metadata) + Phase B (dedup). Copy is NOT included."""
-    source = request.args.get("source") or config.SOURCE_DIR
+    data = request.json or {}
+    source = data.get("source") or config.SOURCE_DIR
     if not source:
         return jsonify({"error": "No source directory configured. Set one in Settings."}), 400
     _start_pipeline_subprocess("metadata", source)
     return jsonify({"status": "started", "source": source, "phases": "metadata+dedup"})
 
-@app.route("/api/scan_all")
+@app.route("/api/scan_all", methods=["POST"])
 def api_scan_all():
     """Run all three phases: metadata + dedup + copy."""
-    source = request.args.get("source") or config.SOURCE_DIR
+    data = request.json or {}
+    source = data.get("source") or config.SOURCE_DIR
     if not source:
         return jsonify({"error": "No source directory configured. Set one in Settings."}), 400
     if not config.FLAT_DIR:
@@ -250,8 +252,9 @@ def api_scan_all():
     return jsonify({"status": "started", "source": source, "phases": "metadata+dedup+copy"})
 
 
-@app.route("/api/scan_inbox")
+@app.route("/api/scan_inbox", methods=["POST"])
 def api_scan_inbox():
+    data = request.json or {}
     inbox_path = getattr(config, "WATCH_DIR", config.INBOX_DIR)
     if not os.path.isdir(inbox_path):
         inbox_path = os.path.join(os.path.dirname(__file__), "inbox")
@@ -271,6 +274,23 @@ _pipeline_proc = None
 
 def _start_pipeline_subprocess(phase, source=None):
     global _pipeline_proc
+    if _pipeline_proc and _pipeline_proc.poll() is None:
+        logger.warning("Pipeline already running — refusing to start another")
+        return
+    # Check cross-process lock file
+    lock_path = os.path.join(config.DATA_DIR, "pipeline.lock")
+    try:
+        if os.path.exists(lock_path):
+            with open(lock_path, "r") as f:
+                old_pid = int(f.read().strip())
+            try:
+                os.kill(old_pid, 0)
+                logger.warning(f"Pipeline lock held by PID {old_pid} — refusing concurrent run")
+                return
+            except (OSError, ProcessLookupError):
+                pass
+    except Exception:
+        pass
     import sys
     args = [sys.executable, "app.py", "--phase", phase]
     if source:
@@ -282,22 +302,23 @@ def _start_pipeline_subprocess(phase, source=None):
     logger.info(f"Started pipeline subprocess PID={_pipeline_proc.pid} phase={phase}")
 
 
-@app.route("/api/phase/metadata")
+@app.route("/api/phase/metadata", methods=["POST"])
 def api_phase_metadata():
-    source = request.args.get("source") or config.SOURCE_DIR
+    data = request.json or {}
+    source = data.get("source") or config.SOURCE_DIR
     if not source:
         return jsonify({"error": "No source directory configured. Set one in Settings."}), 400
     _start_pipeline_subprocess("metadata", source)
     return jsonify({"status": "started", "phase": "metadata", "source": source})
 
 
-@app.route("/api/phase/dedup")
+@app.route("/api/phase/dedup", methods=["POST"])
 def api_phase_dedup():
     _start_pipeline_subprocess("dedup")
     return jsonify({"status": "started", "phase": "dedup"})
 
 
-@app.route("/api/phase/copy")
+@app.route("/api/phase/copy", methods=["POST"])
 def api_phase_copy():
     if not config.FLAT_DIR:
         return jsonify({"error": "No output directory configured. Set Flat Output Directory in Settings."}), 400

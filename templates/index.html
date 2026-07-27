@@ -1109,23 +1109,23 @@ function exportExcel() {
 
 function runAll() {
   document.getElementById("statusLabel").textContent = "A+B: metadata + dedup...";
-  fetch(API + "/api/scan?source=" + encodeURIComponent(getSource()));
+  fetch(API + "/api/scan", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({source: getSource()})});
 }
 function runAllWithCopy() {
   document.getElementById("statusLabel").textContent = "A+B+C: full pipeline...";
-  fetch(API + "/api/scan_all?source=" + encodeURIComponent(getSource()));
+  fetch(API + "/api/scan_all", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({source: getSource()})});
 }
 function phaseMetadata() {
   document.getElementById("statusLabel").textContent = "phase A: metadata...";
-  fetch(API + "/api/phase/metadata?source=" + encodeURIComponent(getSource()));
+  fetch(API + "/api/phase/metadata", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({source: getSource()})});
 }
 function phaseDedup() {
   document.getElementById("statusLabel").textContent = "phase B: dedup...";
-  fetch(API + "/api/phase/dedup");
+  fetch(API + "/api/phase/dedup", {method:"POST"});
 }
 function phaseCopy() {
   document.getElementById("statusLabel").textContent = "phase C: copy...";
-  fetch(API + "/api/phase/copy");
+  fetch(API + "/api/phase/copy", {method:"POST"});
 }
 
 function updateGlobalStatus(p) {

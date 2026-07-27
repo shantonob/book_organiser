@@ -702,7 +702,38 @@ def run_phase_copy():
 
 # ── Combined run (metadata + dedup only; copy is separate) ───
 
+def _acquire_lock():
+    """Try to acquire a cross-process pipeline lock. Returns True if acquired."""
+    lock_path = os.path.join(config.DATA_DIR, "pipeline.lock")
+    try:
+        if os.path.exists(lock_path):
+            with open(lock_path, "r") as f:
+                old_pid = int(f.read().strip())
+            try:
+                os.kill(old_pid, 0)  # Check if process still exists
+                logger.warning(f"Pipeline lock held by PID {old_pid} — refusing concurrent run")
+                return False
+            except (OSError, ProcessLookupError):
+                pass  # Stale lock
+        with open(lock_path, "w") as f:
+            f.write(str(os.getpid()))
+        return True
+    except Exception as e:
+        logger.error(f"Failed to acquire pipeline lock: {e}")
+        return False
+
+def _release_lock():
+    lock_path = os.path.join(config.DATA_DIR, "pipeline.lock")
+    try:
+        if os.path.exists(lock_path):
+            os.remove(lock_path)
+    except Exception as e:
+        logger.error(f"Failed to release pipeline lock: {e}")
+
 def run_pipeline(source=None, inbox_files=None):
+    if not _acquire_lock():
+        state.update(log_msg="✗ Pipeline already running — concurrent run refused")
+        return
     state.running = True
     init_db(config.DB_PATH)
     try:
@@ -713,9 +744,13 @@ def run_pipeline(source=None, inbox_files=None):
         state.running = False
         elapsed = _fmt_dur(state.get_snapshot().get("elapsed"))
         state.update(log_msg=f"✓ Pipeline (metadata+dedup) finished ({elapsed})")
+        _release_lock()
 
 def run_all_phases(source=None, inbox_files=None):
     """Run metadata + dedup + copy sequentially."""
+    if not _acquire_lock():
+        state.update(log_msg="✗ Pipeline already running — concurrent run refused")
+        return
     state.running = True
     init_db(config.DB_PATH)
     try:
@@ -730,6 +765,7 @@ def run_all_phases(source=None, inbox_files=None):
         state.running = False
         elapsed = _fmt_dur(state.get_snapshot().get("elapsed"))
         state.update(log_msg=f"✓ Full pipeline complete ({elapsed})")
+        _release_lock()
 
 
 def cleanup_source_dir(source_dir):

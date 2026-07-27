@@ -133,6 +133,7 @@ def init_db(db_path):
     ensure_reading_tables(conn)
 
     conn.commit()
+    _ensure_annotation_migration(conn)
     conn.close()
     # Re-open and re-init to ensure all migrations are applied
     conn = get_connection(db_path)
@@ -154,6 +155,17 @@ def init_db(db_path):
         """)
     conn.commit()
     conn.close()
+
+
+def _ensure_annotation_migration(conn):
+    try:
+        conn.execute("SELECT page FROM annotations LIMIT 1")
+    except Exception:
+        conn.execute("ALTER TABLE annotations ADD COLUMN page INTEGER")
+    try:
+        conn.execute("SELECT bbox FROM annotations LIMIT 1")
+    except Exception:
+        conn.execute("ALTER TABLE annotations ADD COLUMN bbox TEXT")
 
 
 def upsert_file(conn, source_path, filename, file_size, file_hash, fmt, source_group=None):
@@ -888,11 +900,11 @@ def get_annotations(conn, book_id):
     return [dict(r) for r in rows]
 
 
-def add_annotation(conn, book_id, ann_type, cfi_range, text, note=None, color='#fef08a'):
+def add_annotation(conn, book_id, ann_type, cfi_range, text, note=None, color='#fef08a', page=None, bbox=None):
     conn.execute("""
-        INSERT INTO annotations (book_id, type, cfi_range, text, note, color)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (book_id, ann_type, cfi_range, text, note, color))
+        INSERT INTO annotations (book_id, type, cfi_range, text, note, color, page, bbox)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (book_id, ann_type, cfi_range, text, note, color, page, bbox))
     return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
 

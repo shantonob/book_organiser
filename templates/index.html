@@ -187,6 +187,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .reading-list-sidebar h3 { font-size: 0.78rem; color: #94a3b8; margin-bottom: 8px; }
   .reading-list-sidebar .rl-item { padding: 6px 8px; border-radius: 4px; cursor: pointer; margin-bottom: 3px; transition: background 0.15s; }
   .reading-list-sidebar .rl-item:hover { background: #334155; }
+  .reading-list-sidebar .rl-item.active { background: #1e293b; border-left: 3px solid #0ea5e9; }
+  .reading-list-sidebar .rl-item .rl-title { font-size: 0.75rem; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .reading-list-sidebar .rl-item .rl-close { font-size: 0.6rem; color: #64748b; cursor: pointer; padding: 2px 4px; border-radius: 3px; flex-shrink: 0; }
+  .reading-list-sidebar .rl-item .rl-close:hover { color: #ef4444; background: #334155; }
   .reading-list-sidebar .rl-item .rl-title { font-size: 0.75rem; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .reading-list-sidebar .rl-item .rl-meta { font-size: 0.62rem; color: #64748b; }
   .reading-list-sidebar .rl-group-label { font-size: 0.65rem; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; margin: 8px 0 4px 6px; }
@@ -224,10 +228,22 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .hl-popup input { width: 100%; padding: 4px 8px; border-radius: 4px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 0.75rem; margin-bottom: 6px; }
   .hl-popup .hl-actions { display: flex; gap: 4px; }
   .hl-popup .hl-actions button { flex: 1; padding: 4px 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.72rem; font-weight: 600; }
+  /* PDF.js viewer */
+  .pdf-viewer { width: 100%; height: 100%; overflow-y: auto; }
+  .pdf-canvas-wrap { position: relative; margin: 0 auto 8px auto; }
+  .pdf-canvas-wrap canvas { display: block; width: 100%; height: auto; }
+  .pdf-text-layer { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; opacity: 0.2; }
+  .pdf-text-layer span { cursor: text; }
+  /* Comic canvas overlay */
+  .comic-canvas-wrap { position: relative; display: inline-block; }
+  .comic-canvas-wrap canvas { max-width: 100%; max-height: calc(100vh - 220px); border-radius: 4px; box-shadow: 0 2px 12px rgba(0,0,0,0.3); }
+  /* Selection overlay during drag */
+  .sel-overlay { position: absolute; border: 2px dashed #0ea5e9; background: rgba(14,165,233,0.15); pointer-events: none; display: none; z-index: 10; }
   /* Annotation sidebar toggle */
   #annToggleBtn { position: relative; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.88/epub.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
 <div class="container">
@@ -542,6 +558,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         <div id="readingListContent">
           <div class="rl-empty">Loading...</div>
         </div>
+        <div id="readingListBookInfo"></div>
       </div>
       <!-- Reader Main -->
       <div class="reader-main">
@@ -2171,27 +2188,62 @@ let readerSaveTimer = null;
 // ═══ Reading List (R1) ═══
 
 function loadReadingList() {
-  fetch(API + "/api/reading-list").then(r => r.json()).then(items => {
+  fetch(API + "/api/reading-list").then(function(r) { return r.json(); }).then(function(items) {
     const el = document.getElementById("readingListContent");
-    if (!items.length) { el.innerHTML = '<div class="rl-empty">Add books to your reading list to get started</div>'; return; }
+    if (!items.length) { el.innerHTML = '<div class="rl-empty">Add books to your reading list to get started</div>'; updateReadingListBookInfo(); return; }
     const groups = {reading: [], to_read: [], finished: []};
     const labels = {reading: "Reading", to_read: "To Read", finished: "Finished"};
-    items.forEach(i => { if (groups[i.status]) groups[i.status].push(i); });
+    items.forEach(function(i) { if (groups[i.status]) groups[i.status].push(i); });
     var html = "";
-    ["reading","to_read","finished"].forEach(g => {
+    ["reading","to_read","finished"].forEach(function(g) {
       if (!groups[g].length) return;
       html += '<div class="rl-group-label">' + labels[g] + ' (' + groups[g].length + ')</div>';
-      groups[g].forEach(i => {
+      groups[g].forEach(function(i) {
         var pct = i.progress_pct || 0;
-        html += '<div class="rl-item" onclick="openReader(' + i.book_id + ')">';
+        var isActive = (readerBookId && i.book_id === readerBookId);
+        html += '<div class="rl-item' + (isActive ? ' active' : '') + '" onclick="openReader(' + i.book_id + ')">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center">';
         html += '<div class="rl-title">' + esc(i.title || i.filename || "Book #" + i.book_id) + '</div>';
+        html += '<span class="rl-close" onclick="event.stopPropagation();removeReadingListItem(' + i.book_id + ')" title="Remove from list">\u2715</span>';
+        html += '</div>';
         html += '<div class="rl-meta">' + esc(i.authors || "") + (i.format ? " \xb7 " + i.format : "") + '</div>';
         if (pct > 0) html += '<div class="rl-progress"><div class="rl-progress-fill" style="width:' + pct + '%"></div></div>';
         html += '</div>';
       });
     });
     el.innerHTML = html;
+    updateReadingListBookInfo();
   }).catch(function() { document.getElementById("readingListContent").innerHTML = '<div class="rl-empty">Could not load</div>'; });
+}
+
+function removeReadingListItem(bid) {
+  fetch(API + "/api/reading-list/" + bid, {method: "DELETE"}).then(function(r) { return r.json(); }).then(function() {
+    loadReadingList();
+    var btn = document.getElementById("readingListBtn");
+    if (btn && readerBookId === bid) { btn.textContent = "+ List"; btn.style.background = "#0ea5e9"; }
+  }).catch(function() {});
+}
+
+function updateReadingListBookInfo() {
+  var el = document.getElementById("readingListBookInfo");
+  if (!el) return;
+  if (!readerBookId) { el.innerHTML = ""; return; }
+  fetch(API + "/api/book/" + readerBookId).then(function(r) { return r.json(); }).then(function(b) {
+    if (b.error) { el.innerHTML = ""; return; }
+    var tags = b.tags || [];
+    var udcTag = tags.filter(function(t) { return t.tag_type === "udc"; })[0];
+    var html = '<div style="border-top:1px solid #334155;padding-top:8px;margin-top:8px">';
+    html += '<div style="color:#94a3b8;font-size:0.72rem;font-weight:600;margin-bottom:6px">Current Book</div>';
+    html += '<div style="font-size:0.72rem;color:#e2e8f0;font-weight:600">' + esc(b.title || "") + '</div>';
+    if (b.authors) html += '<div style="font-size:0.65rem;color:#64748b">' + esc(b.authors) + '</div>';
+    html += '<div style="font-size:0.65rem;color:#475569;margin-top:2px">';
+    if (b.format) html += esc(b.format) + " ";
+    if (b.year) html += "\xb7 " + b.year + " ";
+    if (udcTag) html += "\xb7 " + esc(udcTag.tag);
+    html += '</div>';
+    html += '</div>';
+    el.innerHTML = html;
+  }).catch(function() {});
 }
 
 function toggleReadingListForBook() {
@@ -2282,6 +2334,7 @@ function openReader(bookId) {
     }
     // Auto-add to reading list as "reading" (R1)
     addToReadingListAsReading(bookId);
+    loadReadingList(); // refresh active highlight + book info
   }).catch(() => alert("Could not load book info"));
 }
 
@@ -2347,7 +2400,7 @@ function loadReader(bookId, book) {
   }).catch(function() {});
 }
 
-// ═══ PDF Reader ═══
+// ═══ PDF Reader with PDF.js (P4.2d) ═══
 
 function loadPdfReader(bookId, book) {
   const area = document.getElementById("readerArea");
@@ -2356,21 +2409,114 @@ function loadPdfReader(bookId, book) {
   title.textContent = book.title || "Book #" + bookId;
   fmt.textContent = book.format || "";
   document.getElementById("readerLocation").textContent = "";
-  document.getElementById("readerPrev").style.display = "none";
-  document.getElementById("readerNext").style.display = "none";
+  document.getElementById("readerPrev").style.display = "";
+  document.getElementById("readerNext").style.display = "";
   document.getElementById("readerProgressFill").style.width = "0%";
   document.removeEventListener("keydown", readerKeyHandler);
   document.getElementById("bookmarkBtn").style.display = "";
   document.getElementById("annToggleBtn").style.display = "";
   document.getElementById("pageNoteBtn").style.display = "";
-  document.getElementById("exportHighlightsBtn").style.display = "";
+  document.getElementById("exportHighlightsBtn").style.display = "none";
   document.getElementById("annotationsSidebar").style.display = "block";
   loadAnnotations(bookId);
   loadBookmarks(bookId);
-  area.innerHTML = '<iframe src="' + API + '/api/book/' + bookId + '/read" style="width:100%;height:' + (window.innerHeight - 200) + 'px;border:none;border-radius:4px"></iframe>';
+  readerPage = 0;
+  readerPages = [];
+  // Load existing highlights for overlay rendering
+  fetch(API + "/api/book/" + bookId + "/annotations").then(function(r) { return r.json(); }).then(function(anns) {
+    _pdfHighlights = anns.filter(function(a) { return a.type === "highlight" && a.page !== null && a.bbox; });
+  }).catch(function() {});
+  document.getElementById("readerPrev").onclick = function() { pdfPrev(); };
+  document.getElementById("readerNext").onclick = function() { pdfNext(); };
+  document.addEventListener("keydown", readerKeyHandler);
+  _pdfHighlights = [];
+
+  area.innerHTML = '<div class="pdf-viewer" id="pdfViewer"><div style="color:#64748b;text-align:center;padding:40px">Loading PDF...</div></div>';
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  var loadingTask = pdfjsLib.getDocument(API + "/api/book/" + bookId + "/read");
+  loadingTask.promise.then(function(pdf) {
+    _pdfDoc = pdf;
+    readerPages = { total: pdf.numPages };
+    document.getElementById("readerLocation").textContent = "1 / " + pdf.numPages;
+    pdfRenderPage(bookId, 1);
+    // Restore saved position
+    fetch(API + "/api/book/" + bookId + "/reader-state").then(function(r) { return r.json(); }).then(function(state) {
+      if (state && state.location) { var sp = parseInt(state.location); if (sp > 0 && sp <= pdf.numPages) { pdfRenderPage(bookId, sp); } }
+    }).catch(function() {});
+  }).catch(function() {
+    area.innerHTML = '<div style="color:#ef4444;text-align:center;padding:40px">Failed to load PDF</div>';
+  });
 }
 
-// ═══ Comic Reader ═══
+var _pdfDoc = null;
+var _pdfHighlights = [];
+var _pdfRendering = false;
+
+function pdfRenderPage(bookId, pageNum) {
+  if (!_pdfDoc || _pdfRendering) return;
+  _pdfRendering = true;
+  readerPage = pageNum;
+  document.getElementById("readerLocation").textContent = pageNum + " / " + _pdfDoc.numPages;
+  document.getElementById("readerProgressFill").style.width = (pageNum / _pdfDoc.numPages * 100) + "%";
+  var viewer = document.getElementById("pdfViewer");
+  if (!viewer) return;
+
+  _pdfDoc.getPage(pageNum).then(function(page) {
+    var viewport = page.getViewport({ scale: 1.5 });
+    var wrap = document.createElement("div");
+    wrap.className = "pdf-canvas-wrap";
+    var canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    var ctx = canvas.getContext("2d");
+    wrap.appendChild(canvas);
+
+    // Render page
+    page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function() {
+      viewer.innerHTML = "";
+      viewer.appendChild(wrap);
+      _pdfRendering = false;
+      // Draw existing highlights for this page
+      _pdfHighlights.forEach(function(h) {
+        if (h.page === pageNum) drawPdfHighlight(canvas, h.bbox, h.color || "#fef08a");
+      });
+      // Auto-save
+      if (readerSaveTimer) clearTimeout(readerSaveTimer);
+      readerSaveTimer = setTimeout(function() { saveReaderState(); }, 2000);
+    });
+  }).catch(function() { _pdfRendering = false; });
+}
+
+function drawPdfHighlight(canvas, bbox, color) {
+  try {
+    var b = typeof bbox === "string" ? JSON.parse(bbox) : bbox;
+    var ctx = canvas.getContext("2d");
+    ctx.fillStyle = color || "#fef08a";
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(b.left * canvas.width, b.top * canvas.height, (b.right - b.left) * canvas.width, (b.bottom - b.top) * canvas.height);
+    ctx.globalAlpha = 1;
+  } catch(e) {}
+}
+
+function pdfPrev() { if (_pdfDoc && readerPage > 1) pdfRenderPage(readerBookId, readerPage - 1); }
+function pdfNext() { if (_pdfDoc && readerPage < _pdfDoc.numPages) pdfRenderPage(readerBookId, readerPage + 1); }
+function readerPrev() {
+  if (isEpubFormat(readerFormat) && readerRendition) { readerRendition.prev(); }
+  else if (readerFormat === "pdf" && _pdfDoc) { pdfPrev(); }
+  else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPage > 0) {
+    showComicPage(readerBookId, readerPage - 1);
+  }
+}
+function readerNext() {
+  if (isEpubFormat(readerFormat) && readerRendition) { readerRendition.next(); }
+  else if (readerFormat === "pdf" && _pdfDoc) { pdfNext(); }
+  else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPage < readerPages.length - 1) {
+    showComicPage(readerBookId, readerPage + 1);
+  }
+}
+
+// ═══ Comic Reader with Canvas Overlay (P4.2d) ═══
 
 function loadComicReader(bookId, book) {
   const area = document.getElementById("readerArea");
@@ -2386,13 +2532,18 @@ function loadComicReader(bookId, book) {
   document.getElementById("bookmarkBtn").style.display = "";
   document.getElementById("annToggleBtn").style.display = "";
   document.getElementById("pageNoteBtn").style.display = "";
-  document.getElementById("exportHighlightsBtn").style.display = "";
+  document.getElementById("exportHighlightsBtn").style.display = "none";
   document.getElementById("annotationsSidebar").style.display = "block";
   loadAnnotations(bookId);
   loadBookmarks(bookId);
   document.addEventListener("keydown", readerKeyHandler);
+  _comicHighlights = [];
+  // Load existing highlights for overlay
+  fetch(API + "/api/book/" + bookId + "/annotations").then(function(r) { return r.json(); }).then(function(anns) {
+    _comicHighlights = anns.filter(function(a) { return a.type === "highlight" && a.page !== null && a.bbox; });
+  }).catch(function() {});
 
-  fetch(API + "/api/book/" + bookId + "/read").then(r => r.json()).then(data => {
+  fetch(API + "/api/book/" + bookId + "/read").then(function(r) { return r.json(); }).then(function(data) {
     readerPages = data.pages || [];
     if (readerPages.length === 0) {
       area.innerHTML = '<div style="color:#f59e0b;text-align:center;padding:40px"><div style="font-size:1.1rem;margin-bottom:12px">Could not extract this comic archive</div><p style="font-size:0.85rem;color:#64748b">This format needs external tools to extract. Use the <strong>Download</strong> button instead.</p></div>';
@@ -2400,8 +2551,7 @@ function loadComicReader(bookId, book) {
       document.getElementById("readerPrev").style.display = "none";
       document.getElementById("readerNext").style.display = "none";
     } else {
-      // Restore saved position (R2)
-      fetch(API + "/api/book/" + bookId + "/reader-state").then(r => r.json()).then(function(state) {
+      fetch(API + "/api/book/" + bookId + "/reader-state").then(function(r) { return r.json(); }).then(function(state) {
         var startPage = 0;
         if (state && state.location) { startPage = parseInt(state.location) || 0; if (startPage >= readerPages.length) startPage = 0; }
         showComicPage(bookId, startPage);
@@ -2412,33 +2562,101 @@ function loadComicReader(bookId, book) {
   });
 }
 
+var _comicHighlights = [];
+
 function showComicPage(bookId, idx) {
   if (idx < 0 || idx >= readerPages.length) return;
   readerPage = idx;
   const area = document.getElementById("readerArea");
-  area.innerHTML = '<div style="text-align:center;padding:10px"><img src="' + API + '/api/book/' + bookId + '/read/page/' + idx + '" style="max-width:100%;max-height:' + (window.innerHeight - 220) + 'px;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.3)"></div>';
   var pct = readerPages.length > 0 ? Math.round((idx + 1) / readerPages.length * 100) : 0;
   document.getElementById("readerLocation").textContent = (idx + 1) + " / " + readerPages.length;
   document.getElementById("readerProgressFill").style.width = pct + "%";
-  // Auto-save position (debounced)
+
+  // Create canvas overlay with selection support
+  area.innerHTML = '<div class="comic-canvas-wrap" id="comicWrap"><canvas id="comicCanvas"></canvas><div class="sel-overlay" id="selOverlay"></div></div>';
+  var img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = function() {
+    var c = document.getElementById("comicCanvas");
+    if (!c) return;
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    var ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    // Draw existing highlights
+    _comicHighlights.forEach(function(h) {
+      if (h.page === idx) drawComicHighlight(c, h.bbox, h.color || "#fef08a");
+    });
+    // Selection via mouse drag
+    setupComicSelection(c, bookId, idx);
+  };
+  img.src = API + "/api/book/" + bookId + "/read/page/" + idx;
+  // Auto-save
   if (readerSaveTimer) clearTimeout(readerSaveTimer);
   readerSaveTimer = setTimeout(function() { saveReaderState(); }, 2000);
 }
 
-function isEpubFormat(f) { return ["epub","azw3","mobi","fb2"].indexOf(f) !== -1; }
-
-function readerPrev() {
-  if (isEpubFormat(readerFormat) && readerRendition) { readerRendition.prev(); }
-  else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPage > 0) {
-    showComicPage(readerBookId, readerPage - 1);
-  }
+function drawComicHighlight(canvas, bbox, color) {
+  try {
+    var b = typeof bbox === "string" ? JSON.parse(bbox) : bbox;
+    var ctx = canvas.getContext("2d");
+    ctx.fillStyle = color || "#fef08a";
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(b.x * canvas.width, b.y * canvas.height, b.w * canvas.width, b.h * canvas.height);
+    ctx.globalAlpha = 1;
+  } catch(e) {}
 }
 
-function readerNext() {
-  if (isEpubFormat(readerFormat) && readerRendition) { readerRendition.next(); }
-  else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPage < readerPages.length - 1) {
-    showComicPage(readerBookId, readerPage + 1);
+function setupComicSelection(canvas, bookId, pageIdx) {
+  var selOverlay = document.getElementById("selOverlay");
+  if (!selOverlay) return;
+  var startX, startY, isDragging = false;
+  var rect = canvas.getBoundingClientRect();
+
+  function getPos(e) {
+    return { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height };
   }
+
+  canvas.onmousedown = function(e) {
+    var p = getPos(e);
+    startX = p.x; startY = p.y;
+    isDragging = true;
+  };
+  canvas.onmousemove = function(e) {
+    if (!isDragging) return;
+    var p = getPos(e);
+    var lx = Math.min(startX, p.x) * rect.width + rect.left;
+    var ly = Math.min(startY, p.y) * rect.height + rect.top;
+    var lw = Math.abs(p.x - startX) * rect.width;
+    var lh = Math.abs(p.y - startY) * rect.height;
+    selOverlay.style.left = lx + "px";
+    selOverlay.style.top = ly + "px";
+    selOverlay.style.width = lw + "px";
+    selOverlay.style.height = lh + "px";
+    selOverlay.style.display = "block";
+  };
+  canvas.onmouseup = function(e) {
+    if (!isDragging) return;
+    isDragging = false;
+    selOverlay.style.display = "none";
+    var p = getPos(e);
+    var dx = Math.abs(p.x - startX), dy = Math.abs(p.y - startY);
+    if (dx < 0.01 && dy < 0.01) return; // too small, likely a click
+    var bbox = { x: Math.min(startX, p.x), y: Math.min(startY, p.y), w: dx, h: dy };
+    // Show highlight popup for this selection
+    _hlPopup.cfiRange = null;
+    _hlPopup.selectedText = "";
+    _hlPopup.page = pageIdx;
+    _hlPopup.bbox = JSON.stringify(bbox);
+    _hlPopup.format = "comic";
+    var popup = document.getElementById("hlPopup");
+    popup.style.left = Math.min(e.clientX, window.innerWidth - 240) + "px";
+    popup.style.top = (e.clientY + 8) + "px";
+    popup.style.display = "block";
+    document.getElementById("hlNoteInput").value = "";
+    initHighlightColors();
+    document.getElementById("hlNoteInput").focus();
+  };
 }
 
 function readerKeyHandler(e) {
@@ -2465,6 +2683,7 @@ function closeReader() {
   document.getElementById("exportHighlightsBtn").style.display = "none";
   document.getElementById("annotationsSidebar").style.display = "none";
   switchTab("library");
+  loadReadingList();
 }
 
 function toggleFullscreen() {
@@ -2553,7 +2772,7 @@ function addNote() {
 }
 
 // ═══ Highlight popup ═══
-var _hlPopup = { cfiRange: null, selectedText: null, color: "#fef08a" };
+var _hlPopup = { cfiRange: null, selectedText: null, color: "#fef08a", page: null, bbox: null, format: null };
 var HL_COLORS = ["#fef08a","#86efac","#93c5fd","#fca5a5","#c4b5fd","#fdba74","#ffffff"];
 
 function initHighlightColors() {
@@ -2591,23 +2810,35 @@ function hideHighlightPopup() {
   document.getElementById("hlPopup").style.display = "none";
   _hlPopup.cfiRange = null;
   _hlPopup.selectedText = null;
+  _hlPopup.page = null;
+  _hlPopup.bbox = null;
+  _hlPopup.format = null;
 }
 
 function saveHighlightFromPopup() {
   var bid = readerBookId;
-  if (!bid || !_hlPopup.cfiRange) return;
+  if (!bid || (!_hlPopup.cfiRange && !_hlPopup.bbox)) return;
   var note = document.getElementById("hlNoteInput").value.trim();
+  var body = {
+    type: "highlight", text: _hlPopup.selectedText || "", note: note || null,
+    color: _hlPopup.color
+  };
+  if (_hlPopup.cfiRange) body.cfi_range = _hlPopup.cfiRange;
+  if (_hlPopup.page !== null) body.page = _hlPopup.page;
+  if (_hlPopup.bbox) body.bbox = _hlPopup.bbox;
   fetch(API + "/api/book/" + bid + "/annotations", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      type: "highlight", text: _hlPopup.selectedText, note: note || null,
-      cfi_range: _hlPopup.cfiRange, color: _hlPopup.color
-    })
+    body: JSON.stringify(body)
   }).then(function(r) { return r.json(); }).then(function() {
     hideHighlightPopup();
     loadAnnotations(bid);
-    renderEpubHighlight(_hlPopup.cfiRange, _hlPopup.color);
+    if (_hlPopup.format === "comic" && _hlPopup.bbox) {
+      drawComicHighlight(document.getElementById("comicCanvas"), _hlPopup.bbox, _hlPopup.color);
+      _comicHighlights.push({page: _hlPopup.page, bbox: _hlPopup.bbox, color: _hlPopup.color});
+    } else if (_hlPopup.cfiRange) {
+      renderEpubHighlight(_hlPopup.cfiRange, _hlPopup.color);
+    }
   }).catch(function() {});
 }
 

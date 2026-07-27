@@ -1333,7 +1333,9 @@ def api_annotations(book_id):
                                     cfi_range=data.get("cfi_range", ""),
                                     text=data.get("text", ""),
                                     note=data.get("note"),
-                                    color=data.get("color", "#fef08a"))
+                                    color=data.get("color", "#fef08a"),
+                                    page=data.get("page"),
+                                    bbox=data.get("bbox"))
             conn.commit()
             return jsonify({"id": ann_id, "status": "created"})
         anns = get_annotations(conn, book_id)

@@ -1369,11 +1369,17 @@ When viewing a duplicate book (skipped, merged, or `is_master=0`), show a clicka
 - `app.py`: merge endpoint sets `master_id`
 - `templates/index.html`: detail panel shows link when `master_id` is set
 
-**Status**: Planned
+**Status**: ✅ Done
 
----
+Implementation: Option B — added `master_id` column, updated `mark_duplicate()`, merge endpoint, and frontend link in detail panel (`← Master #N`). a104df9
 
-## Recommended Order
+### P5.1 — Reading Pane Full-Space Layout
+
+**Status**: ✅ Done (a104df9)
+
+CSS: `.reader-layout` uses `min-height: calc(100vh - 160px)`, `#readerArea` uses `flex:1`, EPUB rendition height reads container `offsetHeight` dynamically. Fullscreen handler simplified.
+
+### P5.2 — Reading List UX Improvements
 
 | Order | Feature | Effort | Status | Rationale |
 |-------|---------|--------|--------|-----------|
@@ -1384,12 +1390,13 @@ When viewing a duplicate book (skipped, merged, or `is_master=0`), show a clicka
 | 5 | **P4.2b** — Close (×) Button | Trivial | ✅ Done | Replaced "Back" with ✕. Saves state on close |
 | 6 | **P4.3** — Synchronised Scrolling | Low | ✅ Done | CSS-only. All 3 Library panels capped to viewport with internal scroll |
 | 7 | **P4.2d** — Cross-Format Highlighting | High | ⬜ Pending | PDF.js integration, comic canvas overlay, floating toolbar, persistence. Most complex item |
-| 8 | **P4.4** — Duplicate Link to Original | Low | ⬜ Pending | Add `master_id` column, show clickable link in detail panel for duplicates |
-| 9 | **P5.1** — Reading Pane Full-Space Layout | Low | ⬜ Pending | CSS flex fix to make reader fill available viewport space |
+| 8 | **P4.4** — Duplicate Link to Original | Low | ✅ Done | `master_id` column + clickable link in detail panel |
+| 9 | **P5.1** — Reading Pane Full-Space Layout | Low | ✅ Done | CSS flex fix, dynamic reader height |
 | 10 | **P5.2** — Reading List UX (✕ close, active highlight, metadata panel) | Medium | ⬜ Pending | Replace remove btn with ✕, highlight active book, show book info below list |
 | 11 | **P5.3** — Enhanced Highlighting & Bookmarks | High | ⬜ Pending | Text selection for PDF/comic, auto-bookmarks, unified timeline in annotations sidebar |
 | 12 | **P5.4** — Export Annotations as Markdown | Low | ⬜ Pending | Download .md with book metadata + all highlights/notes in sequence |
 | 13 | **P6.1** — Portable Config Module | Medium | ⬜ Pending | Split config/data from code for laptop→Pi transfer workflow |
+| 14 | **P6.2** — Coherence Recon Tool | Low | ✅ Done | `GET /api/recon`, `--phase recon` CLI; scans inbox/processed/archive + DB integrity checks |
 
 ---
 
@@ -1425,3 +1432,19 @@ Allow the application to be split across two machines: a powerful laptop for bat
 5. Pi: serves books 24/7, processes small inbox batches locally
 
 **Status**: Planned
+
+
+### P6.2 — Coherence Recon Tool
+
+`GET /api/recon` endpoint and `--phase recon` CLI command that audits DB/filesystem consistency.
+
+**What it checks:**
+- Scans `to_be_sorted` (inbox), `processed`, and `archive` directories
+- For each file found, checks if its path exists in the DB (via `source_path`)
+- Reports orphans: files on disk not tracked in DB
+- Checks all DB books (20k+): reports any whose `source_path` no longer exists on disk
+- Summary: total books, masters, duplicates, breakdown by stage
+
+**Implemented in:** `run_recon()` in `pipeline.py`. Invoked via `GET /api/recon` or `python app.py --phase recon`.
+
+**Status**: ✅ Done (a104df9)

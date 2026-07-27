@@ -1333,6 +1333,46 @@ Add the ability to export all annotations, highlights, and notes for a book as a
 
 ---
 
+### P4.4 — Duplicate Book Link to Original
+
+When viewing a duplicate book (skipped, merged, or `is_master=0`), show a clickable link to the original/master book in the detail panel.
+
+**Current state:**
+- Duplicate books show `stage: skipped` or `stage: merged` with a text error description, but no direct link to the master/original
+- The `stage_error` field contains unstructured text like "Duplicates f=<hash>, d=<master_id>" or "Merged into <master_id>"
+- No `master_id` column exists for direct foreign-key lookup
+
+**Desired behaviour:**
+- In the book detail panel, when a book is a duplicate (not master), show a prominent badge/label: `🔁 Duplicate of Book #<id>` where `<id>` is a clickable link to the master book
+- Clicking the link opens the master book's detail panel (or navigates to it in the Library table)
+- Works for both dedup-skipped books (Phase B) and merged books (Merge endpoint)
+
+**Implementation options:**
+
+**Option A — Parse `stage_error` (minimal, no schema change):**
+- In the detail panel JS, check if `stage === 'skipped'` or `stage === 'merged'`
+- Parse the master ID from `stage_error` using regex (e.g. `d=(\d+)` for dedup, `Merged into (\d+)` for merge)
+- Render a link: `<a href="#" onclick="showBookDetail(<id>)">Book #<id></a>`
+- Drawback: fragile text parsing, no server-side validation
+
+**Option B — Add `master_id` column (proper):**
+- Add `master_id INTEGER REFERENCES files(id)` to the `files` table
+- `mark_duplicate()` sets `master_id` on the skipped file pointing to the kept master
+- Merge endpoint sets `master_id` on the merged file pointing to the target
+- Backend: expose `master_id` in the book API response (already returned as part of `dict(row)`)
+- Frontend: if `book.master_id` is set, show link
+- Cleaner, queryable (can list all duplicates of a master), no brittle text parsing
+
+**Changes needed:**
+- `db.py`: add `master_id` column migration in `init_db()`
+- `pipeline.py`: update `mark_duplicate()` to set `master_id`
+- `app.py`: merge endpoint sets `master_id`
+- `templates/index.html`: detail panel shows link when `master_id` is set
+
+**Status**: Planned
+
+---
+
 ## Recommended Order
 
 | Order | Feature | Effort | Status | Rationale |
@@ -1344,7 +1384,44 @@ Add the ability to export all annotations, highlights, and notes for a book as a
 | 5 | **P4.2b** — Close (×) Button | Trivial | ✅ Done | Replaced "Back" with ✕. Saves state on close |
 | 6 | **P4.3** — Synchronised Scrolling | Low | ✅ Done | CSS-only. All 3 Library panels capped to viewport with internal scroll |
 | 7 | **P4.2d** — Cross-Format Highlighting | High | ⬜ Pending | PDF.js integration, comic canvas overlay, floating toolbar, persistence. Most complex item |
-| 8 | **P5.1** — Reading Pane Full-Space Layout | Low | ⬜ Pending | CSS flex fix to make reader fill available viewport space |
-| 9 | **P5.2** — Reading List UX (✕ close, active highlight, metadata panel) | Medium | ⬜ Pending | Replace remove btn with ✕, highlight active book, show book info below list |
-| 10 | **P5.3** — Enhanced Highlighting & Bookmarks | High | ⬜ Pending | Text selection for PDF/comic, auto-bookmarks, unified timeline in annotations sidebar |
-| 11 | **P5.4** — Export Annotations as Markdown | Low | ⬜ Pending | Download .md with book metadata + all highlights/notes in sequence |
+| 8 | **P4.4** — Duplicate Link to Original | Low | ⬜ Pending | Add `master_id` column, show clickable link in detail panel for duplicates |
+| 9 | **P5.1** — Reading Pane Full-Space Layout | Low | ⬜ Pending | CSS flex fix to make reader fill available viewport space |
+| 10 | **P5.2** — Reading List UX (✕ close, active highlight, metadata panel) | Medium | ⬜ Pending | Replace remove btn with ✕, highlight active book, show book info below list |
+| 11 | **P5.3** — Enhanced Highlighting & Bookmarks | High | ⬜ Pending | Text selection for PDF/comic, auto-bookmarks, unified timeline in annotations sidebar |
+| 12 | **P5.4** — Export Annotations as Markdown | Low | ⬜ Pending | Download .md with book metadata + all highlights/notes in sequence |
+| 13 | **P6.1** — Portable Config Module | Medium | ⬜ Pending | Split config/data from code for laptop→Pi transfer workflow |
+
+---
+
+## Phase 6 — Backlog (Planned)
+
+### P6.1 — Portable Config Module
+
+Allow the application to be split across two machines: a powerful laptop for batch metadata discovery + enrichment, and a Raspberry Pi for 24/7 serving and light inbox processing.
+
+**Design:**
+
+- `machine.json` (gitignored) in the project root contains one key: `data_dir` pointing to where DB, logs, covers, and pipeline state live
+- On laptop: `{"data_dir": "C:/Users/shant/book_organiser_data"}`
+- On Pi: `{"data_dir": "/mnt/storage/book_organiser_data"}`
+- If `machine.json` absent, fall back to current auto-detect logic
+
+**CLI sync commands:**
+- `python app.py --export-pi export.zip` — zips data dir with path remapping (`Z:\books` → `/mnt/storage/books`)
+- `python app.py --import-pi export.zip` — unzips into current `machine.json`'s data_dir, applies remapping
+
+**Path remap endpoint:**
+- `POST /api/admin/remap-paths` — bulk-replaces path prefixes in `config_overrides` and `files` table columns
+
+**DB changes:**
+- WAL mode (`PRAGMA journal_mode=WAL`) for concurrent read/write on Pi
+- `RotatingFileHandler` for logs (5MB max, 3 backups) to avoid SD card fill-up
+
+**Workflow:**
+1. Laptop: scan inbox + enrich via API (fast CPU + internet)
+2. Laptop: `python app.py --export-pi data.zip`
+3. Copy zip to Pi
+4. Pi: `python app.py --import-pi data.zip`
+5. Pi: serves books 24/7, processes small inbox batches locally
+
+**Status**: Planned

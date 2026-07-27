@@ -32,7 +32,7 @@ from db import get_reading_list, add_to_reading_list, update_reading_list_status
 from db import get_reader_state, save_reader_state
 from db import get_annotations, add_annotation, delete_annotation, export_annotations_markdown
 from db import get_bookmarks, add_bookmark, delete_bookmark
-from pipeline import state, run_pipeline, run_all_phases, run_phase_metadata, run_phase_dedup, run_phase_copy, discover_source_files, add_to_inbox
+from pipeline import state, run_pipeline, run_all_phases, run_phase_metadata, run_phase_dedup, run_phase_copy, run_recon, discover_source_files, add_to_inbox
 from enricher import enrich_book, _download_cover
 import enrich_filename
 
@@ -145,6 +145,13 @@ def api_status():
         })
     finally:
         conn.close()
+
+
+@app.route("/api/recon")
+def api_recon():
+    from pipeline import run_recon
+    result = run_recon()
+    return jsonify(result)
 
 
 @app.route("/api/book/<int:book_id>")
@@ -1439,11 +1446,65 @@ def api_book_merge(book_id):
         target = get_book_by_id(conn, target_id)
         if not source or not target:
             return jsonify({"error": "book not found"}), 404
-        conn.execute("UPDATE files SET stage=?, stage_error=? WHERE id=?",
-                     ("merged", f"Merged into {book_id}", target_id))
+        conn.execute("UPDATE files SET stage=?, stage_error=?, master_id=? WHERE id=?",
+                     ("merged", f"Merged into {book_id}", book_id, target_id))
         conn.execute("UPDATE files SET is_master=1 WHERE id=?", (book_id,))
         conn.commit()
         return jsonify({"status": "ok", "merged_id": target_id, "into_id": book_id})
+    finally:
+        conn.close()
+
+
+@app.route("/api/book/<int:book_id>/delete", methods=["POST"])
+def api_book_delete(book_id):
+    """Delete a book: remove physical file(s) and DB entries."""
+    conn = get_connection(DB_PATH)
+    try:
+        row = get_book_by_id(conn, book_id)
+        if not row:
+            return jsonify({"error": "not found"}), 404
+        book = dict(row)
+        paths = []
+        for key in ("source_path", "flat_path", "archive_path"):
+            p = book.get(key)
+            if p and os.path.isfile(p):
+                paths.append(p)
+        import shutil
+        for p in paths:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+        bulk_delete_files(conn, [book_id])
+        conn.commit()
+        return jsonify({"status": "ok", "deleted": book_id, "files_removed": len(paths)})
+    finally:
+        conn.close()
+
+
+@app.route("/api/bulk/delete", methods=["POST"])
+def api_bulk_delete():
+    """Delete multiple books by ID."""
+    data = request.json or {}
+    book_ids = data.get("book_ids", [])
+    if not book_ids:
+        return jsonify({"error": "book_ids required"}), 400
+    conn = get_connection(DB_PATH)
+    try:
+        for bid in book_ids:
+            row = get_book_by_id(conn, bid)
+            if row:
+                book = dict(row)
+                for key in ("source_path", "flat_path", "archive_path"):
+                    p = book.get(key)
+                    if p and os.path.isfile(p):
+                        try:
+                            os.remove(p)
+                        except OSError:
+                            pass
+        bulk_delete_files(conn, book_ids)
+        conn.commit()
+        return jsonify({"status": "ok", "deleted": len(book_ids)})
     finally:
         conn.close()
 
@@ -1676,7 +1737,7 @@ if __name__ == "__main__":
                         help="Inbox directory for ad-hoc files")
     parser.add_argument("--port", "-p", type=int, default=5000,
                         help="Web UI port (default: 5000)")
-    parser.add_argument("--phase", choices=["metadata", "dedup", "copy", "all"],
+    parser.add_argument("--phase", choices=["metadata", "dedup", "copy", "all", "recon"],
                         help="Run a specific phase headless and exit")
     parser.add_argument("--db", default="",
                         help="Path to SQLite database")
@@ -1720,6 +1781,9 @@ if __name__ == "__main__":
             run_phase_dedup()
         elif args.phase == "copy":
             run_phase_copy()
+        elif args.phase == "recon":
+            result = run_recon()
+            print(json.dumps(result, indent=2))
     elif args.daemon:
         # Delegate to daemon.py
         from daemon import cmd_run, cmd_watch, cmd_status

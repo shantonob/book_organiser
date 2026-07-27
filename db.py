@@ -92,6 +92,13 @@ def init_db(db_path):
     except Exception:
         pass
 
+    # Migration: add master_id (pointer to original book for duplicates)
+    try:
+        conn.execute("ALTER TABLE files ADD COLUMN master_id INTEGER REFERENCES files(id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_files_master_id ON files(master_id)")
+    except Exception:
+        pass
+
     # Daemon status table for IPC (headless daemon ↔ API)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS daemon_status (
@@ -272,10 +279,10 @@ def get_cataloged_files(conn):
     """).fetchall()
 
 
-def mark_duplicate(conn, file_id, reason):
+def mark_duplicate(conn, file_id, reason, master_id=None):
     now = datetime.utcnow().isoformat()
-    conn.execute("UPDATE files SET stage='skipped', stage_error=?, is_master=0, updated_at=? WHERE id=?",
-                 (reason, now, file_id))
+    conn.execute("UPDATE files SET stage='skipped', stage_error=?, is_master=0, master_id=?, updated_at=? WHERE id=?",
+                 (reason, master_id, now, file_id))
     conn.execute("INSERT INTO pipeline_log (file_id, stage, status, message) VALUES (?,?,?,?)",
                  (file_id, 'skipped', 'done', reason))
 
@@ -1057,6 +1064,9 @@ def load_config_overrides(conn):
             cfg.ARCHIVE_DIR = os.path.join(cfg.FLAT_DIR, "archive")
         if not overrides.get("watch_dir"):
             cfg.WATCH_DIR = cfg.INBOX_DIR if cfg.INBOX_DIR else cfg.WATCH_DIR
+    # If archive_dir is set, exclude it from source scanning
+    if cfg.ARCHIVE_DIR:
+        cfg.EXCLUDE_DIRS.add(os.path.normpath(cfg.ARCHIVE_DIR))
     # If archive_dir override was set but flat_dir was not, derive processed from flat
     # (both point to the same root)
 

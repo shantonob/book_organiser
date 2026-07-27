@@ -182,7 +182,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .udc-sub-list { margin-left: 12px; border-left: 1px solid #334155; padding-left: 6px; }
 
   /* Reading List Sidebar */
-  .reader-layout { display: flex; gap: 14px; align-items: flex-start; }
+  .reader-layout { display: flex; gap: 14px; min-height: calc(100vh - 160px); }
   .reading-list-sidebar { width: 220px; flex-shrink: 0; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px; max-height: calc(100vh - 120px); overflow-y: auto; }
   .reading-list-sidebar h3 { font-size: 0.78rem; color: #94a3b8; margin-bottom: 8px; }
   .reading-list-sidebar .rl-item { padding: 6px 8px; border-radius: 4px; cursor: pointer; margin-bottom: 3px; transition: background 0.15s; }
@@ -503,18 +503,23 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         <h2 style="margin-bottom:6px">Tag Tree</h2>
         <div id="udcTree"></div>
       </div>
-      <div class="panel library-panel" style="flex:1;min-width:0">
-        <h2>Books</h2>
-        <div id="bulkToolbar" style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;align-items:center">
-          <span id="bulkCount" style="color:#64748b;font-size:0.75rem">0 selected</span>
-          <button onclick="bulkTagAdd()" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">+ Add Tag</button>
-          <button onclick="bulkTagRemove()" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">- Remove Tag</button>
-          <button onclick="bulkClassify()" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">Re-classify UDC</button>
+      <div class="panel library-panel" style="flex:1;min-width:0;display:flex;flex-direction:column;max-height:calc(100vh - 210px)">
+        <div style="flex-shrink:0">
+          <h2>Books</h2>
+          <div id="bulkToolbar" style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;align-items:center">
+            <span id="bulkCount" style="color:#64748b;font-size:0.75rem">0 selected</span>
+            <button onclick="bulkTagAdd()" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">+ Add Tag</button>
+            <button onclick="bulkTagRemove()" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">- Remove Tag</button>
+            <button onclick="bulkClassify()" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">Re-classify UDC</button>
+            <button onclick="bulkDelete()" style="padding:4px 10px;font-size:0.75rem;background:#701a22;border:none;border-radius:3px;color:#fca5a5;cursor:pointer">&#x1F5D1; Delete</button>
+          </div>
         </div>
-        <table id="libTable">
-          <tr><th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th><th style="width:34px">Cover</th><th>ID</th><th>UUID</th><th>Title</th><th>Author</th><th>UDC</th><th>Format</th><th>Stage</th></tr>
-        </table>
-        <div id="libGrid" class="gallery-grid" style="display:none"></div>
+        <div style="overflow-y:auto;flex:1">
+          <table id="libTable">
+            <tr><th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th><th style="width:34px">Cover</th><th>ID</th><th>UUID</th><th>Title</th><th>Author</th><th>UDC</th><th>Format</th><th>Stage</th></tr>
+          </table>
+          <div id="libGrid" class="gallery-grid" style="display:none"></div>
+        </div>
       </div>
       <div style="width:320px;flex-shrink:0">
         <div class="panel visible library-panel" id="detailPanel">
@@ -562,7 +567,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <p style="font-size:0.85rem;margin-bottom:16px">Use the <strong>Download</strong> button on the detail page to open it in your ebook reader.</p>
           <button onclick="switchTab('library')" style="padding:8px 20px;border:none;border-radius:6px;background:#0ea5e9;color:#0f172a;font-weight:600;cursor:pointer">Back to Library</button>
         </div>
-        <div id="readerArea" style="width:100%;margin:0 auto;min-height:70vh;border:1px solid #334155;border-radius:6px;background:#f8fafc;overflow-y:auto"></div>
+        <div id="readerArea" style="width:100%;flex:1;border:1px solid #334155;border-radius:6px;background:#f8fafc;overflow-y:auto"></div>
       </div>
       <!-- Annotations sidebar (right side, P4.2c) -->
       <div id="annotationsSidebar" class="annotations-sidebar">
@@ -2016,6 +2021,16 @@ function bulkClassify() {
   }).then(r => r.json()).then(d => { alert(d.status + " — " + d.reclassified + " book(s)"); loadLibrary(); }).catch(() => {});
 }
 
+function bulkDelete() {
+  const ids = getSelectedIds();
+  if (!ids.length) return alert("No books selected");
+  if (!confirm("Delete " + ids.length + " book(s)? This will permanently delete the file(s) and database entries. This cannot be undone.")) return;
+  fetch(API + "/api/bulk/delete", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({book_ids: ids})
+  }).then(r => r.json()).then(d => { alert(d.status + " — " + d.deleted + " book(s) deleted"); loadLibrary(); }).catch(() => {});
+}
+
 function showDetail(bookId) {
   selectedLibId = bookId;
   const panel = document.getElementById("detailPanel");
@@ -2053,7 +2068,7 @@ function showDetail(bookId) {
       html += `<span class="dl">Pages</span><span class="dd" id="dv_pages">${b.pages || "\u2014"}</span>`;
       html += `<span class="dl">Description</span><span class="dd" id="dv_description" style="max-height:80px;overflow-y:auto">${esc((b.description||"").substring(0,500)) || "\u2014"}</span>`;
       html += `<span class="dl">Source</span><span class="dd" style="font-size:0.7rem;word-break:break-all">${esc(b.source_path || "")}</span>`;
-      html += `<span class="dl">Stage</span><span class="dd"><span class="tag ${b.stage}">${b.stage}</span>${b.stage_error ? " <span style='color:#ef4444;font-size:0.75rem'>" + esc(b.stage_error) + "</span>" : ""}`;
+      html += `<span class="dl">Stage</span><span class="dd"><span class="tag ${b.stage}">${b.stage}</span>${b.stage_error ? " <span style='color:#ef4444;font-size:0.75rem'>" + esc(b.stage_error) + "</span>" : ""}${b.master_id ? ' <a href="#" onclick="showDetail(' + b.master_id + ');return false" style="color:#0ea5e9;font-size:0.75rem;margin-left:4px">\u2190 Master #' + b.master_id + '</a>' : ""}`;
       html += `<span class="dl">Enrichment</span><span class="dd">${b.enrich_source ? '<span class="source-badge source-' + b.enrich_source + '">' + b.enrich_source + "</span>" : "\u2014"}</span>`;
       if (b.is_master === 1) html += ' <span class="tag survivor">Master</span>';
       else if (b.is_master === 0) html += ' <span class="tag skipped">Duplicate</span>';
@@ -2073,6 +2088,7 @@ function showDetail(bookId) {
       html += '<button onclick="openReader(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f97316;color:#0f172a;font-weight:600">Read Online</button>';
       html += '<button onclick="enrichBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f59e0b;color:#0f172a;font-weight:600">Enrich</button>';
       html += '<button onclick="mergeBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#e11d48;color:#f8fafc;font-weight:600">Merge...</button>';
+      html += '<button onclick="deleteBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#701a22;color:#fca5a5;font-weight:600">Delete</button>';
       html += '<button id="detailRlBtn" onclick="addDetailToReadingList(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#0ea5e9;color:#0f172a;font-weight:600">+ Reading List</button>';
       html += '</div>';
 
@@ -2286,7 +2302,9 @@ function loadReader(bookId, book) {
   if (readerBook) { try { readerBook.destroy(); } catch(e) {} readerBook = null; readerRendition = null; }
 
   readerBook = ePub(API + "/api/book/" + bookId + "/read");
-  readerRendition = readerBook.renderTo("readerArea", { width: "100%", height: window.innerHeight - 200, spread: "none" });
+  var ra = document.getElementById("readerArea");
+  var rh = Math.max(ra.offsetHeight || 600, 400);
+  readerRendition = readerBook.renderTo("readerArea", { width: "100%", height: rh, spread: "none" });
   readerRendition.display();
 
   document.getElementById("readerPrev").onclick = function() { readerPrev(); };
@@ -2460,17 +2478,17 @@ function toggleFullscreen() {
 }
 
 document.addEventListener("fullscreenchange", function() {
-  var isFs = !!document.fullscreenElement;
-  var h = isFs ? window.innerHeight - 60 : window.innerHeight - 200;
+  var ra = document.getElementById("readerArea");
+  if (!ra) return;
+  var h = Math.max(ra.offsetHeight || window.innerHeight - 200, 400);
   if (readerRendition) {
     try { readerRendition.resize("100%", h); } catch(e) {}
   }
-  var ra = document.getElementById("readerArea");
-  if (ra) ra.style.height = h + "px";
-  var iframe = ra ? ra.querySelector("iframe") : null;
+  ra.style.height = h + "px";
+  var iframe = ra.querySelector("iframe");
   if (iframe) iframe.style.height = h + "px";
-  var img = ra ? ra.querySelector("img") : null;
-  if (img) img.style.maxHeight = (isFs ? window.innerHeight - 80 : window.innerHeight - 220) + "px";
+  var img = ra.querySelector("img");
+  if (img) img.style.maxHeight = (h - 20) + "px";
 });
 
 // ═══ Annotations (R3 + R5) ═══
@@ -2863,6 +2881,19 @@ function mergeBook(bookId) {
       showDetail(bookId);
       loadLibrary();
     }).catch(() => { alert("Merge request failed"); });
+}
+
+function deleteBook(bookId) {
+  if (!confirm("Delete this book permanently? The source file and all database entries will be removed. This cannot be undone.")) return;
+  var btn = event && event.target ? event.target : null;
+  if (btn) { btn.disabled = true; btn.textContent = "Deleting..."; }
+  fetch(API + "/api/book/" + bookId + "/delete", {method:"POST"})
+    .then(r => r.json()).then(d => {
+      if (d.error) { alert("Delete failed: " + d.error); return; }
+      document.getElementById("detailBody").innerHTML = '<div style="color:#64748b;padding:12px 0;text-align:center">Book #' + bookId + ' deleted.</div>';
+      loadLibrary();
+    }).catch(() => { alert("Delete request failed"); })
+    .finally(function() { if (btn) { btn.disabled = false; btn.textContent = "Delete"; } });
 }
 
 // ── SSE events ── (disabled: using fetchStatus polling instead)

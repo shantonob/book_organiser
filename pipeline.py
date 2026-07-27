@@ -476,7 +476,7 @@ def run_phase_dedup():
                 group.sort(key=lambda r: -_metadata_richness(r))
                 keeper = group[0]
                 for dup in group[1:]:
-                    mark_duplicate(conn, dup["id"], "duplicate_by_hash")
+                    mark_duplicate(conn, dup["id"], "duplicate_by_hash", master_id=keeper["id"])
                     skip_ids.add(dup["id"])
                     hash_dup_count += 1
                     state.update(log_msg=f"    hash dup: {dup['filename']}")
@@ -496,7 +496,7 @@ def run_phase_dedup():
                 group.sort(key=lambda r: -_metadata_richness(r))
                 keeper = group[0]
                 for dup in group[1:]:
-                    mark_duplicate(conn, dup["id"], "duplicate_by_isbn")
+                    mark_duplicate(conn, dup["id"], "duplicate_by_isbn", master_id=keeper["id"])
                     skip_ids.add(dup["id"])
                     isbn_dup_count += 1
                     state.update(log_msg=f"    isbn dup: {dup['filename']} ({isbn})")
@@ -548,12 +548,12 @@ def run_phase_dedup():
                     sim = title_similarity(prev_title, cur_title)
                     if sim >= threshold:
                         if cur_score <= _metadata_richness(prev):
-                            mark_duplicate(conn, current["id"], "duplicate_by_title")
+                            mark_duplicate(conn, current["id"], "duplicate_by_title", master_id=prev["id"])
                             skip_ids.add(current["id"])
                             title_dup_count += 1
                             state.update(log_msg=f"    title dup vs #{prev['id']}: {current['filename']}")
                         else:
-                            mark_duplicate(conn, prev["id"], "duplicate_by_title")
+                            mark_duplicate(conn, prev["id"], "duplicate_by_title", master_id=current["id"])
                             skip_ids.add(prev["id"])
                             title_dup_count += 1
                             state.update(log_msg=f"    title dup vs #{current['id']}: {prev['filename']}")
@@ -596,12 +596,12 @@ def run_phase_dedup():
                     continue
                 if is_duplicate_title(prev_title, cur_title, config.DUPLICATE_SIMILARITY_THRESHOLD):
                     if cur_score <= _metadata_richness(prev):
-                        mark_duplicate(conn, current["id"], "duplicate_by_author_year_title")
+                        mark_duplicate(conn, current["id"], "duplicate_by_author_year_title", master_id=prev["id"])
                         skip_ids.add(current["id"])
                         author_year_count += 1
                         state.update(log_msg=f"    author+year+title dup vs #{prev['id']}: {current['filename']}")
                     else:
-                        mark_duplicate(conn, prev["id"], "duplicate_by_author_year_title")
+                        mark_duplicate(conn, prev["id"], "duplicate_by_author_year_title", master_id=current["id"])
                         skip_ids.add(prev["id"])
                         author_year_count += 1
                         state.update(log_msg=f"    author+year+title dup vs #{current['id']}: {prev['filename']}")
@@ -812,5 +812,71 @@ def cleanup_source_dir(source_dir):
                 pass
         if removed_dirs:
             state.update(log_msg=f"  🗑 Cleanup: removed {removed_dirs} empty directories")
+    finally:
+        conn.close()
+
+
+# ── Phase Recon: coherence audit ─────────────────────────
+
+def run_recon():
+    """Audit DB/filesystem coherence: check all books and directories match up."""
+    init_db(config.DB_PATH)
+    conn = get_connection(config.DB_PATH)
+    state.update(phase="recon", stage="scanning", log_msg="▶ Recon: coherence audit")
+    result = {"summary": {}, "directories": {}, "db_integrity": {}, "anomalies": []}
+
+    try:
+        inbox = getattr(config, "WATCH_DIR", config.INBOX_DIR)
+        processed = getattr(config, "PROCESSED_DIR", config.FLAT_DIR)
+        archive = getattr(config, "ARCHIVE_DIR", os.path.join(processed, "archive")) if processed else None
+
+        for label, scan_dir in [("to_be_sorted", inbox), ("processed", processed), ("archive", archive)]:
+            if not scan_dir or not os.path.isdir(scan_dir):
+                result["directories"][label] = {"error": "not found"}
+                continue
+            files_found = []
+            for dirpath, _, filenames in os.walk(scan_dir):
+                for f in filenames:
+                    ext = os.path.splitext(f)[1].lower()
+                    if ext in config.EBOOK_EXTS:
+                        files_found.append(os.path.join(dirpath, f))
+            in_db = []
+            not_in_db = []
+            for fp in files_found:
+                norm = os.path.normpath(fp)
+                row = conn.execute("SELECT id FROM files WHERE source_path=?", (norm,)).fetchone()
+                if row:
+                    in_db.append({"id": row["id"], "path": norm})
+                else:
+                    not_in_db.append(norm)
+            result["directories"][label] = {
+                "files_found": len(files_found),
+                "in_db": len(in_db),
+                "not_in_db": len(not_in_db),
+            }
+            if not_in_db:
+                result["anomalies"].append(f"{label}: {len(not_in_db)} file(s) on disk but not in DB")
+            if len(not_in_db) <= 20:
+                result["directories"][label]["orphans"] = not_in_db
+
+        all_rows = conn.execute("SELECT id, source_path, stage FROM files").fetchall()
+        result["summary"]["total_db_books"] = len(all_rows)
+        result["summary"]["total_masters"] = conn.execute("SELECT COUNT(*) FROM files WHERE is_master=1").fetchone()[0]
+        result["summary"]["total_duplicates"] = conn.execute("SELECT COUNT(*) FROM files WHERE is_master=0").fetchone()[0]
+        stages = conn.execute("SELECT stage, COUNT(*) as c FROM files GROUP BY stage ORDER BY c DESC").fetchall()
+        result["summary"]["by_stage"] = {r["stage"]: r["c"] for r in stages}
+
+        missing_source = 0
+        for row in all_rows:
+            bid, sp, stage = row["id"], row["source_path"], row["stage"]
+            if sp and not os.path.isfile(sp):
+                missing_source += 1
+                if missing_source <= 10:
+                    result["anomalies"].append(f"Book #{bid}: source_path not on disk ({sp})")
+
+        result["db_integrity"]["missing_source"] = missing_source
+
+        state.update(log_msg=f"✓ Recon complete — {result['summary']['total_db_books']} books, {len(result['anomalies'])} anomalies")
+        return result
     finally:
         conn.close()

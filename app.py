@@ -79,6 +79,48 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/api/health")
+def api_health():
+    """Boot-time health check: DB, config dirs, pipeline lock."""
+    checks = {}
+    all_ok = True
+    # DB check
+    try:
+        conn = get_connection(DB_PATH)
+        conn.execute("SELECT 1").fetchone()
+        conn.close()
+        checks["db"] = "ok"
+    except Exception as e:
+        checks["db"] = str(e)
+        all_ok = False
+    # Config directories
+    for name, path in [("source", config.SOURCE_DIR), ("inbox", config.INBOX_DIR),
+                       ("flat_dir", config.FLAT_DIR), ("archive_dir", getattr(config, "ARCHIVE_DIR", ""))]:
+        if path and os.path.isdir(path):
+            checks[f"dir_{name}"] = "ok"
+        elif not path:
+            checks[f"dir_{name}"] = "not_configured"
+        else:
+            checks[f"dir_{name}"] = "not_found"
+            all_ok = False
+    # Pipeline lock check
+    lock_path = os.path.join(config.DATA_DIR, "pipeline.lock")
+    if os.path.exists(lock_path):
+        try:
+            with open(lock_path) as f:
+                pid = int(f.read().strip())
+            try:
+                os.kill(pid, 0)
+                checks["pipeline_lock"] = f"held_by_pid_{pid}"
+            except (OSError, ProcessLookupError):
+                checks["pipeline_lock"] = "stale"
+        except Exception:
+            checks["pipeline_lock"] = "corrupt"
+    else:
+        checks["pipeline_lock"] = "clear"
+    return jsonify({"status": "ok" if all_ok else "degraded", "checks": checks})
+
+
 # â”€â”€ Auth (P3.2) â”€â”€
 
 def is_authenticated():

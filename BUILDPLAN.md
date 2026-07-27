@@ -1431,8 +1431,8 @@ Implementation: Option B — added `master_id` column, updated `mark_duplicate()
 
 | # | Item | Severity | Status | Description |
 |---|------|----------|--------|-------------|
-| 1 | **D7.1** — GET endpoints trigger mutations | **High** | ⬜ Pending | `api_scan`, `api_scan_all`, `api_scan_inbox`, `api_phase_*` are GET but start pipelines. Browsers pre-fetch GET — causes duplicate runs |
-| 2 | **D7.2** — Pipeline no mutual exclusion | **High** | ⬜ Pending | No lock prevents concurrent pipeline runs; state corruption risk |
+| 1 | **D7.1** — GET endpoints trigger mutations | **High** | ✅ Done | Changed to POST; JS updated; browser pre-fetch no longer starts pipelines |
+| 2 | **D7.2** — Pipeline no mutual exclusion | **High** | ✅ Done | Cross-process PID lock file prevents concurrent pipeline runs |
 | 3 | **D7.3** — FTS stale after metadata edits | **High** | ⬜ Pending | `books_fts` not updated when title/author edited via API; search returns stale results |
 | 4 | **D7.4** — Delete doesn't clean covers + flat_path | **High** | ⬜ Pending | `flat_path`/`archive_path` columns don't exist in schema; cover images orphaned; processed copy not deleted |
 | 5 | **D7.5** — Network DB silently redirected | **High** | ⬜ Pending | UNC path auto-switched to local copy with no sync mechanism |

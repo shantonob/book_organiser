@@ -105,6 +105,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   #globalStatusDot.idle { background: #22c55e; }
   #globalStatusDot.running { background: #f59e0b; animation: pulse 1.2s ease-in-out infinite; }
   #globalStatusDot.watching { background: #0ea5e9; animation: pulse 2s ease-in-out infinite; }
+  #globalStatusDot.error { background: #ef4444; animation: pulse 0.6s ease-in-out infinite; }
   .tag.custom { background: #064e3b; color: #6ee7b7; font-size: 0.65rem; }
 
   .badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.62rem; background: #334155; color: #94a3b8; }
@@ -1131,7 +1132,10 @@ function phaseCopy() {
 function updateGlobalStatus(p) {
   const dot = document.getElementById("globalStatusDot");
   if (!dot) return;
-  if (p && p.running) {
+  if (p && p.error) {
+    dot.className = "error";
+    dot.title = "Error: " + p.error;
+  } else if (p && p.running) {
     dot.className = "running";
     dot.title = "Running: " + (p.current_phase || "") + (p.current_file ? " - " + p.current_file : "");
   } else if (p && p.watcher_active) {
@@ -1145,23 +1149,30 @@ function updateGlobalStatus(p) {
 
 function fetchStatus() {
   Promise.all([
-    fetch(API + "/api/status").then(r => r.json()),
-    fetch(API + "/api/funnel").then(r => r.json()),
-    fetch(API + "/api/quarantine?reviewed=0&limit=0").then(r => r.json()).catch(() => ({total:0}))
+    fetch(API + "/api/status").then(r => r.json()).catch(function(e) { return {error: "Status API: " + e.message}; }),
+    fetch(API + "/api/funnel").then(r => r.json()).catch(function() { return {}; }),
+    fetch(API + "/api/quarantine?reviewed=0&limit=0").then(r => r.json()).catch(function() { return {total: 0}; })
   ]).then(([d, f, q]) => {
+    if (d && d.error) {
+      updateGlobalStatus({error: d.error});
+      document.getElementById("statusLabel").textContent = "⚠ " + d.error;
+      return;
+    }
     renderFunnel(f);
     updateCurrent(d.pipeline);
     updateGlobalStatus(d.pipeline);
     phaseBadges(d.pipeline);
     if (d.pipeline && d.pipeline.log) renderLog(d.pipeline.log);
-    // Update quarantine badge
     const badge = document.getElementById("quarantineBadge");
     if (badge) {
       const cnt = q.total || 0;
       badge.textContent = cnt;
       badge.style.display = cnt > 0 ? "inline" : "none";
     }
-  }).catch(() => {});
+  }).catch(function(e) {
+    updateGlobalStatus({error: "Connection failed: " + e.message});
+    document.getElementById("statusLabel").textContent = "⚠ Server unreachable";
+  });
 }
 
 // ── Recon ──
@@ -1974,7 +1985,7 @@ let selectedLibId = null;
 
 function loadLibrary(filters) {
   filters = filters || {};
-  renderUdcTree();
+  if (!filters.skipTree) renderUdcTree();
   const q = document.getElementById("libSearch").value.trim();
   const stage = filters.stage || document.getElementById("libStageFilter").value;
   const udc = filters.udc || document.getElementById("libUdcFilter").value;
@@ -3263,6 +3274,27 @@ function deleteBook(bookId) {
 <script>
 fetchStatus();
 checkAuth();
+loadLibrary({skipTree: true});
+loadSummary();
+loadSources();
+loadReadingList();
+// Health check — warn on issues
+fetch(API + "/api/health").then(function(r) { return r.json(); }).then(function(h) {
+  if (h.status !== "ok") {
+    var issues = [];
+    for (var key in h.checks) {
+      var val = h.checks[key];
+      if (val !== "ok" && val !== "clear" && val !== "not_configured") {
+        issues.push(key.replace("dir_","") + ": " + val);
+      }
+    }
+    if (issues.length > 0) {
+      var label = document.getElementById("statusLabel");
+      if (label) label.textContent = "⚠ " + issues.join("; ");
+      updateGlobalStatus({error: issues.join("; ")});
+    }
+  }
+}).catch(function() {});
 setInterval(fetchStatus, 5000);
 </script>
 </body>

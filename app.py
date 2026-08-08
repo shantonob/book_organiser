@@ -1164,6 +1164,24 @@ def api_admin_sync_db():
     dst = config.ORIGINAL_DB_PATH
     if not os.path.isfile(src):
         return jsonify({"error": "local DB not found"}), 404
+    # Safety: never push an empty local cache over a populated original
+    try:
+        import sqlite3
+        conn = sqlite3.connect(src)
+        try:
+            local_count = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+        finally:
+            conn.close()
+        if os.path.isfile(dst):
+            dconn = sqlite3.connect(dst)
+            try:
+                remote_count = dconn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+            finally:
+                dconn.close()
+            if local_count == 0 and remote_count > 0:
+                return jsonify({"error": "refusing to push empty local DB over populated original"}), 409
+    except Exception:
+        pass
     import shutil
     try:
         dst_dir = os.path.dirname(dst)

@@ -47,6 +47,26 @@ if not os.environ.get("BOOK_DB_PATH") and "\\\\" in DB_PATH:
     _LOCAL_DB = os.path.join(os.path.expanduser("~"), "book_organiser_data", "catalog.db")
     DB_PATH = _LOCAL_DB
 LOCAL_DB_REDIRECTED = ORIGINAL_DB_PATH is not None
+
+
+def seed_local_db(original_path, local_path):
+    """If the local working-copy DB is missing but the remote original exists,
+    copy the original down so a fresh machine boots with real data instead of
+    silently creating an empty catalog (root cause of 'no books' on other hosts)."""
+    import shutil as _shutil
+    if (original_path and local_path
+            and not os.path.isfile(local_path) and os.path.isfile(original_path)):
+        try:
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            _shutil.copy2(original_path, local_path)
+            return True
+        except Exception:
+            return False
+    return False
+
+
+if LOCAL_DB_REDIRECTED:
+    seed_local_db(ORIGINAL_DB_PATH, DB_PATH)
 EXCLUDE_DIRS = set(
     os.environ.get("BOOK_EXCLUDE_DIRS", ".git,__pycache__,data,templates,extractors").split(",")
 )

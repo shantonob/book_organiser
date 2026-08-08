@@ -40,6 +40,9 @@ FLAT_DIR = ""
 ARCHIVE_DIR = ""
 _DEFAULT_DB = os.path.join(DATA_DIR, "catalog.db")
 DB_PATH = os.environ.get("BOOK_DB_PATH", _DEFAULT_DB)
+# Single canonical directory for cover images (P8.1). Always resolves to DATA_DIR,
+# never to the local DB mirror, so covers stay on shared/SMB setups.
+COVER_DIR = os.environ.get("BOOK_COVER_DIR", os.path.join(DATA_DIR, "covers"))
 # If default DB is on a network/SMB path, use a local copy for performance
 ORIGINAL_DB_PATH = None
 if not os.environ.get("BOOK_DB_PATH") and "\\\\" in DB_PATH:

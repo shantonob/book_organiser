@@ -1,18 +1,23 @@
 services:
   book-organiser:
-    build: .
-    image: book-organiser:latest
+    build:
+      context: .
+      args:
+        # 1 = install calibre (high-fidelity AZW3/MOBI/FB2→EPUB conversion)
+        # 0 = slim image using the pure-stdlib reader fallback (default)
+        WITH_CALIBRE: ${WITH_CALIBRE:-0}
+    image: ${BOOK_ORGANISER_IMAGE:-book-organiser:latest}
     container_name: book-organiser
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "${BOOK_PORT:-5000}:5000"
     volumes:
-      # SSD mount: database, cache, enrich data
-      - /mnt/ssd/book-organiser/data:/data
+      # SSD mount: database, covers, cache, enrich data
+      - ${DATA_HOST_PATH:-/mnt/ssd/book-organiser/data}:/data
       # SD card: logs, config overrides (tiny writes)
-      - /mnt/sd/book-organiser/config:/config
+      - ${CONFIG_HOST_PATH:-/mnt/sd/book-organiser/config}:/config
       # Source books (read-only)
-      - /mnt/media_ssd/books:/books:ro
+      - ${BOOKS_HOST_PATH:-/mnt/media_ssd/books}:/books:ro
     environment:
       - BOOK_ORGANISER_DOCKER=1
       - BOOK_DATA_DIR=/data
@@ -20,8 +25,15 @@ services:
       - BOOK_SOURCE_DIR=/books
       - BOOK_FLAT_DIR=/data/processed/flat
       - BOOK_DB_PATH=/data/catalog.db
+      - BOOK_COVER_DIR=/data/covers
       - BOOK_LOG_DIR=/config/logs
       - BOOK_AUTH_PASSWORD=${BOOK_AUTH_PASSWORD:-}
       - BOOK_SECRET_KEY=${BOOK_SECRET_KEY:-change-me-in-production}
       - GOOGLE_BOOKS_API_KEY=${GOOGLE_BOOKS_API_KEY:-}
-      - TZ=Europe/London
+      - TZ=${TZ:-Europe/London}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

@@ -296,6 +296,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   <div class="tab-panel" id="tab-pipeline">
     <div class="row">
       <input type="text" id="sourcePath" value="" placeholder="Source path (set in Settings)">
+      <input type="file" id="uploadInput" multiple accept=".epub,.pdf,.mobi,.azw3,.djvu,.cbr,.cbz,.fb2" style="display:none">
+      <button class="primary" onclick="document.getElementById('uploadInput').click()" title="Upload ebook files into the to-be-sorted inbox">Upload</button>
       <button class="primary" onclick="runAll()">A+B: Metadata + Dedup</button>
       <button onclick="phaseMetadata()">A: Metadata</button>
       <button onclick="phaseDedup()">B: Dedup</button>
@@ -1238,6 +1240,35 @@ function refreshMissing() {
     })
     .catch(function() { document.getElementById("statusLabel").textContent = "failed to start refresh"; });
 }
+
+function uploadFiles() {
+  const input = document.getElementById("uploadInput");
+  if (!input.files || input.files.length === 0) return;
+  const fd = new FormData();
+  var skipped = [];
+  for (var i = 0; i < input.files.length; i++) {
+    var f = input.files[i];
+    var ext = f.name.split(".").pop().toLowerCase();
+    if ([".epub",".pdf",".mobi",".azw3",".djvu",".cbr",".cbz",".fb2"].indexOf("." + ext) < 0) skipped.push(f.name);
+    else fd.append("files", f);
+  }
+  if (fd.getAll("files").length === 0) { alert("No supported files selected"); return; }
+  if (!showConfirm("Upload " + fd.getAll("files").length + " file(s) to the to-be-sorted inbox (to_be_sorted) and start the pipeline? " + (skipped.length ? "Skipped: " + skipped.join(", ") : "").trim())) return;
+  var btn = document.querySelector('[title="Upload ebook files into the to-be-sorted inbox"]');
+  if (btn) btn.disabled = true;
+  fetch(API + "/api/upload", {method:"POST", body: fd})
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      document.getElementById("statusLabel").textContent = (d.status === "started" ? "queued " + d.count + " file(s) for processing" : "upload issue: " + (d.error || "unknown"));
+      input.value = "";
+    })
+    .catch(function() { document.getElementById("statusLabel").textContent = "upload failed"; })
+    .finally(function() { if (btn) btn.disabled = false; });
+}
+document.addEventListener("DOMContentLoaded", function() {
+  const input = document.getElementById("uploadInput");
+  if (input) input.addEventListener("change", uploadFiles);
+});
 
 function updateGlobalStatus(p) {
   const dot = document.getElementById("globalStatusDot");
@@ -2701,7 +2732,7 @@ function loadReader(bookId, book) {
           _loadEpubReader(bookId, area);
         } else if (d.status === "error") {
           clearInterval(pollTimer);
-          area.innerHTML = '<div style="color:#ef4444;text-align:center;padding:40px">Conversion failed: ' + (d.error || "unknown") + '<br><button onclick="openReader(' + bookId + ')" style="margin-top:12px;padding:6px 16px;border:none;border-radius:4px;background:#334155;color:#e2e8f0;cursor:pointer">Retry</button></div>';
+          area.innerHTML = '<div style="color:#ef4444;text-align:center;padding:40px"><div style="font-size:1rem;margin-bottom:8px">Could not render: ' + (d.error || "unknown") + '</div><div style="margin-bottom:12px"><button onclick="openReader(' + bookId + ')" style="padding:6px 16px;border:none;border-radius:4px;background:#334155;color:#e2e8f0;cursor:pointer;margin-right:8px">Retry</button><a href="' + API + '/api/book/' + bookId + '/download" style="padding:6px 16px;border-radius:4px;background:#0ea5e9;color:#fff;text-decoration:none">Download file</a></div></div>';
         }
       }).catch(function() {});
     }, 2000);

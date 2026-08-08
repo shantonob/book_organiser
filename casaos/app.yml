@@ -30,4 +30,4 @@ environment:
     name: GOOGLE_BOOKS_API_KEY
     default: ""
     description: "Optional: Google Books API key for enrichment"
-tip: "After install, set your source books volume and admin password in the CasaOS dashboard"
+tip: "After install, set your source books volume and admin password in the CasaOS dashboard. Covers and DB live on the /data volume. Full options: .env.example and INSTALLING.md."

@@ -389,8 +389,8 @@ def run_phase_metadata(source=None, inbox_files=None):
             if not row_meta or not row_meta["cover_path"]:
                 cover_url = enriched.get("cover_url") if enriched else None
                 if cover_url:
-                    cover_dir = os.path.join(config.PROCESSED_DIR, "covers")
-                    downloaded = _download_cover(cover_url, cover_dir)
+                    os.makedirs(config.COVER_DIR, exist_ok=True)
+                    downloaded = _download_cover(cover_url, config.COVER_DIR)
                     if downloaded:
                         upsert_metadata(conn, file_id, cover_path=downloaded)
         except Exception as e:
@@ -415,9 +415,8 @@ def run_phase_metadata(source=None, inbox_files=None):
 
         cover_data = raw_meta.get("cover_data")
         if cover_data:
-            cover_dir = os.path.join(config.PROCESSED_DIR, "covers")
-            os.makedirs(cover_dir, exist_ok=True)
-            cover_path = os.path.join(cover_dir, f"{file_id}.jpg")
+            os.makedirs(config.COVER_DIR, exist_ok=True)
+            cover_path = os.path.join(config.COVER_DIR, f"{file_id}.jpg")
             try:
                 with open(cover_path, "wb") as cf:
                     cf.write(cover_data)
@@ -765,7 +764,7 @@ def run_phase_enrich(limit=500):
     try:
         state.update(phase="enrich", log_msg="▶ Enrich: refreshing missing metadata started")
 
-        covers_dir = os.path.join(os.path.dirname(config.DB_PATH), "covers")
+        covers_dir = config.COVER_DIR
         os.makedirs(covers_dir, exist_ok=True)
 
         rows = conn.execute("""
@@ -1032,7 +1031,7 @@ def run_recon():
         result["db_integrity"]["missing_source"] = missing_source
 
         # Cover integrity: check cover_path existence + orphaned cover files
-        covers_dir = os.path.join(os.path.dirname(config.DB_PATH), "covers")
+        covers_dir = config.COVER_DIR
         missing_covers = 0
         orphaned_covers = 0
         if os.path.isdir(covers_dir):

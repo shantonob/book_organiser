@@ -213,7 +213,7 @@ def api_diagnostics():
         else:
             result["checks"][f"dir_{name}"] = "not_found"
             all_ok = False
-    covers_dir = os.path.join(os.path.dirname(DB_PATH), "covers")
+    covers_dir = config.COVER_DIR
     if os.path.isdir(covers_dir):
         on_disk = set(f.split(".")[0] for f in os.listdir(covers_dir) if f.endswith(".jpg"))
         try:
@@ -505,6 +505,40 @@ def api_scan_inbox():
     return jsonify({"status": "started", "count": len(files)})
 
 
+@app.route("/api/upload", methods=["POST"])
+def api_upload():
+    """Upload ebook files into the inbox (to_be_sorted) and start processing."""
+    import werkzeug
+    inbox_path = getattr(config, "WATCH_DIR", config.INBOX_DIR)
+    if not os.path.isdir(inbox_path):
+        inbox_path = os.path.join(os.path.dirname(__file__), "inbox")
+    if not os.path.isdir(inbox_path):
+        os.makedirs(inbox_path, exist_ok=True)
+
+    files = request.files.getlist("files")
+    allowed = EBOOK_EXTS
+    saved, rejected = [], []
+    for f in files:
+        ext = os.path.splitext(f.filename or "")[1].lower()
+        if ext not in allowed:
+            rejected.append(f.filename)
+            continue
+        name = werkzeug.utils.secure_filename(os.path.basename(f.filename or ""))
+        dst = os.path.join(inbox_path, name)
+        if os.path.exists(dst):
+            base, e = os.path.splitext(name)
+            i = 1
+            while os.path.exists(dst):
+                dst = os.path.join(inbox_path, f"{base}_{i}{e}")
+                i += 1
+        f.save(dst)
+        saved.append(os.path.basename(dst))
+    if saved:
+        _start_pipeline_subprocess("all", inbox_path)
+    status = "started" if saved else "rejected"
+    return jsonify({"status": status, "count": len(saved), "saved": saved, "rejected": rejected})
+
+
 _pipeline_proc = None
 
 def _start_pipeline_subprocess(phase, source=None, extra_args=None):
@@ -714,7 +748,7 @@ def api_cover(book_id):
         ).fetchone()
         if not row or not os.path.isfile(row["cover_path"]):
             return jsonify({"error": "cover not found"}), 404
-        covers_dir = os.path.join(os.path.dirname(DB_PATH), "covers")
+        covers_dir = config.COVER_DIR
         return _safe_send_path(row["cover_path"], [covers_dir], mimetype="image/jpeg")
     finally:
         conn.close()
@@ -1615,18 +1649,33 @@ def api_comic_status(book_id):
 CONVERT_EXTS = {".azw3", ".mobi", ".fb2"}
 
 def _convert_to_epub(filepath):
+    ext = (os.path.splitext(filepath)[1] or ".epub").lower()
+    # 1) calibre (full fidelity) if installed
     exe = shutil.which("ebook-convert")
-    if not exe:
-        return None
+    if exe:
+        fd, outpath = tempfile.mkstemp(suffix=".epub")
+        os.close(fd)
+        try:
+            subprocess.run([exe, filepath, outpath], capture_output=True, timeout=120, check=True)
+            if os.path.isfile(outpath) and os.path.getsize(outpath) > 0:
+                return outpath
+        except Exception:
+            try:
+                os.unlink(outpath)
+            except Exception:
+                pass
+    # 2) pure-stdlib fallback (P8.2) — no external tools
+    import mobi_reader
     fd, outpath = tempfile.mkstemp(suffix=".epub")
     os.close(fd)
+    result = mobi_reader.render_to_epub(filepath, outpath, ext)
+    if result:
+        return result
     try:
-        subprocess.run([exe, filepath, outpath], capture_output=True, timeout=120, check=True)
-        return outpath
+        os.unlink(outpath)
     except Exception:
-        try: os.unlink(outpath)
-        except Exception: pass
-        return None
+        pass
+    return None
 
 CONVERT_EXTS = {".azw3", ".mobi", ".fb2"}
 _conversion_cache = {}
@@ -1897,8 +1946,8 @@ def api_book_enrich(book_id):
         from db import upsert_metadata
         cover_path = None
         if result.get("cover_url"):
-            covers_dir = os.path.join(os.path.dirname(config.DB_PATH), "covers")
-            cover_path = _download_cover(result["cover_url"], covers_dir)
+            os.makedirs(config.COVER_DIR, exist_ok=True)
+            cover_path = _download_cover(result["cover_url"], config.COVER_DIR)
         upsert_metadata(conn, book_id,
                         title=result.get("title"),
                         authors=result.get("authors"),
@@ -2207,6 +2256,57 @@ def api_export_excel():
 
 # P6.1 - Portable Config export/import
 
+def _migrate_cover_paths():
+    """P8.1: unify cover storage onto COVER_DIR.
+
+    - Rows already under COVER_DIR: leave as-is.
+    - Rows pointing at a file that exists elsewhere: copy the image into COVER_DIR
+      (preserving the basename, idempotent) and repoint cover_path.
+    - Rows pointing at a missing file: repoint to COVER_DIR/<file_id>.jpg if that
+      file exists there, else leave untouched for later enrichment.
+    """
+    os.makedirs(config.COVER_DIR, exist_ok=True)
+    import shutil
+    try:
+        conn = get_connection(config.DB_PATH)
+        try:
+            rows = conn.execute(
+                "SELECT file_id, cover_path FROM metadata WHERE cover_path IS NOT NULL AND cover_path != ''"
+            ).fetchall()
+            moved = 0
+            copied = 0
+            cover_abs = os.path.normpath(config.COVER_DIR)
+            for r in rows:
+                cp = r["cover_path"]
+                try:
+                    in_cover_dir = os.path.normpath(cp).startswith(cover_abs + os.sep)
+                except Exception:
+                    in_cover_dir = False
+                if in_cover_dir and os.path.isfile(cp):
+                    continue
+                if os.path.isfile(cp):
+                    dst = os.path.join(config.COVER_DIR, os.path.basename(cp))
+                    if not os.path.isfile(dst):
+                        try:
+                            shutil.copy2(cp, dst)
+                        except Exception:
+                            continue
+                    conn.execute("UPDATE metadata SET cover_path=? WHERE file_id=?", (dst, r["file_id"]))
+                    copied += 1
+                else:
+                    candidate = os.path.join(config.COVER_DIR, f"{r['file_id']}.jpg")
+                    if os.path.isfile(candidate):
+                        conn.execute("UPDATE metadata SET cover_path=? WHERE file_id=?", (candidate, r["file_id"]))
+                        moved += 1
+            if copied or moved:
+                conn.commit()
+                logger.info("P8.1 cover migration: copied %d, repointed %d rows to %s",
+                            copied, moved, config.COVER_DIR)
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("P8.1 cover migration skipped: %s", e)
+
 def _handle_export_pi(zip_path):
     import zipfile, json
     data_dir = config.DATA_DIR
@@ -2216,7 +2316,7 @@ def _handle_export_pi(zip_path):
     print(f"Exporting from {data_dir} to {zip_path} ...")
     export_items = []
     export_items.append(("catalog.db", os.path.join(data_dir, "catalog.db")))
-    covers_dir = os.path.join(data_dir, "covers")
+    covers_dir = config.COVER_DIR
     if os.path.isdir(covers_dir):
         for fname in os.listdir(covers_dir):
             if fname.endswith(".jpg"):
@@ -2316,6 +2416,7 @@ if __name__ == '__main__':
     _conn = get_connection(config.DB_PATH)
     load_config_overrides(_conn)
     _conn.close()
+    _migrate_cover_paths()
 
     # Derive WATCH_DIR if not set
     if not config.WATCH_DIR:

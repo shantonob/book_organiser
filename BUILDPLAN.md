@@ -1465,7 +1465,18 @@ Implementation: Option B — added `master_id` column, updated `mark_duplicate()
 | 32 | **D7.32** — Inconsistent confirm dialogs | **Low** | ✅ Done | Replaced all 4 native `confirm()` calls with styled modal `showConfirm()` — consistent look for bulk delete, force-keep, merge, and delete |
 | 33 | **D7.33** — Metrics & Health Dashboard | **Medium** | ✅ Done | Settings tab shows DB size, covers size, cache sizes, disk usage, per-component health status |
 
-**Status**: In progress — D7.1–D7.33 done; P5.3–P5.5 done; P6.1 done; = **0 items remaining** 🎉
+**Status**: Done — D7.1–D7.33 done; P5.3–P5.5 done; P6.1 done; P6.2 done; = **0 items remaining** 🎉
+
+---
+
+## Post-plan additions (after original backlog completed)
+
+| Item | Status | Rationale |
+|------|--------|-----------|
+| **P7.1** — Enrich-Missing-Metadata phase (`--phase enrich`) | ✅ Done | Batch backfills missing covers/description/ISBN via Open Library + Google Books (rate-limited, cached, commit-per-book); wired to the **Refresh Missing Metadata** button in the Pipeline tab (`POST /api/enrich/missing`) |
+| **P7.2** — In-reader drawing overlay (PDF/comic) | ✅ Done | Vector strokes on a per-page overlay canvas; colour/size; persisted per page; read-only replay while reading |
+| **P7.3** — Reader zoom & scroll mode | ✅ Done | Ctrl/Shift + wheel zoom (30–300%); ⇅ Scroll toggles fit-to-page vs continuous for PDF/comic; EPUB re-renders to `scrolled-doc` flow preserving position |
+| **P7.4** — Remote-host 'no books' fix | ✅ Done | Network/UNC DB mirrored to a local working copy, auto-seeded on fresh hosts; `sync-db` refuses to push empty over populated |
 
 CSS: `.reader-layout` uses `min-height: calc(100vh - 160px)`, `#readerArea` uses `flex:1`, EPUB rendition height reads container `offsetHeight` dynamically. Fullscreen handler simplified.
 

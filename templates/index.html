@@ -2710,11 +2710,13 @@ function loadReader(bookId, book) {
   _loadEpubReader(bookId, area);
 }
 
-function _loadEpubReader(bookId, area) {
+function _loadEpubReader(bookId, area, restoreCfi) {
   readerBook = ePub(API + "/api/book/" + bookId + "/read");
   var ra = document.getElementById("readerArea");
   var rh = Math.max(ra.offsetHeight || 600, 400);
-  readerRendition = readerBook.renderTo("readerArea", { width: "100%", height: rh, spread: "none" });
+  var opts = { width: "100%", height: rh, spread: "none" };
+  if (_readerScrollMode) opts.flow = "scrolled-doc";
+  readerRendition = readerBook.renderTo("readerArea", opts);
   readerRendition.display();
 
   document.getElementById("readerPrev").onclick = function() { readerPrev(); };
@@ -2745,24 +2747,28 @@ function _loadEpubReader(bookId, area) {
   document.getElementById("exportHighlightsBtn").style.display = "";
   document.getElementById("readerZoomGroup").style.display = "flex";
   _readerZoom = 100;
-  _readerScrollMode = false;
   document.getElementById("readerZoomLevel").textContent = "100%";
-  document.getElementById("readerScrollBtn").style.background = "#475569";
+  document.getElementById("readerScrollBtn").style.background = _readerScrollMode ? "#0ea5e9" : "#475569";
   document.getElementById("readerArea").style.overflowY = "hidden";
   document.getElementById("readerDrawGroup").style.display = "none";
   hideReaderDrawGroup();
+
+  // Restore saved position
+  var restoreFromState = function(state) {
+    if (state && state.location) {
+      try { readerRendition.display(state.location); } catch(e) {}
+    }
+  };
+  if (restoreCfi) {
+    try { readerRendition.display(restoreCfi); } catch(e) {}
+  } else {
+    fetch(API + "/api/book/" + bookId + "/reader-state").then(r => r.json()).then(restoreFromState).catch(function() {});
+  }
 
   // Show annotations sidebar, load highlights + bookmarks + annotations
   document.getElementById("annotationsSidebar").style.display = "block";
   loadTimeline(bookId);
   renderAllHighlights(bookId);
-
-  // Restore saved position
-  fetch(API + "/api/book/" + bookId + "/reader-state").then(r => r.json()).then(function(state) {
-    if (state && state.location) {
-      try { readerRendition.display(state.location); } catch(e) {}
-    }
-  }).catch(function() {});
 }
 
 // ═══ PDF Reader with PDF.js (P4.2d) ═══
@@ -3234,6 +3240,22 @@ function readerToggleScroll() {
   _readerScrollMode = !_readerScrollMode;
   var btn = document.getElementById("readerScrollBtn");
   if (btn) btn.style.background = _readerScrollMode ? "#0ea5e9" : "#475569";
+  if (readerFormat === "epub" && readerRendition && readerBookId != null) {
+    var cfi = null;
+    try {
+      var loc = readerRendition.currentLocation();
+      if (loc && loc.start) cfi = loc.start.cfi;
+    } catch(e) {}
+    try { readerBook.destroy(); } catch(e) {}
+    readerBook = null; readerRendition = null;
+    _readerZoom = 100;
+    if (_applyReaderZoom) {
+      var lblEl = document.getElementById("readerZoomLevel");
+      if (lblEl) lblEl.textContent = "100%";
+    }
+    _loadEpubReader(readerBookId, null, cfi);
+    return;
+  }
   if (_readerScrollMode) {
     _readerZoom = 100;
     var lbl = document.getElementById("readerZoomLevel");

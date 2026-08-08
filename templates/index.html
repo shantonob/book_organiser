@@ -2748,6 +2748,19 @@ function _loadEpubReader(bookId, area, restoreCfi) {
   var opts = { width: "100%", height: rh, spread: "none" };
   if (_readerScrollMode) opts.flow = "scrolled-doc";
   readerRendition = readerBook.renderTo("readerArea", opts);
+
+  // Surface load failures/timeouts instead of leaving a hanging spinner (big books can take a while)
+  var loadTimeout = setTimeout(function() {
+    if (!readerBook || !readerBook.opened) {
+      area.innerHTML = '<div style="color:#ef4444;text-align:center;padding:40px"><div style="font-size:1rem;margin-bottom:8px">Still loading the book... this may be a very large file.</div><div style="margin-bottom:12px"><button onclick="openReader(' + bookId + ')" style="padding:6px 16px;border:none;border-radius:4px;background:#334155;color:#e2e8f0;cursor:pointer;margin-right:8px">Retry</button><a href="' + API + '/api/book/' + bookId + '/download" style="padding:6px 16px;border-radius:4px;background:#0ea5e9;color:#fff;text-decoration:none">Download instead</a></div></div>';
+    }
+  }, 20000);
+  readerBook.opened.then(function() {
+    if (loadTimeout) clearTimeout(loadTimeout);
+  }).catch(function(err) {
+    if (loadTimeout) clearTimeout(loadTimeout);
+    area.innerHTML = '<div style="color:#ef4444;text-align:center;padding:40px"><div style="font-size:1rem;margin-bottom:8px">Could not load the EPUB: ' + (err || "unknown error") + '</div><div style="margin-bottom:12px"><button onclick="openReader(' + bookId + ')" style="padding:6px 16px;border:none;border-radius:4px;background:#334155;color:#e2e8f0;cursor:pointer;margin-right:8px">Retry</button><a href="' + API + '/api/book/' + bookId + '/download" style="padding:6px 16px;border-radius:4px;background:#0ea5e9;color:#fff;text-decoration:none">Download instead</a></div></div>';
+  });
   readerRendition.display();
 
   document.getElementById("readerPrev").onclick = function() { readerPrev(); };

@@ -94,12 +94,29 @@ def _safe_send_path(filepath, allowed_base_dirs, **kwargs):
     real = os.path.realpath(filepath)
     for base in allowed_base_dirs:
         if base and real.startswith(os.path.realpath(base) + os.sep):
+            kwargs.setdefault("conditional", True)
             return send_file(filepath, **kwargs)
     # Also allow temp dir for conversion results
     import tempfile
     if real.startswith(os.path.realpath(tempfile.gettempdir()) + os.sep):
+        kwargs.setdefault("conditional", True)
         return send_file(filepath, **kwargs)
     return jsonify({"error": "access denied"}), 403
+
+
+def _readable_dirs():
+    """Directories the read/download endpoints may serve from.
+
+    Includes configured source dirs (books still live at their original location),
+    the processed/flat/archive copies, and the data dir for generated files.
+    """
+    dirs = []
+    for d in (config.SOURCE_DIR, *getattr(config, "SOURCE_DIRS", []),
+              config.FLAT_DIR, getattr(config, "PROCESSED_DIR", config.FLAT_DIR),
+              getattr(config, "ARCHIVE_DIR", ""), getattr(config, "DATA_DIR", "")):
+        if d and d not in dirs:
+            dirs.append(d)
+    return dirs
 
 
 @app.route("/")
@@ -1560,13 +1577,7 @@ def api_book_download(book_id):
             return jsonify({"error": "file not found on disk"}), 404
 
         mt, _ = mimetypes.guess_type(filepath)
-        allowed = [
-            config.FLAT_DIR,
-            getattr(config, "PROCESSED_DIR", config.FLAT_DIR),
-            getattr(config, "ARCHIVE_DIR", ""),
-            getattr(config, "DATA_DIR", ""),
-        ]
-        return _safe_send_path(filepath, allowed, as_attachment=True, download_name=fname, mimetype=mt or "application/octet-stream")
+        return _safe_send_path(filepath, _readable_dirs(), as_attachment=True, download_name=fname, mimetype=mt or "application/octet-stream")
     finally:
         conn.close()
 
@@ -1713,17 +1724,11 @@ def api_book_read(book_id):
 
         if ext == ".epub":
             import tempfile
-            allowed = [tempfile.gettempdir()]
-            for d in (config.FLAT_DIR, getattr(config, "PROCESSED_DIR", config.FLAT_DIR),
-                      getattr(config, "ARCHIVE_DIR", ""), getattr(config, "DATA_DIR", "")):
-                if d: allowed.append(d)
+            allowed = list(_readable_dirs()) + [tempfile.gettempdir()]
             return _safe_send_path(filepath, allowed, mimetype="application/epub+zip")
         elif ext == ".pdf":
             import tempfile
-            allowed = [tempfile.gettempdir()]
-            for d in (config.FLAT_DIR, getattr(config, "PROCESSED_DIR", config.FLAT_DIR),
-                      getattr(config, "ARCHIVE_DIR", ""), getattr(config, "DATA_DIR", "")):
-                if d: allowed.append(d)
+            allowed = list(_readable_dirs()) + [tempfile.gettempdir()]
             return _safe_send_path(filepath, allowed, mimetype="application/pdf")
         elif ext in (".cbz", ".cbr"):
             with _comic_extract_lock:

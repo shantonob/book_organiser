@@ -168,7 +168,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .cover-thumb { width: 30px; height: 42px; object-fit: cover; border-radius: 2px; display: block; }
   .cover-placeholder { width: 30px; height: 42px; background: #1e293b; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; color: #475569; }
   .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
-  .gallery-item { background: #1e293b; border-radius: 6px; border: 1px solid #334155; overflow: hidden; cursor: pointer; transition: transform 0.15s, border-color 0.15s; }
+  .gallery-item { background: #1e293b; border-radius: 6px; border: 1px solid #334155; overflow: hidden; cursor: pointer; transition: transform 0.15s, border-color 0.15s; position: relative; }
   .gallery-item:hover { transform: translateY(-2px); border-color: #0ea5e9; }
   .gallery-item img { width: 100%; height: 180px; object-fit: cover; display: block; background: #0f172a; }
   .gallery-item .info { padding: 6px 8px; }
@@ -176,6 +176,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .gallery-item .info .ga { font-size: 0.68rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .gallery-item .info .gmeta { font-size: 0.62rem; color: #475569; margin-top: 2px; }
   .gallery-item .cover-missing { width: 100%; height: 180px; background: #0f172a; display: flex; align-items: center; justify-content: center; color: #334155; font-size: 0.7rem; }
+  .gallery-check { position: absolute; top: 4px; left: 4px; z-index: 2; }
+  .gallery-check input { width: 16px; height: 16px; cursor: pointer; accent-color: #0ea5e9; }
   /* UDC tree */
   .udc-tree-node { cursor: pointer; padding: 3px 4px; border-radius: 3px; transition: background 0.15s; display: flex; justify-content: space-between; }
   .udc-tree-node:hover { background: #1a2332; }
@@ -244,11 +246,24 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .comic-canvas-wrap canvas { max-width: 100%; max-height: calc(100vh - 220px); border-radius: 4px; box-shadow: 0 2px 12px rgba(0,0,0,0.3); }
   /* Selection overlay during drag */
   .sel-overlay { position: absolute; border: 2px dashed #0ea5e9; background: rgba(14,165,233,0.15); pointer-events: none; display: none; z-index: 10; }
+  /* Drawing overlay */
+  .draw-overlay { position: absolute; pointer-events: none; z-index: 11; }
+  .draw-overlay.active { pointer-events: auto; cursor: crosshair; }
   /* Annotation sidebar toggle */
   #annToggleBtn { position: relative; }
+  /* Confirm dialog overlay (D7.32) */
+  #confirmOverlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center; }
+  .confirm-box { background:#1e293b; border:1px solid #334155; border-radius:8px; padding:24px; max-width:420px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.4); }
+  .confirm-msg { color:#e2e8f0; font-size:0.85rem; margin-bottom:16px; line-height:1.5; }
+  .confirm-btns { display:flex; gap:8px; justify-content:flex-end; }
+  .confirm-btns button { padding:6px 16px; border:none; border-radius:4px; font-size:0.78rem; cursor:pointer; }
+  .confirm-cancel { background:#334155; color:#94a3b8; }
+  .confirm-ok { background:#ef4444; color:#fff; font-weight:600; }
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.88/epub.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="/static/epub.polyfill.js"></script>
+<script src="/static/jszip.min.js"></script>
+<script src="/static/epub.min.js"></script>
+<script src="/static/pdf.min.js"></script>
 </head>
 <body>
 <div class="container">
@@ -286,6 +301,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       <button onclick="phaseDedup()">B: Dedup</button>
       <button class="green" onclick="runAllWithCopy()">A+B+C: Full</button>
       <button class="warn" onclick="phaseCopy()">C: Copy</button>
+      <button class="primary" onclick="refreshMissing()" title="Fetch missing covers + Google Books metadata">Refresh Missing Metadata</button>
     </div>
 
     <div class="phase-badges" id="phaseBadges">
@@ -543,6 +559,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           </table>
           <div id="libGrid" class="gallery-grid" style="display:none"></div>
         </div>
+        <div id="libPagination" style="flex-shrink:0;padding:6px 0;display:flex;align-items:center;gap:8px;font-size:0.78rem;color:#94a3b8">
+          <span id="libPageInfo"></span>
+          <button id="libPrevBtn" onclick="loadLibrary(_libOffset - _libLimit)" style="padding:3px 10px;font-size:0.72rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer" disabled>&#x25C0; Prev</button>
+          <button id="libNextBtn" onclick="loadLibrary(_libOffset + _libLimit)" style="padding:3px 10px;font-size:0.72rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">Next &#x25B6;</button>
+          <select id="libLimitSelect" onchange="loadLibrary(0)" style="padding:3px 4px;font-size:0.72rem;background:#1a2332;border:1px solid #334155;border-radius:3px;color:#e2e8f0">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+            <option value="500">500</option>
+          </select>
+        </div>
       </div>
       <div style="width:320px;flex-shrink:0">
         <div class="panel visible library-panel" id="detailPanel">
@@ -585,6 +612,24 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <button id="annToggleBtn" onclick="toggleAnnotationsSidebar()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0;font-weight:600;display:none">&#x1F4DD; Notes</button>
           <button id="bookmarkBtn" onclick="addBookmark()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#eab308;color:#0f172a;font-weight:600;display:none">&#x1F516; Bookmark</button>
           <button id="pageNoteBtn" onclick="addPageNote()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#a78bfa;color:#0f172a;font-weight:600;display:none">&#x1F4DD; Page Note</button>
+          <span class="reader-zoom-group" id="readerZoomGroup" style="display:none;gap:4px;align-items:center">
+            <button onclick="readerZoomOut()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0" title="Zoom out">&#x1F50D;-</button>
+            <span id="readerZoomLevel" style="color:#94a3b8;font-size:0.72rem;min-width:30px;text-align:center">100%</span>
+            <button onclick="readerZoomIn()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0" title="Zoom in">&#x1F50D;+</button>
+            <button onclick="readerZoomReset()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0" title="Reset zoom">&#x21BA;</button>
+            <button onclick="readerToggleScroll()" id="readerScrollBtn" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0" title="Toggle scroll mode">&#x21C5; Scroll</button>
+          </span>
+          <span class="reader-draw-group" id="readerDrawGroup" style="display:none;gap:4px;align-items:center">
+            <button onclick="toggleDrawMode()" id="drawBtn" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#ef4444;color:#fff;font-weight:600" title="Toggle drawing mode">&#x270E; Draw</button>
+            <button onclick="clearDrawing()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#334155;color:#e2e8f0" title="Clear drawing on this page">&#x1F9F9; Clear</button>
+            <input type="color" id="drawColor" value="#ef4444" style="width:28px;height:24px;padding:0;border:none;background:none;cursor:pointer" title="Pen colour">
+            <select id="drawSize" style="padding:3px 4px;font-size:0.7rem;background:#1a2332;color:#e2e8f0;border:1px solid #334155;border-radius:3px" title="Pen size">
+              <option value="2">Thin</option>
+              <option value="4" selected>Medium</option>
+              <option value="8">Thick</option>
+              <option value="14">Marker</option>
+            </select>
+          </span>
         </div>
         <div id="readerFallback" style="display:none;text-align:center;padding:40px;color:#64748b">
           <div style="font-size:1.1rem;margin-bottom:12px">Cannot preview this format in the browser</div>
@@ -600,11 +645,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <input type="text" id="annInput" placeholder="Add a note for this book..." style="flex:1;padding:4px 8px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.75rem">
           <button onclick="addNote()" style="padding:4px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#0ea5e9;color:#0f172a;font-weight:600">Add Note</button>
         </div>
-        <div id="annotationsList"></div>
-        <div style="margin-top:12px;border-top:1px solid #334155;padding-top:8px">
-          <strong style="color:#94a3b8;font-size:0.72rem">Bookmarks</strong>
-          <div id="bookmarksList"></div>
-        </div>
+        <div id="timelineList"></div>
       </div>
     </div>
     <!-- Highlight selection popup -->
@@ -646,6 +687,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       </div>
       <div style="font-size:0.65rem;color:#475569;margin-top:6px">Watches <code id="watcherDirLabel" style="background:#1a2332;padding:1px 4px;border-radius:2px">-</code> for new ebook files and auto-runs the pipeline. Runs inside the web process; restarts with the app.</div>
     </div>
+
+    <!-- Diagnostics -->
+    <div style="margin-top:16px;padding:12px;background:#0f172a;border:1px solid #334155;border-radius:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h3 style="color:#94a3b8;font-size:0.82rem;margin:0">System Diagnostics</h3>
+        <button onclick="loadDiagnostics()" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#6366f1;color:#f8fafc">Run Diagnostics</button>
+      </div>
+      <div id="diagnosticsResult" style="font-size:0.75rem;color:#64748b;max-height:400px;overflow-y:auto">Click "Run Diagnostics" to check system health.</div>
+    </div>
   </div>
 
   <!-- Login modal (P3.2) -->
@@ -669,11 +719,49 @@ window.onerror = function(msg, url, line, col, err) {
   if (el) { el.style.display = "block"; el.innerHTML = "<strong>JS Error:</strong> " + String(msg) + " at line " + line; }
   console.error("Uncaught:", msg, url, line, col, err);
 };
+window.addEventListener("unhandledrejection", function(e) {
+  console.warn("Unhandled promise rejection:", e.reason);
+});
+
+// Styled confirm modal (D7.32)
+function showConfirm(msg) {
+  return new Promise(function(resolve) {
+    var overlay = document.getElementById("confirmOverlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "confirmOverlay";
+      overlay.innerHTML = '<div class="confirm-box"><div class="confirm-msg"></div><div class="confirm-btns"><button class="confirm-cancel">Cancel</button><button class="confirm-ok">OK</button></div></div>';
+      document.body.appendChild(overlay);
+    }
+    overlay.querySelector(".confirm-msg").textContent = msg;
+    overlay.style.display = "flex";
+    overlay.querySelector(".confirm-ok").onclick = function() { overlay.style.display = "none"; resolve(true); };
+    overlay.querySelector(".confirm-cancel").onclick = function() { overlay.style.display = "none"; resolve(false); };
+  });
+}
+
 // Redirect localhost to 127.0.0.1 to avoid IPv6 timeout
 if (location.hostname === "localhost" || location.hostname === "::1") {
   location.replace(location.href.replace(/\/\/(localhost|::1)(?=[:/])/, "//127.0.0.1"));
 }
 const API = "";
+var _csrfToken = null;
+// Auto-inject CSRF token into mutation requests (D7.16)
+(function() {
+  var origFetch = window.fetch;
+  window.fetch = function(url, opts) {
+    opts = opts || {};
+    if (!_csrfToken) return origFetch(url, opts);
+    var method = (opts.method || "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+      opts.headers = opts.headers || {};
+      if (typeof opts.headers === "object" && !(opts.headers instanceof Headers) && !opts.headers["X-CSRF-Token"]) {
+        opts.headers["X-CSRF-Token"] = _csrfToken;
+      }
+    }
+    return origFetch(url, opts);
+  };
+})();
 
 // ── Tab switching ──
 function switchTab(name, filters) {
@@ -936,7 +1024,7 @@ function loadSources() {
     sources.forEach(s => {
       sel.innerHTML += '<option value="' + esc(s.source_group) + '">' + esc(s.source_group) + ' (' + s.count + ')</option>';
     });
-  }).catch(() => {});
+  }).catch(function(_e) { console.warn("fetch:", _e); });
 }
 
 function phaseBadges(p) {
@@ -1056,7 +1144,7 @@ function fetchSourceConfig() {
     if (src && src.value && srcInput && !srcInput.value) {
       srcInput.value = src.value;
     }
-  }).catch(() => {});
+  }).catch(function(_e) { console.warn("fetch:", _e); });
 }
 
 // ── Quick Search ──
@@ -1140,6 +1228,16 @@ function phaseCopy() {
   document.getElementById("statusLabel").textContent = "phase C: copy...";
   fetch(API + "/api/phase/copy", {method:"POST"});
 }
+function refreshMissing() {
+  if (!showConfirm("Fetch missing metadata (covers + Google Books)? This runs externally rate-limited lookups for up to 500 books. Continue?")) return;
+  document.getElementById("statusLabel").textContent = "refreshing missing metadata...";
+  fetch(API + "/api/enrich/missing", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({limit:500})})
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      document.getElementById("statusLabel").textContent = d && d.status === "started" ? "metadata refresh started (" + d.limit + " books)" : "failed to start refresh";
+    })
+    .catch(function() { document.getElementById("statusLabel").textContent = "failed to start refresh"; });
+}
 
 function updateGlobalStatus(p) {
   const dot = document.getElementById("globalStatusDot");
@@ -1157,6 +1255,78 @@ function updateGlobalStatus(p) {
     dot.className = "idle";
     dot.title = "Server idle";
   }
+}
+
+function loadDiagnostics() {
+  var el = document.getElementById("diagnosticsResult");
+  el.innerHTML = '<span style="color:#94a3b8">Running diagnostics...</span>';
+  fetch(API + "/api/diagnostics").then(function(r) { return r.json(); }).then(function(d) {
+    var ch = d.checks || {};
+    var m = d.metrics || {};
+    var overall = d.status === "ok" ? "OK" : "DEGRADED";
+    var overallCls = d.status === "ok" ? "#22c55e" : "#f59e0b";
+    var html = '<div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">';
+    html += '<span style="font-weight:700;font-size:0.9rem;color:' + overallCls + '">' + overall + '</span>';
+    html += '<span style="color:#64748b;font-size:0.7rem">' + new Date().toLocaleTimeString() + '</span>';
+    html += '<span style="flex:1"></span><span style="color:#475569;font-size:0.65rem;cursor:pointer" onclick="var t=this.nextSibling;t.style.display=t.style.display===\'none\'?\'\':\'none\'">&#x25B6; details</span><div style="display:none"></div></div>';
+
+    // Component health cards
+    function healthDot(ok) { return ok ? '<span style="color:#22c55e;font-size:1rem">&#x25CF;</span>' : '<span style="color:#ef4444;font-size:1rem">&#x25CF;</span>'; }
+    var components = [
+      {label:"Database", ok: ch.db_connect === "ok" && ch.db_integrity === "ok" && ch.db_schema === "ok", detail: "integrity: " + (ch.db_integrity||"?")},
+      {label:"FTS Search", ok: !(ch.fts && ch.fts.warning), detail: (ch.fts && ch.fts.docs) + " docs / " + (ch.fts && ch.fts.metadata_with_title) + " metadata"},
+      {label:"Directories", ok: !(["source","inbox","flat","data","processed"].some(function(n) { return ch["dir_" + n + "_dir"] === "not_found"; })), detail: ""},
+      {label:"Covers", ok: !(ch.covers && ch.covers.warning), detail: (ch.covers && ch.covers.on_disk) + " on disk, " + (ch.covers && ch.covers.missing) + " missing"},
+      {label:"Pipeline Lock", ok: ch.pipeline_lock === "clear" || (ch.pipeline_lock && ch.pipeline_lock.indexOf("held") >= 0), detail: ch.pipeline_lock || "?"},
+      {label:"Disk Space", ok: !(ch.disk && ch.disk.warning), detail: ch.disk ? (ch.disk.free_gb + " GB free of " + ch.disk.total_gb + " GB (" + ch.disk.free_pct + "%)") : "?"},
+    ];
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">';
+    for (var i = 0; i < components.length; i++) {
+      var c = components[i];
+      html += '<div style="background:#0f172a;border-radius:6px;padding:6px 10px;display:flex;align-items:center;gap:6px">';
+      html += healthDot(c.ok);
+      html += '<div><div style="font-size:0.75rem;color:#e2e8f0">' + c.label + '</div><div style="font-size:0.65rem;color:#64748b">' + c.detail + '</div></div></div>';
+    }
+    html += '</div>';
+
+    // File size metrics
+    html += '<div style="font-size:0.7rem;color:#94a3b8;margin-bottom:4px">Storage Usage</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">';
+    var metricLabels = {db_file_mb:"Database", covers_dir_mb:"Covers", comic_cache_mb:"Comic Cache", enrich_cache_mb:"Enrich Cache", data_dir_mb:"Data Dir"};
+    for (var key in metricLabels) {
+      var val = m[key];
+      if (val === undefined) continue;
+      html += '<div style="background:#0f172a;border-radius:6px;padding:6px 10px">';
+      html += '<div style="font-size:0.65rem;color:#64748b">' + metricLabels[key] + '</div>';
+      html += '<div style="font-size:0.85rem;color:#e2e8f0;font-weight:600">' + val + ' MB</div></div>';
+    }
+    html += '</div>';
+
+    // Collapsible raw checks
+    html += '<div style="display:none;font-size:0.65rem">';
+    html += '<table style="width:100%;border-collapse:collapse">';
+    var keys = Object.keys(ch).sort();
+    for (var i2 = 0; i2 < keys.length; i2++) {
+      var k = keys[i2];
+      var v = ch[k];
+      html += '<tr style="border-bottom:1px solid #1e293b"><td style="padding:2px 6px;color:#94a3b8;white-space:nowrap">' + k + '</td>';
+      if (typeof v === "object" && v !== null) {
+        html += '<td style="padding:2px 6px;color:#64748b;font-family:monospace;word-break:break-all">' + JSON.stringify(v).replace(/</g,"&lt;").substr(0,200) + '</td>';
+      } else {
+        var cls = "color:#64748b";
+        if (v === "ok" || v === "clear") cls = "color:#22c55e";
+        else if (v === "not_found" || v === "corrupt" || v === "stale") cls = "color:#ef4444;font-weight:600";
+        else if (String(v).indexOf("not_configured") === 0) cls = "color:#475569";
+        else if (String(v).indexOf("missing") >= 0) cls = "color:#f59e0b";
+        html += '<td style="padding:2px 6px;' + cls + '">' + String(v).replace(/</g,"&lt;") + '</td>';
+      }
+      html += '</tr>';
+    }
+    html += '</table></div>';
+    el.innerHTML = html;
+  }).catch(function(e) {
+    el.innerHTML = '<span style="color:#ef4444">Failed: ' + e.message + '</span>';
+  });
 }
 
 function fetchStatus() {
@@ -1353,7 +1523,7 @@ function renderUdcTree(byUdc, udcLabels, byCustomTags, total, untagged, duplicat
   if (!byUdc) {
     fetch(API + "/api/summary").then(r => r.json()).then(s => {
       renderUdcTree(s.by_udc || {}, s.udc_labels || {}, s.by_custom_tags || {}, s.total, s.untagged, s.duplicates || 0, s.archive || 0);
-    }).catch(() => {});
+    }).catch(function(_e) { console.warn("fetch:", _e); });
     return;
   }
   const currentFilter = document.getElementById("libUdcFilter").value;
@@ -1449,7 +1619,7 @@ function undoQuarAction(idx) {
       quarActionHistory.splice(idx, 1);
       renderQuarActionLog();
       loadQuarantine();
-    }).catch(() => {});
+    }).catch(function(_e) { console.warn("fetch:", _e); });
   } else if (entry.action === "keep-both") {
     // Undo keep-both: re-quarantine these files
     fetch(API + "/api/quarantine/undo/keep-both", {
@@ -1459,7 +1629,7 @@ function undoQuarAction(idx) {
       quarActionHistory.splice(idx, 1);
       renderQuarActionLog();
       loadQuarantine();
-    }).catch(() => {});
+    }).catch(function(_e) { console.warn("fetch:", _e); });
   }
 }
 
@@ -1620,7 +1790,7 @@ function runQuarantineRules() {
     Promise.all(promises).then(() => {
       loadQuarantine();
     });
-  }).catch(() => {});
+  }).catch(function(_e) { console.warn("fetch:", _e); });
 }
 
 function renderQuarErrorFilters(counts) {
@@ -1741,14 +1911,14 @@ function executeQuarAction() {
       pushQuarAction(action, finalIds, d);
       clearQuarSelection();
       loadQuarantine(); loadLibrary(); loadSummary();
-    }).catch(() => {});
+    }).catch(function(_e) { console.warn("fetch:", _e); });
   };
 
   if (ids === "__ALL_FILTERED__") {
     fetch(API + "/api/quarantine?" + body.filter + "&limit=0").then(r => r.json()).then(d => {
       const allIds = (d.results || []).map(q => q.file_id);
       doAction(allIds);
-    }).catch(() => {});
+    }).catch(function(_e) { console.warn("fetch:", _e); });
   } else {
     doAction(ids);
   }
@@ -1764,7 +1934,7 @@ function saveQuarantineRules() {
     body: JSON.stringify(rules)
   }).then(r => r.json()).then(() => {
     loadQuarantine();
-  }).catch(() => {});
+  }).catch(function(_e) { console.warn("fetch:", _e); });
 }
 
 // ── Config (Settings tab) ──
@@ -1836,7 +2006,7 @@ function saveConfig() {
     document.getElementById("configRestartBanner").style.display = needsRestart ? "inline" : "none";
     setTimeout(() => status.style.display = "none", 3000);
     loadConfig();
-  }).catch(() => {});
+  }).catch(function(_e) { console.warn("fetch:", _e); });
 }
 
 function exportConfig() {
@@ -1846,7 +2016,7 @@ function exportConfig() {
     const a = document.createElement("a");
     a.href = url; a.download = "book_organiser_config.json"; a.click();
     URL.revokeObjectURL(url);
-  }).catch(() => {});
+  }).catch(function(_e) { console.warn("fetch:", _e); });
 }
 
 function importConfig(input) {
@@ -1867,7 +2037,7 @@ function importConfig(input) {
         status.style.color = "#f59e0b";
         setTimeout(() => status.style.display = "none", 3000);
         loadConfig();
-      }).catch(() => {});
+      }).catch(function(_e) { console.warn("fetch:", _e); });
     } catch(e) {
       alert("Invalid JSON file");
     }
@@ -1898,17 +2068,17 @@ function refreshWatcherStatus() {
   fetch(API + "/api/config").then(r => r.json()).then(data => {
     const wd = data.find(f => f.name === "watch_dir");
     if (wd) document.getElementById("watcherDirLabel").textContent = wd.value || wd.default;
-  }).catch(() => {});
+  }).catch(function(_e) { console.warn("fetch:", _e); });
 }
 function watcherStart() {
   fetch(API + "/api/daemon/watch", {method: "POST"}).then(r => r.json()).then(d => {
     refreshWatcherStatus();
-  }).catch(() => {});
+  }).catch(function(_e) { console.warn("fetch:", _e); });
 }
 function watcherStop() {
   fetch(API + "/api/daemon/watch", {method: "DELETE"}).then(r => r.json()).then(d => {
     refreshWatcherStatus();
-  }).catch(() => {});
+  }).catch(function(_e) { console.warn("fetch:", _e); });
 }
 
 function renderAmbiguousPairs(pairs, ambigIds) {
@@ -1967,7 +2137,7 @@ function resolveAmbiguous(keepId, skipId) {
     body: JSON.stringify({keep_id: keepId, skip_id: skipId})
   }).then(r => r.json()).then(d => {
     loadQuarantine(); loadLibrary(); loadSummary();
-  }).catch(() => {});
+  }).catch(function(_e) { console.warn("fetch:", _e); });
 }
 
 function resolveAmbiguousDismissBoth(aId, bId) {
@@ -1989,14 +2159,19 @@ function resolveAmbiguousKeepBoth(aId, bId) {
     body: JSON.stringify({id_a: aId, id_b: bId})
   }).then(r => r.json()).then(d => {
     loadQuarantine(); loadLibrary(); loadSummary();
-  }).catch(() => {});
+  }).catch(function(_e) { console.warn("fetch:", _e); });
 }
 
 // ── Library tab ──
 let selectedLibId = null;
 
 function loadLibrary(filters) {
-  filters = filters || {};
+  if (typeof filters === "number") {
+    _libOffset = Math.max(0, filters);
+    filters = {keepOffset: true};
+  } else {
+    filters = filters || {};
+  }
   if (!filters.skipTree) renderUdcTree();
   const q = document.getElementById("libSearch").value.trim();
   const stage = filters.stage || document.getElementById("libStageFilter").value;
@@ -2009,7 +2184,13 @@ function loadLibrary(filters) {
   const maxSize = document.getElementById("libMaxSize").value;
   const masterOnly = document.getElementById("libMasterOnly").checked;
   const source = document.getElementById("libSourceFilter").value;
-  let url = API + "/api/search?limit=200";
+  _libLimit = parseInt(document.getElementById("libLimitSelect").value, 10) || 100;
+  if (filters.hasOwnProperty("offset")) {
+    _libOffset = Math.max(0, filters.offset);
+  } else if (!filters.keepOffset) {
+    _libOffset = 0;
+  }
+  let url = API + "/api/search?limit=" + _libLimit + "&offset=" + _libOffset;
   if (q) url += "&q=" + encodeURIComponent(q);
   if (stage) url += "&stage=" + stage;
   if (udc) url += "&udc=" + udc;
@@ -2030,17 +2211,30 @@ function loadLibrary(filters) {
   fetch(url).then(r => r.json()).then(d => {
     document.getElementById("libTotal").textContent = d.total + " results" + (d.query ? " for \"" + d.query + "\"" : "");
     _libCurrentResults = d.results || [];
+    _libTotal = d.total || 0;
     if (_libViewMode === "grid") {
       renderLibraryGrid(_libCurrentResults);
     } else {
       renderLibrary(_libCurrentResults);
     }
-  }).catch(() => {});
+    updatePagination();
+  }).catch(function(_e) { console.warn("fetch:", _e); });
+}
+
+function updatePagination() {
+  var start = _libOffset + 1;
+  var end = Math.min(_libOffset + _libLimit, _libTotal);
+  document.getElementById("libPageInfo").textContent = start + "\u2013" + end + " of " + _libTotal;
+  document.getElementById("libPrevBtn").disabled = _libOffset <= 0;
+  document.getElementById("libNextBtn").disabled = end >= _libTotal;
 }
 
 let _selectedIds = {};
-let _libViewMode = "table"; // "table" or "grid"
+let _libViewMode = "table";
 let _libCurrentResults = [];
+let _libTotal = 0;
+let _libOffset = 0;
+let _libLimit = 100;
 
 function toggleLibraryView() {
   _libViewMode = _libViewMode === "table" ? "grid" : "table";
@@ -2052,7 +2246,6 @@ function toggleLibraryView() {
     btn.innerHTML = "&#x2630; List";
     tbl.style.display = "none";
     grid.style.display = "";
-    if (bulk) bulk.style.display = "none";
     renderLibraryGrid(_libCurrentResults);
   } else {
     btn.innerHTML = "&#x25A6; Covers";
@@ -2077,7 +2270,9 @@ function renderLibraryGrid(books) {
     if (b.format) meta.push(b.format.replace('.','').toUpperCase());
     if (b.udc_code) meta.push(b.udc_code + (b.udc_label ? " " + esc(b.udc_label) : ""));
     var stageClass = b.stage || "";
+    var checked = _selectedIds[b.id] ? "checked" : "";
     return '<div class="gallery-item" onclick="showDetail(' + b.id + ')">'
+      + '<div class="gallery-check"><input type="checkbox" class="book-check" data-id="' + b.id + '" ' + checked + ' onchange="event.stopPropagation();toggleBook(' + b.id + ')" onclick="event.stopPropagation()"></div>'
       + '<img src="' + coverUrl + '" alt="' + esc(b.title || '') + '" loading="lazy"'
       + ' onerror="this.outerHTML=\'<div class=cover-missing>' + (b.format||'?').replace('.','').toUpperCase() + '</div>\'">'
       + '<div class="info">'
@@ -2098,7 +2293,7 @@ function renderLibrary(books) {
   const rows = books.map(b => {
     const checked = _selectedIds[b.id] ? "checked" : "";
     const coverImg = b.cover_path
-      ? `<img class="cover-thumb" src="/api/cover/${b.id}" alt="" loading="lazy" onerror="this.parentNode.innerHTML='<div class=cover-placeholder>'+(b.format||'?').replace('.','').toUpperCase()+'</div>'">`
+      ? `<img class="cover-thumb" src="/api/cover/${b.id}" alt="" loading="lazy" onerror="this.parentNode.innerHTML='<div class=cover-placeholder>${(b.format||'?').replace('.','').toUpperCase()}</div>'">`
       : `<div class="cover-placeholder">${(b.format||'?').replace('.','').toUpperCase()}</div>`;
     return `<tr style="cursor:pointer">`
     + `<td><input type="checkbox" class="book-check" data-id="${b.id}" ${checked} onchange="toggleBook(${b.id})"></td>`
@@ -2177,11 +2372,13 @@ function bulkClassify() {
 function bulkDelete() {
   const ids = getSelectedIds();
   if (!ids.length) return alert("No books selected");
-  if (!confirm("Delete " + ids.length + " book(s)? This will permanently delete the file(s) and database entries. This cannot be undone.")) return;
-  fetch(API + "/api/bulk/delete", {
+  showConfirm("Delete " + ids.length + " book(s)? This will permanently delete the file(s) and database entries. This cannot be undone.").then(function(ok) {
+    if (!ok) return;
+    fetch(API + "/api/bulk/delete", {
     method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({book_ids: ids})
   }).then(r => r.json()).then(d => { alert(d.status + " — " + d.deleted + " book(s) deleted"); loadLibrary(); }).catch(() => {});
+  });
 }
 
 function showDetail(bookId) {
@@ -2320,6 +2517,8 @@ let readerPages = [];
 let readerBookId = null;
 let readerProgressTimer = null;
 let readerSaveTimer = null;
+let _readerZoom = 100;
+let _readerScrollMode = false;
 
 // ═══ Reading List (R1) ═══
 
@@ -2446,7 +2645,7 @@ function openReader(bookId) {
     var epubLike = ["epub", "azw3", "mobi", "fb2"].indexOf(ext) !== -1;
     document.getElementById("exportHighlightsBtn").style.display = epubLike ? "" : "none";
     document.getElementById("annotationsSidebar").style.display = "block";
-    loadAnnotations(bookId);
+    loadTimeline(bookId);
     // Check reading list
     fetch(API + "/api/reading-list").then(function(r) { return r.json(); }).then(function(items) {
       var inList = items.some(function(i) { return i.book_id === bookId; });
@@ -2462,6 +2661,7 @@ function openReader(bookId) {
     } else if (ext === "cbz" || ext === "cbr") {
       loadComicReader(bookId, b);
     } else {
+      document.getElementById("readerDrawGroup").style.display = "none";
       document.getElementById("readerArea").style.display = "none";
       document.getElementById("readerFallback").style.display = "block";
       document.getElementById("readerPrev").style.display = "none";
@@ -2471,6 +2671,7 @@ function openReader(bookId) {
     // Auto-add to reading list as "reading" (R1)
     addToReadingListAsReading(bookId);
     loadReadingList(); // refresh active highlight + book info
+    document.getElementById("readerDrawGroup").style.display = "flex";
   }).catch(() => alert("Could not load book info"));
 }
 
@@ -2490,6 +2691,26 @@ function loadReader(bookId, book) {
 
   if (readerBook) { try { readerBook.destroy(); } catch(e) {} readerBook = null; readerRendition = null; }
 
+  var convFormats = ["mobi", "azw3", "fb2"];
+  if (convFormats.indexOf(readerFormat) >= 0) {
+    area.innerHTML = '<div style="color:#f59e0b;text-align:center;padding:40px"><div style="font-size:1rem;margin-bottom:8px">Converting to EPUB...</div><div style="font-size:0.82rem;color:#64748b">This may take up to 2 minutes for large files</div></div>';
+    var pollTimer = setInterval(function() {
+      fetch(API + "/api/conversion-status/" + bookId).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.status === "done") {
+          clearInterval(pollTimer);
+          _loadEpubReader(bookId, area);
+        } else if (d.status === "error") {
+          clearInterval(pollTimer);
+          area.innerHTML = '<div style="color:#ef4444;text-align:center;padding:40px">Conversion failed: ' + (d.error || "unknown") + '<br><button onclick="openReader(' + bookId + ')" style="margin-top:12px;padding:6px 16px;border:none;border-radius:4px;background:#334155;color:#e2e8f0;cursor:pointer">Retry</button></div>';
+        }
+      }).catch(function() {});
+    }, 2000);
+    return;
+  }
+  _loadEpubReader(bookId, area);
+}
+
+function _loadEpubReader(bookId, area) {
   readerBook = ePub(API + "/api/book/" + bookId + "/read");
   var ra = document.getElementById("readerArea");
   var rh = Math.max(ra.offsetHeight || 600, 400);
@@ -2498,6 +2719,7 @@ function loadReader(bookId, book) {
 
   document.getElementById("readerPrev").onclick = function() { readerPrev(); };
   document.getElementById("readerNext").onclick = function() { readerNext(); };
+  document.removeEventListener("keydown", readerKeyHandler);
   document.addEventListener("keydown", readerKeyHandler);
 
   readerRendition.on("relocated", function(loc) {
@@ -2521,12 +2743,19 @@ function loadReader(bookId, book) {
   document.getElementById("pageNoteBtn").style.display = "";
   document.getElementById("annToggleBtn").style.display = "";
   document.getElementById("exportHighlightsBtn").style.display = "";
+  document.getElementById("readerZoomGroup").style.display = "flex";
+  _readerZoom = 100;
+  _readerScrollMode = false;
+  document.getElementById("readerZoomLevel").textContent = "100%";
+  document.getElementById("readerScrollBtn").style.background = "#475569";
+  document.getElementById("readerArea").style.overflowY = "hidden";
+  document.getElementById("readerDrawGroup").style.display = "none";
+  hideReaderDrawGroup();
 
   // Show annotations sidebar, load highlights + bookmarks + annotations
   document.getElementById("annotationsSidebar").style.display = "block";
-  loadAnnotations(bookId);
+  loadTimeline(bookId);
   renderAllHighlights(bookId);
-  loadBookmarks(bookId);
 
   // Restore saved position
   fetch(API + "/api/book/" + bookId + "/reader-state").then(r => r.json()).then(function(state) {
@@ -2553,9 +2782,14 @@ function loadPdfReader(bookId, book) {
   document.getElementById("annToggleBtn").style.display = "";
   document.getElementById("pageNoteBtn").style.display = "";
   document.getElementById("exportHighlightsBtn").style.display = "none";
+  document.getElementById("readerZoomGroup").style.display = "flex";
+  _readerZoom = 100; _readerScrollMode = false;
+  document.getElementById("readerZoomLevel").textContent = "100%";
+  document.getElementById("readerScrollBtn").style.background = "#475569";
+  document.getElementById("readerArea").style.overflowY = "hidden";
   document.getElementById("annotationsSidebar").style.display = "block";
-  loadAnnotations(bookId);
-  loadBookmarks(bookId);
+  setupReaderWheelZoom();
+  loadTimeline(bookId);
   readerPage = 0;
   readerPages = [];
   // Load existing highlights for overlay rendering
@@ -2564,12 +2798,13 @@ function loadPdfReader(bookId, book) {
   }).catch(function() {});
   document.getElementById("readerPrev").onclick = function() { pdfPrev(); };
   document.getElementById("readerNext").onclick = function() { pdfNext(); };
+  document.removeEventListener("keydown", readerKeyHandler);
   document.addEventListener("keydown", readerKeyHandler);
   _pdfHighlights = [];
 
   area.innerHTML = '<div class="pdf-viewer" id="pdfViewer"><div style="color:#64748b;text-align:center;padding:40px">Loading PDF...</div></div>';
 
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "/static/pdf.worker.min.js";
   var loadingTask = pdfjsLib.getDocument(API + "/api/book/" + bookId + "/read");
   loadingTask.promise.then(function(pdf) {
     _pdfDoc = pdf;
@@ -2591,6 +2826,7 @@ var _pdfRendering = false;
 
 function pdfRenderPage(bookId, pageNum) {
   if (!_pdfDoc || _pdfRendering) return;
+  _saveDrawing();
   _pdfRendering = true;
   readerPage = pageNum;
   document.getElementById("readerLocation").textContent = pageNum + " / " + _pdfDoc.numPages;
@@ -2617,6 +2853,10 @@ function pdfRenderPage(bookId, pageNum) {
       _pdfHighlights.forEach(function(h) {
         if (h.page === pageNum) drawPdfHighlight(canvas, h.bbox, h.color || "#fef08a");
       });
+      // Setup text selection for highlighting (P5.3b)
+      setupPdfSelection(canvas, bookId, pageNum);
+      // Fit-to-view sizing + drawing overlay
+      _onReaderPageLoaded(canvas);
       // Auto-save
       if (readerSaveTimer) clearTimeout(readerSaveTimer);
       readerSaveTimer = setTimeout(function() { saveReaderState(); }, 2000);
@@ -2633,6 +2873,56 @@ function drawPdfHighlight(canvas, bbox, color) {
     ctx.fillRect(b.left * canvas.width, b.top * canvas.height, (b.right - b.left) * canvas.width, (b.bottom - b.top) * canvas.height);
     ctx.globalAlpha = 1;
   } catch(e) {}
+}
+
+function setupPdfSelection(canvas, bookId, pageNum) {
+  var startX, startY, isDragging = false;
+  var rect = canvas.getBoundingClientRect();
+
+  function pos(e) {
+    return { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height };
+  }
+
+  canvas.onmousedown = function(e) {
+    var p = pos(e);
+    startX = p.x; startY = p.y;
+    isDragging = true;
+  };
+  canvas.onmousemove = function(e) {
+    if (!isDragging) return;
+    var p = pos(e);
+    var lx = Math.min(startX, p.x) * rect.width + rect.left;
+    var ly = Math.min(startY, p.y) * rect.height + rect.top;
+    var lw = Math.abs(p.x - startX) * rect.width;
+    var lh = Math.abs(p.y - startY) * rect.height;
+    var sel = document.getElementById("pdfSelOverlay") || function() {
+      var d = document.createElement("div"); d.id = "pdfSelOverlay"; d.style.cssText = "position:absolute;border:2px dashed #0ea5e9;background:rgba(14,165,233,0.15);pointer-events:none;display:none;z-index:10";
+      var w = canvas.parentElement; if (w) w.appendChild(d); return d;
+    }();
+    if (sel) { sel.style.left = lx + "px"; sel.style.top = ly + "px"; sel.style.width = lw + "px"; sel.style.height = lh + "px"; sel.style.display = "block"; }
+  };
+  canvas.onmouseup = function(e) {
+    if (!isDragging) return;
+    isDragging = false;
+    var sel = document.getElementById("pdfSelOverlay");
+    if (sel) sel.style.display = "none";
+    var p = pos(e);
+    var dx = Math.abs(p.x - startX), dy = Math.abs(p.y - startY);
+    if (dx < 0.01 && dy < 0.01) return;
+    var bbox = { left: Math.min(startX, p.x), top: Math.min(startY, p.y), right: Math.max(startX, p.x), bottom: Math.max(startY, p.y) };
+    _hlPopup.cfiRange = null;
+    _hlPopup.selectedText = "";
+    _hlPopup.page = pageNum;
+    _hlPopup.bbox = JSON.stringify(bbox);
+    _hlPopup.format = "pdf";
+    var popup = document.getElementById("hlPopup");
+    popup.style.left = Math.min(e.clientX, window.innerWidth - 240) + "px";
+    popup.style.top = (e.clientY + 8) + "px";
+    popup.style.display = "block";
+    document.getElementById("hlNoteInput").value = "";
+    initHighlightColors();
+    document.getElementById("hlNoteInput").focus();
+  };
 }
 
 function pdfPrev() { if (_pdfDoc && readerPage > 1) pdfRenderPage(readerBookId, readerPage - 1); }
@@ -2669,9 +2959,15 @@ function loadComicReader(bookId, book) {
   document.getElementById("annToggleBtn").style.display = "";
   document.getElementById("pageNoteBtn").style.display = "";
   document.getElementById("exportHighlightsBtn").style.display = "none";
+  document.getElementById("readerZoomGroup").style.display = "flex";
+  _readerZoom = 100; _readerScrollMode = false;
+  document.getElementById("readerZoomLevel").textContent = "100%";
+  document.getElementById("readerScrollBtn").style.background = "#475569";
+  document.getElementById("readerArea").style.overflowY = "hidden";
   document.getElementById("annotationsSidebar").style.display = "block";
-  loadAnnotations(bookId);
-  loadBookmarks(bookId);
+  setupReaderWheelZoom();
+  loadTimeline(bookId);
+  document.removeEventListener("keydown", readerKeyHandler);
   document.addEventListener("keydown", readerKeyHandler);
   _comicHighlights = [];
   // Load existing highlights for overlay
@@ -2679,7 +2975,24 @@ function loadComicReader(bookId, book) {
     _comicHighlights = anns.filter(function(a) { return a.type === "highlight" && a.page !== null && a.bbox; });
   }).catch(function() {});
 
-  fetch(API + "/api/book/" + bookId + "/read").then(function(r) { return r.json(); }).then(function(data) {
+  fetch(API + "/api/book/" + bookId + "/read").then(function(r) {
+    if (r.status === 202) {
+      area.innerHTML = '<div style="color:#f59e0b;text-align:center;padding:40px"><div style="font-size:1rem;margin-bottom:8px">Extracting comic pages...</div></div>';
+      var pollTimer = setInterval(function() {
+        fetch(API + "/api/comic-status/" + bookId).then(function(r2) { return r2.json(); }).then(function(d2) {
+          if (d2.status === "done") {
+            clearInterval(pollTimer);
+            loadComicReader(bookId, book);
+          } else if (d2.status === "error") {
+            clearInterval(pollTimer);
+            area.innerHTML = '<div style="color:#ef4444;text-align:center;padding:40px">Extraction failed</div>';
+          }
+        }).catch(function() {});
+      }, 2000);
+      return;
+    }
+    return r.json();
+  }).then(function(data) {
     readerPages = data.pages || [];
     if (readerPages.length === 0) {
       area.innerHTML = '<div style="color:#f59e0b;text-align:center;padding:40px"><div style="font-size:1.1rem;margin-bottom:12px">Could not extract this comic archive</div><p style="font-size:0.85rem;color:#64748b">This format needs external tools to extract. Use the <strong>Download</strong> button instead.</p></div>';
@@ -2702,6 +3015,7 @@ var _comicHighlights = [];
 
 function showComicPage(bookId, idx) {
   if (idx < 0 || idx >= readerPages.length) return;
+  _saveDrawing();
   readerPage = idx;
   const area = document.getElementById("readerArea");
   var pct = readerPages.length > 0 ? Math.round((idx + 1) / readerPages.length * 100) : 0;
@@ -2725,6 +3039,8 @@ function showComicPage(bookId, idx) {
     });
     // Selection via mouse drag
     setupComicSelection(c, bookId, idx);
+    // Fit-to-view sizing + drawing overlay
+    _onReaderPageLoaded(c);
   };
   img.src = API + "/api/book/" + bookId + "/read/page/" + idx;
   // Auto-save
@@ -2796,27 +3112,54 @@ function setupComicSelection(canvas, bookId, pageIdx) {
 }
 
 function readerKeyHandler(e) {
-  if (e.key === "ArrowLeft" || e.key === "ArrowUp") { readerPrev(); e.preventDefault(); }
-  if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === " ") { readerNext(); e.preventDefault(); }
+  if (e.key === "ArrowLeft") { readerPrev(); e.preventDefault(); }
+  if (e.key === "ArrowRight") { readerNext(); e.preventDefault(); }
+  if (e.key === " ") {
+    if (_readerScrollMode) return; // let the browser scroll in scroll mode
+    readerNext(); e.preventDefault();
+  }
+  if (e.key === "ArrowUp" && !_readerScrollMode) { readerPrev(); e.preventDefault(); }
+  if (e.key === "ArrowDown" && !_readerScrollMode) { readerNext(); e.preventDefault(); }
 }
 
 function closeReader() {
-  // Save final position
+  // Save final position + auto-bookmark (P5.3a)
+  _saveDrawing();
+  hideReaderDrawGroup();
   saveReaderState();
+  var bid = readerBookId;
+  var fmt = readerFormat;
+  var pct = 0;
+  try { pct = parseFloat(document.getElementById("readerLocation").textContent) || 0; } catch(e) {}
+  if (bid && pct > 5) {
+    fetch(API + "/api/book/" + bid + "/bookmarks").then(function(r) { return r.json(); }).then(function(bms) {
+      var near = bms.some(function(b) { return b.progress_pct && Math.abs(b.progress_pct - pct) < 3; });
+      if (!near) {
+        var label = fmt === "epub" ? "p." + Math.round(pct) + "%" : "p." + Math.round(pct) + "%";
+        var pageNum = (fmt === "cbz" || fmt === "cbr" || fmt === "pdf") ? readerPage : null;
+        fetch(API + "/api/book/" + bid + "/bookmarks", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({label: label, page_num: pageNum, progress_pct: Math.round(pct)})
+        }).catch(function() {});
+      }
+    }).catch(function() {});
+  }
   if (readerSaveTimer) { clearTimeout(readerSaveTimer); readerSaveTimer = null; }
   if (readerRendition) { try { readerRendition.destroy(); } catch(e) {} readerRendition = null; }
   if (readerBook) { try { readerBook.destroy(); } catch(e) {} readerBook = null; }
   readerBook = null; readerRendition = null; readerPages = []; readerPage = 0;
   document.removeEventListener("keydown", readerKeyHandler);
-  var bid = readerBookId; readerBookId = null;
+  readerBookId = null;
   if (document.fullscreenElement) { document.exitFullscreen().catch(function(){}); }
-  if (bid && (readerFormat === "cbz" || readerFormat === "cbr")) {
+  if (bid && (fmt === "cbz" || fmt === "cbr")) {
     fetch(API + "/api/book/" + bid + "/read/cache", {method: "DELETE"}).catch(function(){});
   }
   document.getElementById("bookmarkBtn").style.display = "none";
   document.getElementById("annToggleBtn").style.display = "none";
   document.getElementById("pageNoteBtn").style.display = "none";
   document.getElementById("exportHighlightsBtn").style.display = "none";
+  document.getElementById("readerZoomGroup").style.display = "none";
   document.getElementById("annotationsSidebar").style.display = "none";
   switchTab("library");
   loadReadingList();
@@ -2830,6 +3173,249 @@ function toggleFullscreen() {
   } else {
     document.exitFullscreen().catch(function(){});
   }
+}
+
+// P5.5 — Reader View Controls
+function readerZoomIn() {
+  _readerZoom = Math.min(300, _readerZoom + 10);
+  _applyReaderZoom();
+}
+function readerZoomOut() {
+  _readerZoom = Math.max(30, _readerZoom - 10);
+  _applyReaderZoom();
+}
+function readerZoomReset() {
+  _readerZoom = 100;
+  _applyReaderZoom();
+}
+
+var _readerFitScale = 1;      // scale that fits current page in view
+var _readerPageW = 0;         // buffer width of current content canvas
+var _readerPageH = 0;         // buffer height of current content canvas
+var _readerWheelZoom = false; // true once a wheel handler is attached
+
+function _applyReaderZoom() {
+  var lbl = document.getElementById("readerZoomLevel");
+  if (lbl) lbl.textContent = _readerZoom + "%";
+  if (readerFormat === "epub" && readerRendition) {
+    readerRendition.themes.fontSize((_readerZoom / 100) + "em");
+    return;
+  }
+  var area = document.getElementById("readerArea");
+  if (!area) return;
+  var z = (_readerZoom / 100) * (_readerScrollMode ? 1 : _readerFitScale);
+  var el = area.querySelector(".pdf-canvas-wrap canvas") || area.querySelector("#comicCanvas");
+  if (el && _readerPageW && _readerPageH) {
+    el.style.width = (_readerPageW * z) + "px";
+    el.style.height = (_readerPageH * z) + "px";
+    el.style.maxWidth = "none";
+    el.style.maxHeight = "none";
+  }
+  _syncDrawOverlay();
+}
+
+function _onReaderPageLoaded(canvas) {
+  _readerPageW = canvas.naturalWidth || canvas.width || 0;
+  _readerPageH = canvas.naturalHeight || canvas.height || 0;
+  var area = document.getElementById("readerArea");
+  var maxW = (area.clientWidth || 800) - 24;
+  var maxH = (area.clientHeight || 600) - 24;
+  if (_readerPageW > 0 && _readerPageH > 0) {
+    _readerFitScale = Math.max(0.1, Math.min(1, maxW / _readerPageW, maxH / _readerPageH));
+  } else {
+    _readerFitScale = 1;
+  }
+  _applyReaderZoom();
+  _syncDrawOverlay();
+  _loadDrawing();
+}
+
+function readerToggleScroll() {
+  _readerScrollMode = !_readerScrollMode;
+  var btn = document.getElementById("readerScrollBtn");
+  if (btn) btn.style.background = _readerScrollMode ? "#0ea5e9" : "#475569";
+  if (_readerScrollMode) {
+    _readerZoom = 100;
+    var lbl = document.getElementById("readerZoomLevel");
+    if (lbl) lbl.textContent = "100%";
+  }
+  _applyReaderZoom();
+}
+
+function setupReaderWheelZoom() {
+  var area = document.getElementById("readerArea");
+  if (!area || _readerWheelZoom) return;
+  _readerWheelZoom = true;
+  area.addEventListener("wheel", function(ev) {
+    if (readerFormat === "epub") return;
+    if (!ev.ctrlKey && !ev.shiftKey) return; // plain wheel scrolls; Ctrl/Shift+wheel zooms
+    ev.preventDefault();
+    if (ev.deltaY < 0) { _readerZoom = Math.min(300, _readerZoom + 10); }
+    else { _readerZoom = Math.max(30, _readerZoom - 10); }
+    _applyReaderZoom();
+  }, { passive: false });
+}
+
+// --- Drawing overlay ---
+var _drawMode = false;
+var _pageStrokes = []; // [{color, size, points:[[x,y]...]}], x/y normalized 0..1
+
+function _ensureDrawOverlay() {
+  var oc = document.getElementById("drawOverlay");
+  if (oc) return oc;
+  var area = document.getElementById("readerArea");
+  if (!area) return null;
+  oc = document.createElement("canvas");
+  oc.id = "drawOverlay";
+  oc.className = "draw-overlay";
+  var content = area.querySelector(".pdf-canvas-wrap canvas") || area.querySelector("#comicCanvas");
+  var host = content ? (content.closest(".pdf-canvas-wrap") || content.closest(".comic-canvas-wrap") || area) : area;
+  host.appendChild(oc);
+  oc.addEventListener("pointerdown", _drawPointerDown);
+  oc.addEventListener("pointermove", _drawPointerMove);
+  oc.addEventListener("pointerup", _drawPointerUp);
+  oc.addEventListener("pointerleave", _drawPointerUp);
+  _syncDrawOverlay();
+  return oc;
+}
+
+function _syncDrawOverlay() {
+  var oc = document.getElementById("drawOverlay");
+  if (!oc) return;
+  var area = document.getElementById("readerArea");
+  if (!area) return;
+  var content = area.querySelector(".pdf-canvas-wrap canvas") || area.querySelector("#comicCanvas");
+  if (!content || !_readerPageW || !_readerPageH) { oc.style.display = "none"; return; }
+  var host = content.closest(".pdf-canvas-wrap") || content.closest(".comic-canvas-wrap") || area;
+  var rect = content.getBoundingClientRect();
+  var hrect = host.getBoundingClientRect();
+  oc.style.left = (rect.left - hrect.left) + "px";
+  oc.style.top = (rect.top - hrect.top) + "px";
+  oc.style.width = rect.width + "px";
+  oc.style.height = rect.height + "px";
+  if (oc.width !== _readerPageW || oc.height !== _readerPageH) {
+    oc.width = _readerPageW;
+    oc.height = _readerPageH;
+  }
+  if (_drawMode) oc.classList.add("active"); else oc.classList.remove("active");
+}
+
+function _redrawDrawings() {
+  var oc = document.getElementById("drawOverlay");
+  if (!oc) return;
+  var ctx = oc.getContext("2d");
+  ctx.clearRect(0, 0, oc.width, oc.height);
+  for (var s = 0; s < _pageStrokes.length; s++) {
+    var stroke = _pageStrokes[s];
+    ctx.strokeStyle = stroke.color || "#ef4444";
+    ctx.lineWidth = Math.max(1, (stroke.size || 4) * (oc.width / 1000));
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    for (var i = 0; i < stroke.points.length; i++) {
+      var x = stroke.points[i][0] * oc.width;
+      var y = stroke.points[i][1] * oc.height;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+}
+
+function _drawPointerDown(e) {
+  e.preventDefault();
+  try { e.target.setPointerCapture(e.pointerId); } catch (err) {}
+  var rect = e.target.getBoundingClientRect();
+  _drawingStroke = {
+    color: document.getElementById("drawColor") ? document.getElementById("drawColor").value : "#ef4444",
+    size: parseFloat(document.getElementById("drawSize") ? document.getElementById("drawSize").value : "4"),
+    points: []
+  };
+  var pt = _toNormPoint(e.clientX, e.clientY, rect);
+  _drawingStroke.points.push(pt);
+  _redrawDrawings();
+}
+function _drawPointerMove(e) {
+  if (!_drawingStroke) return;
+  var rect = e.target.getBoundingClientRect();
+  _drawingStroke.points.push(_toNormPoint(e.clientX, e.clientY, rect));
+  _redrawDrawings();
+}
+function _drawPointerUp(e) {
+  if (!_drawingStroke) return;
+  _drawingStroke = null;
+  try { e.target.releasePointerCapture(e.pointerId); } catch (err) {}
+  _saveDrawing();
+}
+function _toNormPoint(cx, cy, rect) {
+  return [Math.max(0, Math.min(1, (cx - rect.left) / rect.width)), Math.max(0, Math.min(1, (cy - rect.top) / rect.height))];
+}
+
+function toggleDrawMode() {
+  _drawMode = !_drawMode;
+  var btn = document.getElementById("drawBtn");
+  if (btn) {
+    btn.style.background = _drawMode ? "#0ea5e9" : "#475569";
+    btn.textContent = _drawMode ? "Draw: ON" : "Draw";
+  }
+  var oc = _ensureDrawOverlay();
+  if (oc) {
+    if (_drawMode) oc.classList.add("active"); else oc.classList.remove("active");
+  }
+  if (_drawMode && readerBookId != null) _loadDrawing();
+}
+
+function clearDrawing() {
+  _pageStrokes = [];
+  _redrawDrawings();
+  if (readerBookId != null && readerPage != null) {
+    fetch(API + "/api/book/" + readerBookId + "/drawing/" + readerPage, { method: "DELETE" }).catch(function() {});
+  }
+}
+
+function _currentDrawingData() {
+  if (!_pageStrokes.length) return null;
+  return JSON.stringify({ strokes: _pageStrokes });
+}
+
+function _saveDrawing() {
+  if (readerBookId == null || readerPage == null) return;
+  var data = _currentDrawingData();
+  if (!data) return;
+  fetch(API + "/api/book/" + readerBookId + "/drawing/" + readerPage, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: data })
+  }).catch(function() {});
+}
+
+function _loadDrawing() {
+  if (readerBookId == null || readerPage == null) return;
+  var page = readerPage;
+  _ensureDrawOverlay();
+  _pageStrokes = [];
+  fetch(API + "/api/book/" + readerBookId + "/drawing/" + page)
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (page !== readerPage) return; // stale response from a previous page
+      if (d && d.data) {
+        try { var parsed = JSON.parse(d.data); _pageStrokes = parsed.strokes || []; } catch (e) { _pageStrokes = []; }
+      }
+      _redrawDrawings();
+    })
+    .catch(function() { if (page === readerPage) _redrawDrawings(); });
+}
+
+var _drawingStroke = null;
+
+function hideReaderDrawGroup() {
+  var g = document.getElementById("readerDrawGroup");
+  if (g) g.style.display = "none";
+  _drawMode = false;
+  var btn = document.getElementById("drawBtn");
+  if (btn) { btn.style.background = "#475569"; btn.textContent = "Draw"; }
+  _pageStrokes = [];
+  var oc = document.getElementById("drawOverlay");
+  if (oc) { oc.classList.remove("active"); oc.style.display = "none"; }
 }
 
 document.addEventListener("fullscreenchange", function() {
@@ -2874,9 +3460,59 @@ function loadAnnotations(bookId) {
   }).catch(function() {});
 }
 
+function loadTimeline(bookId) {
+  Promise.all([
+    fetch(API + "/api/book/" + bookId + "/annotations").then(function(r) { return r.json(); }),
+    fetch(API + "/api/book/" + bookId + "/bookmarks").then(function(r) { return r.json(); })
+  ]).then(function(results) {
+    var anns = results[0] || [];
+    var bms = results[1] || [];
+    var el = document.getElementById("timelineList");
+    var countEl = document.getElementById("annCount");
+    if (!el) return;
+    if (!anns.length && !bms.length) {
+      el.innerHTML = '<div class="ann-empty">No annotations or bookmarks yet. Select text to highlight, or add a note below.</div>';
+      if (countEl) countEl.textContent = "";
+      return;
+    }
+    if (countEl) countEl.textContent = "(" + (anns.length + bms.length) + ")";
+    // Merge and sort by created_at
+    var items = [];
+    anns.forEach(function(a) { a._type = "annotation"; items.push(a); });
+    bms.forEach(function(b) { b._type = "bookmark"; items.push(b); });
+    items.sort(function(x, y) { return (x.created_at || "").localeCompare(y.created_at || ""); });
+    var html = '<div style="margin-bottom:4px"><strong style="color:#94a3b8;font-size:0.72rem">Timeline</strong></div>';
+    items.forEach(function(item) {
+      if (item._type === "bookmark") {
+        var pct = item.progress_pct ? Math.round(item.progress_pct) + "%" : "";
+        var loc = item.cfi_loc ? "EPUB" : item.page_num != null ? "Page " + (item.page_num + 1) : pct;
+        html += '<div class="ann-item" style="border-left-color:#eab308;cursor:pointer" onclick="navigateToBookmark(\'' + (item.cfi_loc||'') + '\',' + (item.page_num||0) + ')">'
+          + '<span class="ann-del" onclick="event.stopPropagation();deleteBookmark(' + item.id + ',' + bookId + ')" title="Delete">&times;</span>'
+          + '<div class="ann-text">\uD83D\uDCCC ' + esc(item.label || ("Bookmark #" + item.id)) + '</div>'
+          + '<div class="ann-note">' + esc(loc) + ' \xb7 ' + pct + '</div>'
+          + '<div style="font-size:0.62rem;color:#475569;margin-top:2px">' + (item.created_at || "").slice(0, 10) + '</div>'
+          + '</div>';
+      } else {
+        var navFn = item.cfi_range ? "navigateToAnnotation('" + esc(item.cfi_range) + "')" : "";
+        html += '<div class="ann-item" style="border-left-color:' + (item.color || "#fef08a") + (navFn ? ';cursor:pointer' : '') + '"' + (navFn ? ' onclick="' + navFn + '"' : '') + '>';
+        html += '<span class="ann-del" onclick="event.stopPropagation();deleteAnnotation(' + item.id + ',' + bookId + ')" title="Delete">&times;</span>';
+        if (item.type === "highlight") {
+          html += '<div class="ann-text">"' + esc(item.text || "").substring(0, 120) + (item.text && item.text.length > 120 ? "..." : "") + '"</div>';
+          if (item.note) html += '<div class="ann-note">\u2014 ' + esc(item.note) + '</div>';
+        } else {
+          html += '<div class="ann-text"><strong>Note:</strong> ' + esc(item.note || item.text || "") + '</div>';
+        }
+        html += '<div style="font-size:0.62rem;color:#475569;margin-top:2px">' + (item.created_at || "").slice(0, 10) + '</div>';
+        html += '</div>';
+      }
+    });
+    el.innerHTML = html;
+  }).catch(function() {});
+}
+
 function deleteAnnotation(annId, bookId) {
   fetch(API + "/api/book/" + bookId + "/annotations/" + annId, {method: "DELETE"})
-    .then(function(r) { return r.json(); }).then(function() { loadAnnotations(bookId); }).catch(function() {});
+    .then(function(r) { return r.json(); }).then(function() { loadTimeline(bookId); }).catch(function() {});
 }
 
 function exportHighlights() {
@@ -2903,7 +3539,7 @@ function addNote() {
     body: JSON.stringify({type: "note", text: text, note: text, cfi_range: cfiRange, color: "#94a3b8"})
   }).then(function(r) { return r.json(); }).then(function() {
     document.getElementById("annInput").value = "";
-    loadAnnotations(bid);
+    loadTimeline(bid);
   }).catch(function() {});
 }
 
@@ -2968,7 +3604,7 @@ function saveHighlightFromPopup() {
     body: JSON.stringify(body)
   }).then(function(r) { return r.json(); }).then(function() {
     hideHighlightPopup();
-    loadAnnotations(bid);
+    loadTimeline(bid);
     if (_hlPopup.format === "comic" && _hlPopup.bbox) {
       drawComicHighlight(document.getElementById("comicCanvas"), _hlPopup.bbox, _hlPopup.color);
       _comicHighlights.push({page: _hlPopup.page, bbox: _hlPopup.bbox, color: _hlPopup.color});
@@ -2991,7 +3627,7 @@ function saveHighlightNoteOnly() {
     body: JSON.stringify({type: "note", text: note, note: note, cfi_range: cfi, color: "#94a3b8"})
   }).then(function(r) { return r.json(); }).then(function() {
     hideHighlightPopup();
-    loadAnnotations(bid);
+    loadTimeline(bid);
   }).catch(function() {});
 }
 
@@ -3027,7 +3663,7 @@ function addBookmark() {
     method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify(data)
   }).then(function(r) { return r.json(); }).then(function() {
-    loadBookmarks(bid);
+    loadTimeline(bid);
   }).catch(function() {});
 }
 
@@ -3047,7 +3683,7 @@ function addPageNote() {
     method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify(data)
   }).then(function(r) { return r.json(); }).then(function() {
-    loadAnnotations(bid);
+    loadTimeline(bid);
   }).catch(function() {});
 }
 
@@ -3071,7 +3707,7 @@ function loadBookmarks(bookId) {
 
 function deleteBookmark(bmId, bookId) {
   fetch(API + "/api/book/" + bookId + "/bookmarks/" + bmId, {method: "DELETE"})
-    .then(function() { loadBookmarks(bookId); }).catch(function() {});
+    .then(function() { loadTimeline(bookId); }).catch(function() {});
 }
 
 function navigateToBookmark(cfiLoc, pageNum) {
@@ -3196,7 +3832,7 @@ function resolveQuarantine(fileId, reviewed) {
     showDetail(fileId);
     loadLibrary();
     loadSummary();
-  }).catch(() => {});
+  }).catch(function(_e) { console.warn("fetch:", _e); });
 }
 
 // ── Per-book re-processing ──
@@ -3213,10 +3849,12 @@ function reDedupBook(bookId) {
 }
 
 function forceKeepBook(bookId) {
-  if (!confirm("Mark this book as master? It will be kept regardless of duplicates.")) return;
-  fetch(API + "/api/book/" + bookId + "/force-keep", {method:"POST"})
-    .then(r => r.json()).then(d => { showDetail(bookId); loadLibrary(); })
-    .catch(() => { showDetail(bookId); });
+  showConfirm("Mark this book as master? It will be kept regardless of duplicates.").then(function(ok) {
+    if (!ok) return;
+    fetch(API + "/api/book/" + bookId + "/force-keep", {method:"POST"})
+      .then(r => r.json()).then(d => { showDetail(bookId); loadLibrary(); })
+      .catch(() => { showDetail(bookId); });
+  });
 }
 
 function reCopyBook(bookId) {
@@ -3241,19 +3879,22 @@ function mergeBook(bookId) {
   if (!target || !target.trim()) return;
   var tid = parseInt(target.trim());
   if (isNaN(tid) || tid === bookId) { alert("Invalid target ID"); return; }
-  if (!confirm("Merge book #" + tid + " into #" + bookId + "? Book #" + tid + " will be marked as merged.")) return;
-  fetch(API + "/api/book/" + bookId + "/merge", {method:"POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({target_id: tid})})
+  showConfirm("Merge book #" + tid + " into #" + bookId + "? Book #" + tid + " will be marked as merged.").then(function(ok) {
+    if (!ok) return;
+    fetch(API + "/api/book/" + bookId + "/merge", {method:"POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({target_id: tid})})
     .then(r => r.json()).then(d => {
       if (d.error) { alert("Merge failed: " + d.error); return; }
       showDetail(bookId);
       loadLibrary();
     }).catch(() => { alert("Merge request failed"); });
+  });
 }
 
 function deleteBook(bookId) {
-  if (!confirm("Delete this book permanently? The source file and all database entries will be removed. This cannot be undone.")) return;
   var btn = event && event.target ? event.target : null;
-  if (btn) { btn.disabled = true; btn.textContent = "Deleting..."; }
+  showConfirm("Delete this book permanently? The source file and all database entries will be removed. This cannot be undone.").then(function(ok) {
+    if (!ok) return;
+    if (btn) { btn.disabled = true; btn.textContent = "Deleting..."; }
   fetch(API + "/api/book/" + bookId + "/delete", {method:"POST"})
     .then(r => r.json()).then(d => {
       if (d.error) { alert("Delete failed: " + d.error); return; }
@@ -3261,10 +3902,13 @@ function deleteBook(bookId) {
       loadLibrary();
     }).catch(() => { alert("Delete request failed"); })
     .finally(function() { if (btn) { btn.disabled = false; btn.textContent = "Delete"; } });
+  });
 }
 
 // ── SSE events ── (disabled: using fetchStatus polling instead)
 // EventSource kept disabled to avoid IPv6 localhost timeout issues
+
+</script>
 
 <!-- Recon modal -->
 <div id="reconModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;justify-content:center;align-items:center" onclick="if(event.target===this)closeReconModal()">
@@ -3286,9 +3930,14 @@ function deleteBook(bookId) {
 <script>
 fetchStatus();
 checkAuth();
+loadDiagnostics();
+document.getElementById("statusLabel").textContent = "idle";
+// Fetch CSRF token (D7.16)
+fetch(API + "/api/csrf-token").then(function(r) { return r.json(); }).then(function(d) { _csrfToken = d.csrf_token; }).catch(function() {});
 loadLibrary({skipTree: true});
 loadSummary();
 loadSources();
+loadConfig();
 loadReadingList();
 // Health check — warn on issues
 fetch(API + "/api/health").then(function(r) { return r.json(); }).then(function(h) {
@@ -3307,7 +3956,15 @@ fetch(API + "/api/health").then(function(r) { return r.json(); }).then(function(
     }
   }
 }).catch(function() {});
-setInterval(fetchStatus, 5000);
+var _statusInterval = setInterval(fetchStatus, 5000);
+document.addEventListener("visibilitychange", function() {
+  if (document.hidden) {
+    clearInterval(_statusInterval); _statusInterval = null;
+  } else if (!_statusInterval) {
+    fetchStatus();
+    _statusInterval = setInterval(fetchStatus, 5000);
+  }
+});
 </script>
 </body>
 </html>

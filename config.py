@@ -1,19 +1,31 @@
 import os
+import hashlib
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ── Mode detection ──
 IN_DOCKER = os.environ.get("BOOK_ORGANISER_DOCKER", "").lower() in ("1", "true", "yes")
 
+# ── machine.json (P6.1 Portable Config) ──
+_MACHINE_JSON = os.path.join(BASE_DIR, "machine.json")
+MACHINE_CONFIG = {}
+if os.path.isfile(_MACHINE_JSON):
+    try:
+        import json as _json
+        with open(_MACHINE_JSON, encoding="utf-8") as _f:
+            MACHINE_CONFIG = _json.load(_f)
+    except Exception:
+        pass
+
 # ── Data & Config directories ──
 # In Docker: DATA_DIR is the SSD mount, CONFIG_DIR is the SD card mount
-# In native: both default to BASE_DIR/data
+# In native: machine.json data_dir overrides, else BASE_DIR/data
 if IN_DOCKER:
-    DATA_DIR = os.environ.get("BOOK_DATA_DIR", "/data")
-    CONFIG_DIR = os.environ.get("BOOK_CONFIG_DIR", "/config")
+    DATA_DIR = os.environ.get("BOOK_DATA_DIR", MACHINE_CONFIG.get("data_dir", "/data"))
+    CONFIG_DIR = os.environ.get("BOOK_CONFIG_DIR", MACHINE_CONFIG.get("data_dir", "/config"))
 else:
-    DATA_DIR = os.path.join(BASE_DIR, "data")
-    CONFIG_DIR = os.path.join(BASE_DIR, "data")
+    DATA_DIR = MACHINE_CONFIG.get("data_dir") or os.environ.get("BOOK_DATA_DIR") or os.path.join(BASE_DIR, "data")
+    CONFIG_DIR = os.environ.get("BOOK_CONFIG_DIR") or DATA_DIR
 
 # ── All paths are blank by default — user provides them via Settings tab ──
 # Required: source_dirs, flat_dir, inbox_dir
@@ -29,12 +41,17 @@ ARCHIVE_DIR = ""
 _DEFAULT_DB = os.path.join(DATA_DIR, "catalog.db")
 DB_PATH = os.environ.get("BOOK_DB_PATH", _DEFAULT_DB)
 # If default DB is on a network/SMB path, use a local copy for performance
+ORIGINAL_DB_PATH = None
 if not os.environ.get("BOOK_DB_PATH") and "\\\\" in DB_PATH:
+    ORIGINAL_DB_PATH = DB_PATH
     _LOCAL_DB = os.path.join(os.path.expanduser("~"), "book_organiser_data", "catalog.db")
     DB_PATH = _LOCAL_DB
+LOCAL_DB_REDIRECTED = ORIGINAL_DB_PATH is not None
 EXCLUDE_DIRS = set(
     os.environ.get("BOOK_EXCLUDE_DIRS", ".git,__pycache__,data,templates,extractors").split(",")
 )
+# Store the base set to avoid accumulation on reload (D7.28)
+_BASE_EXCLUDE_DIRS = set(EXCLUDE_DIRS)
 EXCLUDE_EXTS = set(
     os.environ.get("BOOK_EXCLUDE_EXTS", ".ini,.db,.lnk,.url,.tmp,.dat,.exe,.dll").split(",")
 )
@@ -52,7 +69,7 @@ LOG_FILE = os.path.join(LOG_DIR, "app.log")
 # ── Auth ──
 AUTH_PASSWORD = os.environ.get("BOOK_AUTH_PASSWORD", "")
 AUTH_ENABLED = bool(AUTH_PASSWORD)
-SECRET_KEY = os.environ.get("BOOK_SECRET_KEY", "change-me-in-production")
+SECRET_KEY = os.environ.get("BOOK_SECRET_KEY", os.environ.get("BOOK_AUTH_PASSWORD", hashlib.sha256((os.environ.get("COMPUTERNAME", "book_organiser") + "::book_organiser").encode()).hexdigest()))
 
 # ── External enrichment ──
 GOOGLE_BOOKS_API_KEY = os.environ.get("GOOGLE_BOOKS_API_KEY", "")

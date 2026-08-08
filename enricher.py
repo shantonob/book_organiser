@@ -5,10 +5,14 @@ import hashlib
 import urllib.request
 import urllib.parse
 import urllib.error
+import logging
+import threading
 
 import config
 
+logger = logging.getLogger("enricher")
 _LAST_CALL = 0
+_cache_lock = threading.Lock()
 
 
 def _rate_limit():
@@ -24,18 +28,19 @@ def _cache_key(isbn=None, title=None, author=None):
     return hashlib.md5(raw.encode()).hexdigest()
 
 
-def _load_cache():
-    try:
-        with open(config.ENRICH_CACHE_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-
-def _save_cache(cache):
-    os.makedirs(os.path.dirname(config.ENRICH_CACHE_PATH), exist_ok=True)
-    with open(config.ENRICH_CACHE_PATH, "w", encoding="utf-8") as f:
-        json.dump(cache, f, indent=2)
+def _with_cache(callback, default=None):
+    """Thread-safe read-modify-write on enrich cache (D7.22)."""
+    with _cache_lock:
+        try:
+            with open(config.ENRICH_CACHE_PATH, "r", encoding="utf-8") as f:
+                cache = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            cache = {}
+        result = callback(cache)
+        os.makedirs(os.path.dirname(config.ENRICH_CACHE_PATH), exist_ok=True)
+        with open(config.ENRICH_CACHE_PATH, "w", encoding="utf-8") as f:
+            json.dump(cache, f, indent=2)
+        return result if result is not None else default
 
 
 def _fetch_json(url):
@@ -62,14 +67,16 @@ def _ol_search(isbn=None, title=None, author=None):
     if not data or not data.get("docs"):
         return None
     doc = data["docs"][0]
+    ol_cover_isbn = (doc.get("isbn", []) or [None])[0]
     return {
         "title": doc.get("title"),
         "authors": ", ".join(doc.get("author_name", [])),
         "publisher": ", ".join(doc.get("publisher", [])) if doc.get("publisher") else None,
         "year": doc.get("first_publish_year"),
         "subjects": ", ".join(doc.get("subject", [])[:10]) if doc.get("subject") else None,
-        "isbn": (doc.get("isbn", []) or [None])[0],
+        "isbn": ol_cover_isbn,
         "pages": doc.get("number_of_pages_median"),
+        "cover_url": f"https://covers.openlibrary.org/b/isbn/{ol_cover_isbn}-L.jpg" if ol_cover_isbn else None,
         "source": "openlibrary_search",
     }
 
@@ -109,7 +116,6 @@ def _gb_search(title=None, author=None, isbn=None):
 
 
 def _download_cover(cover_url, dest_dir):
-    """Download a cover image URL to dest_dir, return the local path or None."""
     if not cover_url:
         return None
     try:
@@ -123,7 +129,8 @@ def _download_cover(cover_url, dest_dir):
             with open(dest, "wb") as f:
                 f.write(resp.read())
         return dest
-    except Exception:
+    except Exception as e:
+        logger.warning("cover download failed for %s: %s", cover_url, e)
         return None
 
 
@@ -136,9 +143,8 @@ def enrich_book(isbn=None, title=None, author=None):
     Google Books is tried when OL returns nothing OR when OL results lack description.
     Returns dict with any enriched fields, or empty dict.
     """
-    cache = _load_cache()
     key = _cache_key(isbn=isbn, title=title, author=author)
-    cached = cache.get(key)
+    cached = _with_cache(lambda c: c.get(key))
     if cached:
         return cached
 
@@ -149,20 +155,18 @@ def enrich_book(isbn=None, title=None, author=None):
         _rate_limit()
         result = _ol_search(isbn=isbn, title=title, author=author) or {}
 
-    # 2. Google Books fallback — try when OL returned nothing, or when description is missing
+    # 2. Google Books fallback
     need_gb = not result.get("title") or not result.get("description")
     if need_gb and (isbn or title or author):
         _rate_limit()
         gb_result = _gb_search(title=title, author=author, isbn=isbn) or {}
         if gb_result:
-            # Merge: fill gaps from OL with GB data, but prefer OL for fields OL already has
             for field in ("title", "authors", "publisher", "year", "subjects", "isbn", "pages", "language", "description", "cover_url"):
                 if not result.get(field) and gb_result.get(field):
                     result[field] = gb_result[field]
             result["source"] = result.get("source") or gb_result.get("source", "google_books")
 
     if result:
-        cache[key] = result
-        _save_cache(cache)
+        _with_cache(lambda c: c.update({key: result}) or c)
 
     return result

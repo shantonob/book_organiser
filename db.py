@@ -99,6 +99,22 @@ def init_db(db_path):
     except Exception:
         pass
 
+    # Migration: add missing FK indexes (D7.18)
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pipeline_log_file ON pipeline_log(file_id)")
+    except Exception:
+        pass
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_quarantined_file ON quarantined(file_id)")
+    except Exception:
+        pass
+
+    # Migration: add instance_id to daemon_status for multi-instance support (D7.19)
+    try:
+        conn.execute("ALTER TABLE daemon_status ADD COLUMN instance_id TEXT")
+    except Exception:
+        pass
+
     # Daemon status table for IPC (headless daemon ↔ API)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS daemon_status (
@@ -276,6 +292,17 @@ def get_pipeline_log(conn, limit=100):
     """, (limit,)).fetchall()
 
 
+def trim_pipeline_log(db_path, days=90):
+    """Delete pipeline_log rows older than `days` (D7.21)."""
+    conn = get_connection(db_path)
+    try:
+        cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        conn.execute("DELETE FROM pipeline_log WHERE timestamp < ?", (cutoff,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # ── Phase B: batch dedup helpers ──────────────────────────────
 
 def get_cataloged_files(conn):
@@ -376,6 +403,33 @@ def remove_custom_tag(conn, file_id, tag):
     )
 
 
+def add_custom_tags_bulk(conn, book_ids, tag):
+    """Batch INSERT custom tags for multiple books, skipping existing (D7.24)."""
+    placeholders = ",".join("?" for _ in book_ids)
+    existing = set()
+    for row in conn.execute(
+        f"SELECT file_id FROM tags WHERE file_id IN ({placeholders}) AND tag=? AND tag_type='custom'",
+        book_ids + [tag]
+    ).fetchall():
+        existing.add(row["file_id"])
+    to_insert = [(bid, tag, "custom") for bid in book_ids if bid not in existing]
+    if to_insert:
+        conn.executemany(
+            "INSERT INTO tags (file_id, tag, tag_type) VALUES (?,?,?)",
+            to_insert
+        )
+    return len(to_insert)
+
+
+def remove_custom_tags_bulk(conn, book_ids, tag):
+    """Batch DELETE custom tags for multiple books (D7.24)."""
+    placeholders = ",".join("?" for _ in book_ids)
+    conn.execute(
+        f"DELETE FROM tags WHERE file_id IN ({placeholders}) AND tag=? AND tag_type='custom'",
+        book_ids + [tag]
+    )
+
+
 # ── Summary / Stats ──────────────────────────────────────────
 
 def get_summary(conn):
@@ -467,8 +521,21 @@ def get_book_pipeline_log(conn, file_id):
 
 # ── FTS5 Search ──────────────────────────────────────────────
 
-def rebuild_fts(conn):
-    """Re-populate the FTS5 index from all metadata rows."""
+def rebuild_fts(conn, book_id=None):
+    """Re-populate the FTS5 index. If book_id is given, re-index only that book."""
+    if book_id is not None:
+        conn.execute("DELETE FROM books_fts WHERE rowid=?", (book_id,))
+        row = conn.execute("""
+            SELECT m.title, m.authors, m.description, m.publisher, m.isbn
+            FROM metadata m WHERE m.file_id=?
+        """, (book_id,)).fetchone()
+        if row and (row["title"] or row["authors"]):
+            conn.execute(
+                "INSERT INTO books_fts (rowid, title, authors, description, publisher, isbn) VALUES (?,?,?,?,?,?)",
+                (book_id, row["title"] or "", row["authors"] or "", row["description"] or "",
+                 row["publisher"] or "", row["isbn"] or "")
+            )
+        return 1 if row else 0
     conn.execute("DELETE FROM books_fts")
     rows = conn.execute("""
         SELECT f.id, m.title, m.authors, m.description, m.publisher, m.isbn
@@ -483,6 +550,41 @@ def rebuild_fts(conn):
              r["publisher"] or "", r["isbn"] or "")
         )
     return len(rows)
+
+
+def update_fts_for_book(conn, book_id):
+    """Update or insert the FTS5 row for a single book."""
+    conn.execute("DELETE FROM books_fts WHERE rowid=?", (book_id,))
+    row = conn.execute("""
+        SELECT m.title, m.authors, m.description, m.publisher, m.isbn
+        FROM metadata m WHERE m.file_id=?
+    """, (book_id,)).fetchone()
+    if row and (row["title"] or row["authors"]):
+        conn.execute(
+            "INSERT INTO books_fts (rowid, title, authors, description, publisher, isbn) VALUES (?,?,?,?,?,?)",
+            (book_id, row["title"] or "", row["authors"] or "", row["description"] or "",
+             row["publisher"] or "", row["isbn"] or "")
+        )
+
+
+def update_fts_for_book(conn, book_id):
+    """Update or insert the FTS5 row for a single book (incremental, not full rebuild)."""
+    row = conn.execute("""
+        SELECT m.title, m.authors, m.description, m.publisher, m.isbn
+        FROM files f
+        JOIN metadata m ON m.file_id = f.id
+        WHERE f.id = ?
+    """, (book_id,)).fetchone()
+    if row and (row["title"] or row["authors"]):
+        conn.execute(
+            "INSERT INTO books_fts (rowid, title, authors, description, publisher, isbn) VALUES (?,?,?,?,?,?) "
+            "ON CONFLICT(rowid) DO UPDATE SET title=excluded.title, authors=excluded.authors, "
+            "description=excluded.description, publisher=excluded.publisher, isbn=excluded.isbn",
+            (book_id, row["title"] or "", row["authors"] or "", row["description"] or "",
+             row["publisher"] or "", row["isbn"] or "")
+        )
+    else:
+        conn.execute("DELETE FROM books_fts WHERE rowid = ?", (book_id,))
 
 
 def search_books(conn, fts_query, stage=None, udc=None, tag=None, fmt=None,
@@ -609,13 +711,19 @@ def search_tags(conn, query):
 # ── Daemon IPC ───────────────────────────────────────────────
 
 def daemon_heartbeat(db_path, job_type, status, pid=None, current_file=None,
-                     current_stage=None, current_phase=None, progress=None, error=None):
+                     current_stage=None, current_phase=None, progress=None, error=None,
+                     instance_id=None):
     """Write daemon status for IPC between daemon and API."""
+    if instance_id is None:
+        import socket
+        instance_id = socket.gethostname() + "::" + str(pid or os.getpid())
     conn = get_connection(db_path)
     try:
         now = datetime.utcnow().isoformat()
-        # Upsert: keep only the most recent row
-        existing = conn.execute("SELECT id FROM daemon_status ORDER BY id DESC LIMIT 1").fetchone()
+        existing = conn.execute(
+            "SELECT id FROM daemon_status WHERE instance_id=? ORDER BY id DESC LIMIT 1",
+            (instance_id,)
+        ).fetchone()
         if existing:
             conn.execute("""
                 UPDATE daemon_status SET status=?, pid=?, current_file=?, current_stage=?,
@@ -626,28 +734,45 @@ def daemon_heartbeat(db_path, job_type, status, pid=None, current_file=None,
         else:
             conn.execute("""
                 INSERT INTO daemon_status (job_type, status, pid, current_file, current_stage,
-                    current_phase, progress, error, started_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    current_phase, progress, error, started_at, updated_at, instance_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (job_type, status, pid, current_file, current_stage, current_phase,
-                  json.dumps(progress) if progress else None, error, now, now))
+                  json.dumps(progress) if progress else None, error, now, now, instance_id))
         conn.commit()
     finally:
         conn.close()
 
 
 def get_daemon_status(db_path):
-    """Read current daemon status."""
+    """Read current daemon status for all instances."""
     conn = get_connection(db_path)
     try:
-        row = conn.execute("SELECT * FROM daemon_status ORDER BY id DESC LIMIT 1").fetchone()
-        if row:
+        rows = conn.execute("""
+            SELECT * FROM daemon_status
+            WHERE id IN (SELECT MAX(id) FROM daemon_status GROUP BY COALESCE(instance_id, 'default'))
+            ORDER BY id DESC
+        """).fetchall()
+        result = []
+        for row in rows:
             d = dict(row)
             if d.get("progress"):
                 try:
                     d["progress"] = json.loads(d["progress"])
                 except (json.JSONDecodeError, TypeError):
                     d["progress"] = None
-            return d
+            result.append(d)
+        # Legacy: if no instance_id column data, fall back to single-row mode
+        if not result:
+            row = conn.execute("SELECT * FROM daemon_status ORDER BY id DESC LIMIT 1").fetchone()
+            if row:
+                d = dict(row)
+                if d.get("progress"):
+                    try:
+                        d["progress"] = json.loads(d["progress"])
+                    except (json.JSONDecodeError, TypeError):
+                        d["progress"] = None
+                return d
+        return result[0] if len(result) == 1 else result
         return {"status": "idle"}
     finally:
         conn.close()
@@ -763,6 +888,11 @@ def bulk_keep_both(conn, file_ids):
 
 def bulk_delete_files(conn, file_ids):
     placeholders = ",".join("?" * len(file_ids))
+    conn.execute(f"DELETE FROM books_fts WHERE rowid IN ({placeholders})", file_ids)
+    conn.execute(f"DELETE FROM annotations WHERE book_id IN ({placeholders})", file_ids)
+    conn.execute(f"DELETE FROM bookmarks WHERE book_id IN ({placeholders})", file_ids)
+    conn.execute(f"DELETE FROM reader_state WHERE book_id IN ({placeholders})", file_ids)
+    conn.execute(f"DELETE FROM reading_list WHERE book_id IN ({placeholders})", file_ids)
     conn.execute(f"DELETE FROM quarantined WHERE file_id IN ({placeholders})", file_ids)
     conn.execute(f"DELETE FROM pipeline_log WHERE file_id IN ({placeholders})", file_ids)
     conn.execute(f"DELETE FROM tags WHERE file_id IN ({placeholders})", file_ids)
@@ -843,6 +973,17 @@ def ensure_reading_tables(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_reading_list_book ON reading_list(book_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_reader_state_book ON reader_state(book_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_annotations_book ON annotations(book_id)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS drawings (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            book_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+            page        INTEGER,
+            data        TEXT,
+            created_at  TEXT DEFAULT (datetime('now')),
+            updated_at  TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_drawings_book ON drawings(book_id)")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS bookmarks (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -927,9 +1068,38 @@ def delete_annotation(conn, ann_id):
     conn.execute("DELETE FROM annotations WHERE id=?", (ann_id,))
 
 
+def get_drawing(conn, book_id, page):
+    rows = conn.execute(
+        "SELECT data FROM drawings WHERE book_id=? AND page=? ORDER BY updated_at DESC LIMIT 1",
+        (book_id, page)
+    ).fetchall()
+    return rows[0]["data"] if rows else None
+
+
+def save_drawing(conn, book_id, page, data):
+    import datetime as _dt
+    now = _dt.datetime.utcnow().isoformat()
+    row = conn.execute(
+        "SELECT id FROM drawings WHERE book_id=? AND page=?",
+        (book_id, page)
+    ).fetchone()
+    if row:
+        conn.execute("UPDATE drawings SET data=?, updated_at=? WHERE id=?",
+                     (data, now, row["id"]))
+    else:
+        conn.execute("INSERT INTO drawings (book_id, page, data, updated_at) VALUES (?,?,?,?)",
+                     (book_id, page, data, now))
+
+
+def delete_drawing(conn, book_id, page):
+    conn.execute("DELETE FROM drawings WHERE book_id=? AND page=?",
+                 (book_id, page))
+
+
 def export_annotations_markdown(conn, book_id):
-    """Return annotations as markdown text."""
+    """Return annotations + bookmarks as markdown text (P5.4)."""
     anns = get_annotations(conn, book_id)
+    bms = get_bookmarks(conn, book_id)
     book = conn.execute("""
         SELECT m.title, m.authors FROM files f
         LEFT JOIN metadata m ON m.file_id = f.id
@@ -938,14 +1108,30 @@ def export_annotations_markdown(conn, book_id):
     title = book["title"] if book and book["title"] else f"Book #{book_id}"
     authors = book["authors"] if book and book["authors"] else "Unknown"
     lines = [f"# {title}", f"*By {authors}*", "", "---", ""]
+    items = []
     for a in anns:
-        if a["type"] == "highlight":
-            lines.append(f"> {a['text']}")
-            if a.get("note"):
-                lines.append(f"  — {a['note']}")
+        a["_sort"] = a.get("created_at") or ""
+        items.append(a)
+    for b in bms:
+        b["_sort"] = b.get("created_at") or ""
+        b["_type"] = "bookmark"
+        items.append(b)
+    items.sort(key=lambda x: x["_sort"])
+    for item in items:
+        if item.get("_type") == "bookmark":
+            pct = f" ({round(item['progress_pct'])}%)" if item.get("progress_pct") else ""
+            loc = item.get("cfi_loc") or (f"Page {item['page_num']+1}" if item.get("page_num") is not None else "")
+            lines.append(f"**Bookmark:** {item.get('label', 'untitled')}{pct}")
+            if loc:
+                lines.append(f"  Location: {loc}")
+            lines.append("")
+        elif item["type"] == "highlight":
+            lines.append(f"> {item['text']}")
+            if item.get("note"):
+                lines.append(f"  — {item['note']}")
             lines.append("")
         else:
-            lines.append(f"**Note:** {a['text'] or a.get('note', '')}")
+            lines.append(f"**Note:** {item['text'] or item.get('note', '')}")
             lines.append("")
     return "\n".join(lines)
 
@@ -1074,7 +1260,7 @@ def load_config_overrides(conn):
         elif name == "exclude_exts":
             cfg.EXCLUDE_EXTS = set(e.strip() for e in value.split(",") if e.strip())
         elif name == "exclude_dirs":
-            cfg.EXCLUDE_DIRS = set(e.strip() for e in value.split(",") if e.strip())
+            pass  # handled below
         elif name == "dup_similarity":
             try: cfg.DUPLICATE_SIMILARITY_THRESHOLD = float(value)
             except ValueError: pass
@@ -1091,11 +1277,14 @@ def load_config_overrides(conn):
             cfg.ARCHIVE_DIR = os.path.join(cfg.FLAT_DIR, "archive")
         if not overrides.get("watch_dir"):
             cfg.WATCH_DIR = cfg.INBOX_DIR if cfg.INBOX_DIR else cfg.WATCH_DIR
-    # If archive_dir is set, exclude it from source scanning
+
+    # Rebuild EXCLUDE_DIRS from base to avoid leaks (D7.28)
+    new_dirs = set(cfg._BASE_EXCLUDE_DIRS)
+    if overrides.get("exclude_dirs"):
+        new_dirs = set(e.strip() for e in overrides["exclude_dirs"].split(",") if e.strip())
     if cfg.ARCHIVE_DIR:
-        cfg.EXCLUDE_DIRS.add(os.path.normpath(cfg.ARCHIVE_DIR))
-    # If archive_dir override was set but flat_dir was not, derive processed from flat
-    # (both point to the same root)
+        new_dirs.add(os.path.normpath(cfg.ARCHIVE_DIR))
+    cfg.EXCLUDE_DIRS = new_dirs
 
 
 def get_all_config(conn):

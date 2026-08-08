@@ -2,6 +2,7 @@ import os
 import shutil
 import json
 import threading
+import tempfile
 import logging
 from datetime import datetime
 
@@ -10,7 +11,7 @@ from db import get_connection, init_db, upsert_file, upsert_metadata, set_stage
 from log_utils import setup_logger
 
 logger = setup_logger("pipeline", also_stdout=False)
-from db import find_duplicate_by_hash, find_duplicate_by_title, get_pipeline_summary
+from db import find_duplicate_by_hash, find_duplicate_by_title, get_pipeline_summary, trim_pipeline_log
 from db import get_cataloged_files, mark_duplicate, mark_survivor, get_survivors, get_phase_counts
 from db import set_tags, quarantine_file, QUARANTINE_ERRORS
 from extractors import extract_metadata
@@ -83,8 +84,10 @@ class PipelineState:
                 "running": self.running,
                 "log": [e for e in self.log[-50:]],
             }
-            with open(self._persist_path, "w", encoding="utf-8") as f:
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=os.path.dirname(self._persist_path), delete=False) as f:
                 json.dump(data, f)
+                tmp = f.name
+            os.replace(tmp, self._persist_path)
         except Exception as e:
             logger.warning(f"state persist failed: {e}")
 
@@ -390,8 +393,8 @@ def run_phase_metadata(source=None, inbox_files=None):
                     downloaded = _download_cover(cover_url, cover_dir)
                     if downloaded:
                         upsert_metadata(conn, file_id, cover_path=downloaded)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("cover download failed for file_id=%s: %s", file_id, e)
 
         state.update(log_msg=f"  ▶ classifying {fname}")
         udc_code, udc_label = classify(
@@ -746,6 +749,109 @@ def run_pipeline(source=None, inbox_files=None):
         state.update(log_msg=f"✓ Pipeline (metadata+dedup) finished ({elapsed})")
         _release_lock()
 
+def run_phase_enrich(limit=500):
+    """Refresh missing metadata for already-catalogued books.
+
+    Targets books that lack a cover (no cover_path, or the cover file is gone
+    from disk), a description, or a title, and fills gaps from Open Library +
+    Google Books, downloading cover images. Uses the enrich cache + rate limit.
+    """
+    if not _acquire_lock():
+        state.update(log_msg="✗ Pipeline already running — concurrent run refused")
+        return
+    state.running = True
+    init_db(config.DB_PATH)
+    conn = get_connection(config.DB_PATH)
+    try:
+        state.update(phase="enrich", log_msg="▶ Enrich: refreshing missing metadata started")
+
+        covers_dir = os.path.join(os.path.dirname(config.DB_PATH), "covers")
+        os.makedirs(covers_dir, exist_ok=True)
+
+        rows = conn.execute("""
+            SELECT f.id, f.is_master,
+                   m.title, m.authors, m.isbn, m.description, m.publisher, m.year, m.cover_path
+            FROM files f
+            LEFT JOIN metadata m ON m.file_id = f.id
+            WHERE m.file_id IS NULL
+               OR m.cover_path IS NULL OR m.cover_path = ''
+               OR m.description IS NULL OR m.description = ''
+               OR m.title IS NULL OR m.title = ''
+            ORDER BY f.is_master DESC, f.id
+            LIMIT ?
+        """, (limit,)).fetchall()
+
+        candidates = []
+        for row in rows:
+            r = dict(row)
+            r["_cover_gone"] = bool(r["cover_path"]) and not os.path.isfile(r["cover_path"])
+            if (not r["title"] or not r["description"]
+                    or not r["cover_path"] or r["_cover_gone"]):
+                candidates.append(r)
+
+        state.update(log_msg=f"  {len(candidates)} book(s) need metadata refresh")
+        updated = cover_hits = unchanged = failed = 0
+        total = max(len(candidates), 1)
+
+        for i, r in enumerate(candidates):
+            label = r["title"] or r["isbn"] or f"book #{r['id']}"
+            state.update(stage="enriching", progress=(i + 1, total),
+                         log_msg=f"  [{i + 1}/{total}] {label}")
+
+            need_cover = not r["cover_path"] or r["_cover_gone"]
+            try:
+                enriched = enrich_book(isbn=r["isbn"] or None,
+                                       title=r["title"] or None,
+                                       author=r["authors"] or None)
+                if not enriched:
+                    unchanged += 1
+                    continue
+
+                kw = {}
+                if not r["title"] and enriched.get("title"):
+                    kw["title"] = enriched["title"]
+                if not r["authors"] and enriched.get("authors"):
+                    kw["authors"] = enriched["authors"]
+                if not r["publisher"] and enriched.get("publisher"):
+                    kw["publisher"] = enriched["publisher"]
+                if not r["isbn"] and enriched.get("isbn"):
+                    kw["isbn"] = enriched["isbn"]
+                if not r["year"] and enriched.get("year"):
+                    kw["year"] = enriched["year"]
+                if not r["description"] and enriched.get("description"):
+                    kw["description"] = enriched["description"]
+
+                cover_path = None
+                if need_cover and enriched.get("cover_url"):
+                    cover_path = _download_cover(enriched["cover_url"], covers_dir)
+                    if cover_path:
+                        kw["cover_path"] = cover_path
+                        cover_hits += 1
+
+                if kw:
+                    upsert_metadata(conn, r["id"],
+                                    enrich_source=enriched.get("source"),
+                                    enriched_at=datetime.utcnow().isoformat(),
+                                    **kw)
+                    conn.commit()
+                    updated += 1
+                else:
+                    unchanged += 1
+                state.update(log_msg=f"  ✓ {label}")
+            except Exception as e:
+                failed += 1
+                logger.warning("enrich failed for file_id=%s: %s", r["id"], e)
+                state.update(log_msg=f"  ✗ {label}: {e}")
+
+        state.update(log_msg=(
+            f"✓ Enrich complete ({_fmt_dur(state.get_snapshot().get('elapsed'))}): "
+            f"{updated} updated, {cover_hits} covers, {unchanged} unchanged, {failed} failed"))
+    finally:
+        conn.close()
+        state.running = False
+        _release_lock()
+
+
 def run_all_phases(source=None, inbox_files=None):
     """Run metadata + dedup + copy sequentially."""
     if not _acquire_lock():
@@ -757,7 +863,19 @@ def run_all_phases(source=None, inbox_files=None):
         state.update(log_msg="━━━ Pipeline: Metadata + Dedup + Copy ━━━")
         run_phase_metadata(source, inbox_files)
         run_phase_dedup()
-        run_phase_copy()
+        try:
+            run_phase_copy()
+        except Exception:
+            # Compensating tx: revert uncopied survivors back to cataloged (D7.31)
+            logger.warning("Phase C (copy) failed — compensating")
+            state.update(log_msg="✗ Phase C failed — compensating: reverting uncopied books to cataloged")
+            comp = get_connection(config.DB_PATH)
+            try:
+                comp.execute("UPDATE files SET stage='cataloged' WHERE stage='survivor'")
+                comp.commit()
+            finally:
+                comp.close()
+            raise
         # Move originals out of source dir
         if source:
             cleanup_source_dir(source)
@@ -857,6 +975,7 @@ def cleanup_source_dir(source_dir):
 def run_recon():
     """Audit DB/filesystem coherence: check all books and directories match up."""
     init_db(config.DB_PATH)
+    trim_pipeline_log(config.DB_PATH, days=90)
     conn = get_connection(config.DB_PATH)
     state.update(phase="recon", stage="scanning", log_msg="▶ Recon: coherence audit")
     result = {"summary": {}, "directories": {}, "db_integrity": {}, "anomalies": []}
@@ -911,6 +1030,32 @@ def run_recon():
                     result["anomalies"].append(f"Book #{bid}: source_path not on disk ({sp})")
 
         result["db_integrity"]["missing_source"] = missing_source
+
+        # Cover integrity: check cover_path existence + orphaned cover files
+        covers_dir = os.path.join(os.path.dirname(config.DB_PATH), "covers")
+        missing_covers = 0
+        orphaned_covers = 0
+        if os.path.isdir(covers_dir):
+            on_disk = set()
+            for fname in os.listdir(covers_dir):
+                if fname.endswith(".jpg"):
+                    on_disk.add(fname)
+            cover_rows = conn.execute("SELECT file_id, cover_path FROM metadata WHERE cover_path IS NOT NULL").fetchall()
+            for row in cover_rows:
+                if row["cover_path"] and not os.path.isfile(row["cover_path"]):
+                    missing_covers += 1
+                    if missing_covers <= 10:
+                        result["anomalies"].append(f"Book #{row['file_id']}: cover_path not on disk ({row['cover_path']})")
+            in_db_md5 = set()
+            for row in cover_rows:
+                if row["cover_path"]:
+                    fname = os.path.basename(row["cover_path"])
+                    in_db_md5.add(fname)
+            orphaned_covers = len(on_disk - in_db_md5)
+            if orphaned_covers > 0:
+                result["anomalies"].append(f"{orphaned_covers} cover file(s) on disk but not referenced by any book")
+        result["db_integrity"]["missing_covers"] = missing_covers
+        result["db_integrity"]["orphaned_covers"] = orphaned_covers
 
         state.update(log_msg=f"✓ Recon complete — {result['summary']['total_db_books']} books, {len(result['anomalies'])} anomalies")
         return result

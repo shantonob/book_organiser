@@ -9,3 +9,6 @@ test_check.js
 .env
 venv/
 .venv/
+# P6.1 Portable Config (contains machine-specific data_dir)
+machine.json
+node_modules/

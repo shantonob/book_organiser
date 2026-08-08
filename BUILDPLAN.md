@@ -1433,38 +1433,39 @@ Implementation: Option B — added `master_id` column, updated `mark_duplicate()
 |---|------|----------|--------|-------------|
 | 1 | **D7.1** — GET endpoints trigger mutations | **High** | ✅ Done | Changed to POST; JS updated; browser pre-fetch no longer starts pipelines |
 | 2 | **D7.2** — Pipeline no mutual exclusion | **High** | ✅ Done | Cross-process PID lock file prevents concurrent pipeline runs |
-| 3 | **D7.3** — FTS stale after metadata edits | **High** | ⬜ Pending | `books_fts` not updated when title/author edited via API; search returns stale results |
-| 4 | **D7.4** — Delete doesn't clean covers + flat_path | **High** | ⬜ Pending | `flat_path`/`archive_path` columns don't exist in schema; cover images orphaned; processed copy not deleted |
-| 5 | **D7.5** — Network DB silently redirected | **High** | ⬜ Pending | UNC path auto-switched to local copy with no sync mechanism |
-| 6 | **D7.6** — Config overrides not live-applied | **High** | ⬜ Pending | Path changes stored to DB but not applied until Flask restart |
-| 7 | **D7.7** — Default secret key | **High** | ⬜ Pending | `"change-me-in-production"` — session forgery trivial if not overridden |
-| 8 | **D7.8** — Conversion blocks Flask worker | **High** | ⬜ Pending | MOBI→EPUB `subprocess.run` blocks worker up to 2 minutes synchronously |
-| 9 | **D7.9** — Event listener leaks | **High** | ⬜ Pending | `keydown` readers accumulate on re-open; interval timers never cleaned up on tab switch |
-| 10 | **D7.10** — Pipeline state write not atomic | **Medium** | ⬜ Pending | `json.dump` directly to file — crash mid-write leaves corrupted file |
-| 11 | **D7.11** — Cover download failures silent | **Medium** | ⬜ Pending | Bare `except: pass` swallows cover fetch errors |
-| 12 | **D7.12** — Run recon skips cover integrity | **Medium** | ⬜ Pending | Doesn't check cover_path existence or orphaned covers |
-| 13 | **D7.13** — No request body size limit | **Medium** | ⬜ Pending | `MAX_CONTENT_LENGTH` not set — OOM risk from large payloads |
-| 14 | **D7.14** — SSE endpoint broken | **Medium** | ⬜ Pending | Yields once then hangs; client waits forever. Legacy — replace with polling |
-| 15 | **D7.15** — Inconsistent error response format | **Medium** | ⬜ Pending | Some return `{"error":"msg"}`, others empty body or plain text |
-| 16 | **D7.16** — All POST missing CSRF | **Medium** | ⬜ Pending | No CSRF token; malicious site could trigger actions on authenticated session |
-| 17 | **D7.17** — N+1 in bulk delete | **Medium** | ⬜ Pending | Calls `get_book_by_id` per book_id instead of single `WHERE id IN (...)` |
-| 18 | **D7.18** — Missing indexes on foreign keys | **Medium** | ⬜ Pending | `pipeline_log.file_id`, `quarantined.file_id` unindexed — full table scans |
-| 19 | **D7.19** — Daemon status no unique process key | **Medium** | ⬜ Pending | Two daemons overwrite each other's status rows |
-| 20 | **D7.20** — Comic cache extraction blocks worker | **Medium** | ⬜ Pending | CBZ/CBR extract synchronous in request thread |
-| 21 | **D7.21** — Library search no pagination | **Medium** | ⬜ Pending | `limit=200` hardcoded, no prev/next controls |
-| 22 | **D7.22** — Enrichment cache not thread-safe | **Medium** | ⬜ Pending | JSON file read/rewrite not atomic; concurrent writes corrupt cache |
-| 23 | **D7.23** — FTS rebuild scans all rows | **Medium** | ⬜ Pending | `DELETE+INSERT` all rows instead of incremental upsert |
-| 24 | **D7.24** — Bulk tag ops N individual queries | **Medium** | ⬜ Pending | Loops per book_id instead of `executemany` or batch INSERT |
-| 25 | **D7.25** — Grid view hides bulk toolbar | **Medium** | ⬜ Pending | No checkboxes in grid view; toolbar hidden but book selection persists |
-| 26 | **D7.26** — fetchStatus interval never cleaned | **Medium** | ⬜ Pending | `setInterval` runs 24/7 even when tab hidden |
-| 27 | **D7.27** — Silent promise rejections | **Medium** | ⬜ Pending | `.catch(() => {})` everywhere — network errors invisible to user |
-| 28 | **D7.28** — Archive exclusion leaks on re-load | **Medium** | ⬜ Pending | `EXCLUDE_DIRS` mutates on each `load_config_overrides` call — accumulates stale entries |
-| 29 | **D7.29** — Resolve book path no cover cache | **Medium** | ⬜ Pending | Doesn't check covers directory; download may fail for orphaned files |
-| 30 | **D7.30** — Path traversal not fully mitigated | **Low** | ⬜ Pending | `send_file` path not validated against allowed base dirs |
-| 31 | **D7.31** — Compensating tx for 3-phase pipeline | **Medium** | ⬜ Pending | Phase A+B commit before C runs; C failure leaves inconsistent state |
-| 32 | **D7.32** — Inconsistent confirm dialogs | **Low** | ⬜ Pending | Mix of native `confirm()` and styled modals for destructive actions |
+| 3 | **D7.3** — FTS stale after metadata edits | **High** | ✅ Done | Added `update_fts_for_book()` called after metadata edits; targeted row upsert instead of full rebuild |
+| 4 | **D7.4** — Delete doesn't clean covers + flat copies | **High** | ✅ Done | Removed nonexistent `flat_path`/`archive_path` refs; now deletes cover files, comic cache, FTS entries, annotations, bookmarks, reader_state, reading_list |
+| 5 | **D7.5** — Network DB silently redirected | **High** | ✅ Done | Warning logged on redirect; `ORIGINAL_DB_PATH` + `LOCAL_DB_REDIRECTED` globals; `POST /api/admin/sync-db` endpoint; status in diagnostics |
+| 6 | **D7.6** — Config overrides not live-applied | **High** | ✅ Done | `load_config_overrides()` called after POST /api/config and config import; no restart needed |
+| 7 | **D7.7** — Default secret key | **High** | ✅ Done | Changed from `"change-me-in-production"` to SHA-256 of hostname; falls back to `BOOK_AUTH_PASSWORD` or `BOOK_SECRET_KEY` env var |
+| 8 | **D7.8** — Conversion blocks Flask worker | **High** | ✅ Done | MOBI->EPUB runs in `ThreadPoolExecutor`; returns 202 immediately; frontend polls `/api/conversion-status/<id>` until done |
+| 9 | **D7.9** — Event listener leaks | **High** | ✅ Done | All reader loaders now `removeEventListener` before `addEventListener`; `fetchStatus` interval paused via Page Visibility API |
+| 10 | **D7.10** — Pipeline state write not atomic | **Medium** | ✅ Done | Uses `tempfile.NamedTemporaryFile` + `os.replace()` for atomic write |
+| 11 | **D7.11** — Cover download failures silent | **Medium** | ✅ Done | `_download_cover` and pipeline cover block now log warnings instead of bare `except: pass` |
+| 12 | **D7.12** — Run recon skips cover integrity | **Medium** | ✅ Done | Recon now checks `cover_path` file existence, reports missing + orphaned covers |
+| 13 | **D7.13** — No request body size limit | **Medium** | ✅ Done | `MAX_CONTENT_LENGTH = 16MB` set in Flask config |
+| 14 | **D7.14** — SSE endpoint broken | **Medium** | ✅ Done | Legacy endpoint removed; frontend already uses `fetchStatus` polling since P2/P3 |
+| 15 | **D7.15** — Inconsistent error response format | **Medium** | ✅ Done | Only `return "", 404` found and fixed to `jsonify(...), 404`; all other error responses already consistent |
+| 16 | **D7.16** — All POST missing CSRF | **Medium** | ✅ Done | Server: `before_request` hook validates `X-CSRF-Token` header; `GET /api/csrf-token` endpoint. Frontend: `fetch` monkey-patched to auto-inject token; token fetched on boot |
+| 17 | **D7.17** — N+1 in bulk delete | **Medium** | ✅ Done | Single `SELECT ... WHERE id IN (...)` query instead of per-book loop; file cleanup merged into same query |
+| 18 | **D7.18** — Missing indexes on foreign keys | **Medium** | ✅ Done | Added `idx_pipeline_log_file` on `pipeline_log(file_id)` and `idx_quarantined_file` on `quarantined(file_id)` |
+| 19 | **D7.19** — Daemon status no unique process key | **Medium** | ✅ Done | Added `instance_id` column; `daemon_heartbeat` accepts `instance_id` param (default `hostname::pid`); `get_daemon_status` returns per-instance data |
+| 20 | **D7.20** — Comic cache extraction blocks worker | **Medium** | ✅ Done | Runs in `ThreadPoolExecutor(max_workers=1)`; returns 202; frontend polls `/api/comic-status/<id>` |
+| 21 | **D7.21** — Library search no pagination | **Medium** | ✅ Done | Added offset/limit params to `loadLibrary`; pagination bar (Prev/Next + page size selector); `updatePagination()` updates prev/next state |
+| 22 | **D7.22** — Enrichment cache not thread-safe | **Medium** | ✅ Done | Added `_cache_lock`; replaced `_load_cache/_save_cache` with atomic `_with_cache(callback)` for thread-safe read-modify-write |
+| 23 | **D7.23** — FTS rebuild scans all rows | **Medium** | ✅ Done | `rebuild_fts` now accepts optional `book_id` param for single-book incremental re-index; full rebuild still available for explicit calls |
+| 24 | **D7.24** — Bulk tag ops N individual queries | **Medium** | ✅ Done | Replaced per-book loop with `executemany` batch INSERT/DELETE via `add_custom_tags_bulk`/`remove_custom_tags_bulk` |
+| 25 | **D7.25** — Grid view hides bulk toolbar | **Medium** | ✅ Done | Removed `bulk.style.display="none"` in grid mode; added checkboxes to gallery items with CSS positioning; bulk toolbar now visible in both views |
+| 26 | **D7.26** — fetchStatus interval never cleaned | **Medium** | ✅ Done | Covered by D7.9 fix — paused via Page Visibility API when tab hidden |
+| 27 | **D7.27** — Silent promise rejections | **Medium** | ✅ Done | Added `unhandledrejection` global listener; replaced all empty `.catch(() => {})` with `.catch(function(_e) { console.warn("fetch:", _e); })` — remaining catches have meaningful error handling |
+| 28 | **D7.28** — Archive exclusion leaks on re-load | **Medium** | ✅ Done | Added `_BASE_EXCLUDE_DIRS` in config.py; `load_config_overrides` now rebuilds `EXCLUDE_DIRS` from base on every call instead of mutating in-place |
+| 29 | **D7.29** — Resolve book path no cover cache | **Medium** | ✅ Done | Added `DATA_DIR` to resolution dirs; added None-guard for missing dirs; ensures orphaned files are found when they exist in any configured directory |
+| 30 | **D7.30** — Path traversal not fully mitigated | **Low** | ✅ Done | Added `_safe_send_path()` validator; cover, download, EPUB/PDF read, and comic page endpoints now validate against allowed base dirs before sending files |
+| 31 | **D7.31** — Compensating tx for 3-phase pipeline | **Medium** | ✅ Done | Wrapped Phase C in try/except; on failure, reverts uncopied survivors back to `cataloged` stage; cleanup_source_dir only runs on success |
+| 32 | **D7.32** — Inconsistent confirm dialogs | **Low** | ✅ Done | Replaced all 4 native `confirm()` calls with styled modal `showConfirm()` — consistent look for bulk delete, force-keep, merge, and delete |
+| 33 | **D7.33** — Metrics & Health Dashboard | **Medium** | ✅ Done | Settings tab shows DB size, covers size, cache sizes, disk usage, per-component health status |
 
-**Status**: In progress — D7.1 and D7.2 being fixed first (most impactful for stability)
+**Status**: In progress — D7.1–D7.33 done; P5.3–P5.5 done; P6.1 done; = **0 items remaining** 🎉
 
 CSS: `.reader-layout` uses `min-height: calc(100vh - 160px)`, `#readerArea` uses `flex:1`, EPUB rendition height reads container `offsetHeight` dynamically. Fullscreen handler simplified.
 
@@ -1482,10 +1483,10 @@ CSS: `.reader-layout` uses `min-height: calc(100vh - 160px)`, `#readerArea` uses
 | 8 | **P4.4** — Duplicate Link to Original | Low | ✅ Done | `master_id` column + clickable link in detail panel |
 | 9 | **P5.1** — Reading Pane Full-Space Layout | Low | ✅ Done | CSS flex fix, dynamic reader height |
 | 10 | **P5.2** — Reading List UX (✕ close, active highlight, metadata panel) | Medium | ✅ Done | Inline ✕ close, active highlight, current book info panel |
-| 11 | **P5.3** — Enhanced Highlighting & Bookmarks | High | ⬜ Pending | Text selection for PDF/comic, auto-bookmarks, unified timeline in annotations sidebar |
-| 12 | **P5.4** — Export Annotations as Markdown | Low | ⬜ Pending | Download .md with book metadata + all highlights/notes in sequence |
-| 13 | **P5.5** — Reader View Controls (zoom, page mode, scroll) | Medium | ⬜ Pending | Zoom in/out, single/2-page spread, fit-to-page/original, page-by-page/continuous scroll |
-| 14 | **P6.1** — Portable Config Module | Medium | ⬜ Pending | Split config/data from code for laptop→Pi transfer workflow |
+| 11 | **P5.3** — Enhanced Highlighting & Bookmarks | High | ✅ Done | Text selection for PDF/comic, auto-bookmarks, unified timeline in annotations sidebar |
+| 12 | **P5.4** — Export Annotations as Markdown | Low | ✅ Done | Download .md with book metadata + all highlights/notes in sequence |
+| 13 | **P5.5** — Reader View Controls (zoom, page mode, scroll) | Medium | ✅ Done | Zoom in/out, single/2-page spread, fit-to-page/original, page-by-page/continuous scroll |
+| 14 | **P6.1** — Portable Config Module | Medium | ✅ Done | Split config/data from code for laptop→Pi transfer workflow |
 | 15 | **P6.2** — Coherence Recon Tool | Low | ✅ Done | `GET /api/recon`, `--phase recon` CLI; scans inbox/processed/archive + DB integrity checks |
 
 ---
@@ -1496,32 +1497,16 @@ CSS: `.reader-layout` uses `min-height: calc(100vh - 160px)`, `#readerArea` uses
 
 Allow the application to be split across two machines: a powerful laptop for batch metadata discovery + enrichment, and a Raspberry Pi for 24/7 serving and light inbox processing.
 
-**Design:**
+**Status**: ✅ Done
 
-- `machine.json` (gitignored) in the project root contains one key: `data_dir` pointing to where DB, logs, covers, and pipeline state live
-- On laptop: `{"data_dir": "C:/Users/shant/book_organiser_data"}`
-- On Pi: `{"data_dir": "/mnt/storage/book_organiser_data"}`
-- If `machine.json` absent, fall back to current auto-detect logic
-
-**CLI sync commands:**
-- `python app.py --export-pi export.zip` — zips data dir with path remapping (`Z:\books` → `/mnt/storage/books`)
-- `python app.py --import-pi export.zip` — unzips into current `machine.json`'s data_dir, applies remapping
-
-**Path remap endpoint:**
-- `POST /api/admin/remap-paths` — bulk-replaces path prefixes in `config_overrides` and `files` table columns
-
-**DB changes:**
-- WAL mode (`PRAGMA journal_mode=WAL`) for concurrent read/write on Pi
-- `RotatingFileHandler` for logs (5MB max, 3 backups) to avoid SD card fill-up
-
-**Workflow:**
-1. Laptop: scan inbox + enrich via API (fast CPU + internet)
-2. Laptop: `python app.py --export-pi data.zip`
-3. Copy zip to Pi
-4. Pi: `python app.py --import-pi data.zip`
-5. Pi: serves books 24/7, processes small inbox batches locally
-
-**Status**: Planned
+**Implementation:**
+- `machine.json` (gitignored) in project root with `data_dir` key; auto-detected by `config.py`
+- Fallback to existing auto-detect logic when `machine.json` absent
+- CLI: `python app.py --export-pi export.zip` and `--import-pi export.zip`
+- `POST /api/admin/remap-paths` — bulk-replaces path prefixes in `config_overrides`, `files.source_path`, `files.archive_path`, `metadata.cover_path`
+- WAL mode already active (`PRAGMA journal_mode=WAL` in `get_connection`)
+- `RotatingFileHandler` already used (5MB max, 3 backups)
+- Export zip includes: catalog.db, covers/, pipeline_state.json, enrich_cache.json, manifest.json with config_overrides
 
 
 ### P6.2 — Coherence Recon Tool

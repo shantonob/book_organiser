@@ -204,6 +204,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .reading-list-sidebar .rl-progress { height: 2px; background: #334155; border-radius: 1px; margin-top: 3px; overflow: hidden; }
   .reading-list-sidebar .rl-progress-fill { height: 100%; background: #0ea5e9; border-radius: 1px; }
   .reading-list-sidebar .rl-empty { font-size: 0.7rem; color: #475569; text-align: center; padding: 16px 0; }
+  .reading-list-sidebar .toc-block { border-top: 1px solid #334155; margin-top: 10px; padding-top: 8px; display: none; }
+  .reading-list-sidebar .toc-block h3 { font-size: 0.78rem; color: #94a3b8; margin-bottom: 6px; }
+  .reading-list-sidebar .toc-list { font-size: 0.72rem; max-height: 40vh; overflow-y: auto; }
+  .reading-list-sidebar .toc-list ul { list-style: none; margin: 0; padding-left: 12px; }
+  .reading-list-sidebar .toc-list > ul { padding-left: 0; }
+  .reading-list-sidebar .toc-item { padding: 3px 6px; border-radius: 3px; cursor: pointer; color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .reading-list-sidebar .toc-item:hover { background: #334155; color: #e2e8f0; }
+  .reading-list-sidebar .toc-empty { font-size: 0.7rem; color: #64748b; padding: 6px 4px; }
+  .reading-list-sidebar .toc-item.active { background: #0ea5e9; color: #0f172a; font-weight: 600; }
   .reader-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   /* Progress bar in toolbar */
   .reader-progress-wrap { flex: 1; min-width: 80px; max-width: 160px; height: 4px; background: #334155; border-radius: 2px; overflow: hidden; }
@@ -221,12 +230,25 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .annotations-sidebar .ann-empty { color: #475569; font-size: 0.7rem; text-align: center; padding: 12px 0; }
   .annotations-sidebar .ann-input-row { display: flex; gap: 6px; margin-bottom: 6px; }
   /* Fullscreen reader */
-  .reader-layout:fullscreen .reading-list-sidebar { display: none; }
   .reader-layout:fullscreen .reader-main { max-width: 100%; }
   .reader-layout:fullscreen #readerArea { width: 100%; height: calc(100vh - 60px); }
-  .reader-layout:-webkit-full-screen .reading-list-sidebar { display: none; }
   .reader-layout:-webkit-full-screen .reader-main { max-width: 100%; }
   .reader-layout:-webkit-full-screen #readerArea { width: 100%; height: calc(100vh - 60px); }
+  /* Auto-hidden side panes in fullscreen: slide in from the edges on hover */
+  .reader-layout.fs-auto-panes:fullscreen .reading-list-sidebar,
+  .reader-layout.fs-auto-panes:-webkit-full-screen .reading-list-sidebar { position: fixed; left: 0; top: 48px; bottom: 0; z-index: 500; margin: 0; border-radius: 0 8px 8px 0; transform: translateX(-100%); transition: transform 0.18s ease; max-height: none; width: 240px; background: rgba(15, 23, 42, 0.97); }
+  .reader-layout.fs-auto-panes:fullscreen .reading-list-sidebar.fs-show,
+  .reader-layout.fs-auto-panes:-webkit-full-screen .reading-list-sidebar.fs-show { transform: translateX(0); }
+  .reader-layout.fs-auto-panes:fullscreen .annotations-sidebar,
+  .reader-layout.fs-auto-panes:-webkit-full-screen .annotations-sidebar { position: fixed; right: 0; top: 48px; bottom: 0; z-index: 500; margin: 0; border-radius: 8px 0 0 8px; transform: translateX(100%); transition: transform 0.18s ease; max-width: none; background: rgba(15, 23, 42, 0.97); }
+  .reader-layout.fs-auto-panes:fullscreen .annotations-sidebar.fs-show,
+  .reader-layout.fs-auto-panes:-webkit-full-screen .annotations-sidebar.fs-show { transform: translateX(0); }
+  /* Edge hover strips (invisible) that reveal panes */
+  .reader-layout.fs-auto-panes:fullscreen .fs-hotzone,
+  .reader-layout.fs-auto-panes:-webkit-full-screen .fs-hotzone { display: block; }
+  .fs-hotzone { position: fixed; top: 48px; bottom: 0; width: 12px; z-index: 499; display: none; }
+  .fs-hotzone.fs-left { left: 0; }
+  .fs-hotzone.fs-right { right: 0; }
   /* Highlight popup */
   .hl-popup { position: fixed; z-index: 1000; background: #1e293b; border: 1px solid #475569; border-radius: 8px; padding: 8px 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: none; min-width: 220px; }
   .hl-popup .hl-colors { display: flex; gap: 6px; margin-bottom: 6px; }
@@ -587,7 +609,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 
   <!-- ════ READER TAB (P3.1 Enhanced) ════ -->
   <div class="tab-panel" id="tab-reader">
-    <div class="reader-layout">
+    <div class="reader-layout" id="readerLayout">
+      <div class="fs-hotzone fs-left" id="fsLeftZone" title="Show contents &amp; reading list"></div>
+      <div class="fs-hotzone fs-right" id="fsRightZone" title="Show notes &amp; annotations"></div>
       <!-- Reading List Sidebar (R1) -->
       <div class="reading-list-sidebar" id="readingListPanel">
         <h3>Reading List</h3>
@@ -595,6 +619,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <div class="rl-empty">Loading...</div>
         </div>
         <div id="readingListBookInfo"></div>
+        <div class="toc-block" id="tocBlock">
+          <h3>Contents</h3>
+          <div class="toc-list" id="tocList"><div class="toc-empty">Loading...</div></div>
+        </div>
       </div>
       <!-- Reader Main -->
       <div class="reader-main">
@@ -611,6 +639,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <button id="readingListBtn" onclick="toggleReadingListForBook()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#0ea5e9;color:#0f172a;font-weight:600;display:none">+ List</button>
           <button id="exportHighlightsBtn" onclick="exportHighlights()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#22c55e;color:#0f172a;font-weight:600;display:none">Export</button>
           <button id="fullscreenBtn" onclick="toggleFullscreen()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0;font-weight:600">&#x26F6; Fullscreen</button>
+          <button id="sidebarToggleBtn" onclick="toggleFsPane('left')" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0;font-weight:600;display:none">&#x2630; Contents</button>
           <button id="annToggleBtn" onclick="toggleAnnotationsSidebar()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0;font-weight:600;display:none">&#x1F4DD; Notes</button>
           <button id="bookmarkBtn" onclick="addBookmark()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#eab308;color:#0f172a;font-weight:600;display:none">&#x1F516; Bookmark</button>
           <button id="pageNoteBtn" onclick="addPageNote()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#a78bfa;color:#0f172a;font-weight:600;display:none">&#x1F4DD; Page Note</button>
@@ -637,6 +666,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <div style="font-size:1.1rem;margin-bottom:12px">Cannot preview this format in the browser</div>
           <p style="font-size:0.85rem;margin-bottom:16px">Use the <strong>Download</strong> button on the detail page to open it in your ebook reader.</p>
           <button onclick="switchTab('library')" style="padding:8px 20px;border:none;border-radius:6px;background:#0ea5e9;color:#0f172a;font-weight:600;cursor:pointer">Back to Library</button>
+        </div>
+        <div id="readerLoadStatus" style="display:none;padding:8px 14px;font-size:0.78rem;border:1px solid #475569;border-bottom:none;border-radius:6px 6px 0 0;background:#0f172a;color:#e2e8f0">
+          <span id="readerLoadState" style="font-weight:600"></span>
+          <span id="readerLoadDetail" style="color:#94a3b8;margin-left:8px"></span>
         </div>
         <div id="readerArea" style="width:100%;flex:1;border:1px solid #334155;border-radius:6px;background:#f8fafc;overflow-y:auto"></div>
       </div>
@@ -2549,7 +2582,7 @@ let readerBookId = null;
 let readerProgressTimer = null;
 let readerSaveTimer = null;
 let _readerZoom = 100;
-let _readerScrollMode = false;
+let _readerScrollMode = true;
 
 // ═══ Reading List (R1) ═══
 
@@ -2634,6 +2667,82 @@ function toggleReadingListForBook() {
 
 function setReadingListStatus(bid, status) {
   fetch(API + "/api/reading-list/" + bid, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({status: status})}).then(function() { loadReadingList(); }).catch(function() {});
+}
+
+// ═══ Table of Contents (from epub.js navigation) ═══
+
+function loadToc(bookId) {
+  const block = document.getElementById("tocBlock");
+  const list = document.getElementById("tocList");
+  if (!block || !list) return;
+  if (!readerBook || !["epub","azw3","mobi","fb2"].includes(readerFormat)) {
+    block.style.display = "none";
+    return;
+  }
+  block.style.display = "block";
+  list.innerHTML = '<div class="toc-empty">Loading...</div>';
+  Promise.race([
+    readerBook.loaded.navigation,
+    new Promise((res, rej) => setTimeout(() => rej(new Error("toc timeout")), 8000))
+  ]).then(function(nav) {
+    const toc = (nav && nav.toc) || [];
+    if (!toc.length) { list.innerHTML = '<div class="toc-empty">No table of contents found</div>'; return; }
+    function render(items) {
+      if (!items.length) return "";
+      let html = "<ul>";
+      items.forEach(function(it) {
+        const label = it && it.label ? it.label : "";
+        if (!label) return;
+        const escapedHref = (it.href || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+        html += '<li><div class="toc-item" data-href="' + esc((it.href || "").split("#")[0]) + '" title="' + esc(label) + '" onclick="jumpToToc(\'' + escapedHref + '\')">' + esc(label) + '</div>';
+        if (it.subitems && it.subitems.length) html += render(it.subitems);
+        html += '</li>';
+      });
+      return html + "</ul>";
+    }
+    list.innerHTML = render(toc);
+  }).catch(function(e) {
+    list.innerHTML = '<div class="toc-empty">No table of contents found</div>';
+  });
+}
+
+function jumpToToc(href) {
+  if (!readerRendition || !href) return;
+  try {
+    readerRendition.display(href);
+  } catch(e) {}
+}
+
+// Highlight the TOC entry matching the currently displayed chapter
+function markTocCurrent(href) {
+  if (!href) return;
+  var list = document.getElementById("tocList");
+  if (!list) return;
+  // Normalize: drop fragment + leading "./"? epub.js hrefs are relative to the
+  // book base; the rendition location gives a href like "chapter2.xhtml".
+  var norm = String(href).split("#")[0];
+  var best = null, bestDepth = 1e9;
+  var items = list.querySelectorAll(".toc-item");
+  for (var i = 0; i < items.length; i++) {
+    var cand = (items[i].getAttribute("data-href") || "").split("#")[0];
+    var depth = items[i].getAttribute("data-depth") ? parseInt(items[i].getAttribute("data-depth"), 10) : 1;
+    if (cand === norm) {
+      if (depth < bestDepth) { bestDepth = depth; best = items[i]; }
+    }
+  }
+  if (!best && items.length) {
+    // fallback: same basename
+    var base = norm.split("/").pop() || norm;
+    for (var j = 0; j < items.length; j++) {
+      var cb = (items[j].getAttribute("data-href") || "").split("/").pop() || "";
+      if (cb === base) { best = items[j]; break; }
+    }
+  }
+  for (var k = 0; k < items.length; k++) items[k].classList.remove("active");
+  if (best) {
+    best.classList.add("active");
+    try { best.scrollIntoView({ block: "nearest" }); } catch(e) {}
+  }
 }
 
 // ═══ Reader State (R2) ═══
@@ -2724,15 +2833,18 @@ function loadReader(bookId, book) {
 
   var convFormats = ["mobi", "azw3", "fb2"];
   if (convFormats.indexOf(readerFormat) >= 0) {
-    area.innerHTML = '<div style="color:#f59e0b;text-align:center;padding:40px"><div style="font-size:1rem;margin-bottom:8px">Converting to EPUB...</div><div style="font-size:0.82rem;color:#64748b">This may take up to 2 minutes for large files</div></div>';
+    area.innerHTML = '';
+    _readerLoadStatus("converting", "Converting to EPUB\u2026", "may take up to 2 minutes for large files");
     var pollTimer = setInterval(function() {
       fetch(API + "/api/conversion-status/" + bookId).then(function(r) { return r.json(); }).then(function(d) {
         if (d.status === "done") {
           clearInterval(pollTimer);
+          _readerLoadStatus("ready", "Converted", "loading book\u2026");
           _loadEpubReader(bookId, area);
         } else if (d.status === "error") {
           clearInterval(pollTimer);
-          area.innerHTML = '<div style="color:#ef4444;text-align:center;padding:40px"><div style="font-size:1rem;margin-bottom:8px">Could not render: ' + (d.error || "unknown") + '</div><div style="margin-bottom:12px"><button onclick="openReader(' + bookId + ')" style="padding:6px 16px;border:none;border-radius:4px;background:#334155;color:#e2e8f0;cursor:pointer;margin-right:8px">Retry</button><a href="' + API + '/api/book/' + bookId + '/download" style="padding:6px 16px;border-radius:4px;background:#0ea5e9;color:#fff;text-decoration:none">Download file</a></div></div>';
+          _readerLoadStatus("error", "Conversion failed", d.error || "unknown");
+          _showReaderError(bookId, area.id || "readerArea", "Could not render: " + (d.error || "unknown"));
         }
       }).catch(function() {});
     }, 2000);
@@ -2741,78 +2853,196 @@ function loadReader(bookId, book) {
   _loadEpubReader(bookId, area);
 }
 
+function _readerLoadStatus(state, label, detail) {
+  var box = document.getElementById("readerLoadStatus");
+  var st = document.getElementById("readerLoadState");
+  var dt = document.getElementById("readerLoadDetail");
+  if (!box) return;
+  if (!state) { box.style.display = "none"; st.textContent = ""; dt.textContent = ""; return; }
+  box.style.display = "block";
+  var colors = {connecting: "#f59e0b", loading: "#22c55e", downloading: "#22c55e", ready: "#22c55e", error: "#ef4444", stuck: "#ef4444", converting: "#f59e0b"};
+  st.style.color = colors[state] || "#e2e8f0";
+  st.textContent = label || state;
+  dt.textContent = detail || "";
+}
+
+function _showReaderError(bookId, areaId, message) {
+  var area = document.getElementById(areaId);
+  area.innerHTML = '<div style="color:#ef4444;text-align:center;padding:40px"><div style="font-size:1rem;margin-bottom:8px">' + (message || "Could not load the book") + '</div><div style="margin-bottom:12px"><button onclick="openReader(' + bookId + ')" style="padding:6px 16px;border:none;border-radius:4px;background:#334155;color:#e2e8f0;cursor:pointer;margin-right:8px">Retry</button><a href="' + API + '/api/book/' + bookId + '/download" style="padding:6px 16px;border-radius:4px;background:#0ea5e9;color:#fff;text-decoration:none">Download instead</a></div></div>';
+}
+
 function _loadEpubReader(bookId, area, restoreCfi) {
-  readerBook = ePub(API + "/api/book/" + bookId + "/read");
-  var ra = document.getElementById("readerArea");
-  var rh = Math.max(ra.offsetHeight || 600, 400);
-  var opts = { width: "100%", height: rh, spread: "none" };
-  if (_readerScrollMode) opts.flow = "scrolled-doc";
-  readerRendition = readerBook.renderTo("readerArea", opts);
+  var areaId = area && area.id ? area.id : "readerArea";
+  var loadStart = Date.now();
+  var loadTimer = null;
+  var lastProgress = loadStart;
 
-  // Surface load failures/timeouts instead of leaving a hanging spinner (big books can take a while)
-  var loadTimeout = setTimeout(function() {
-    if (!readerBook || !readerBook.opened) {
-      area.innerHTML = '<div style="color:#ef4444;text-align:center;padding:40px"><div style="font-size:1rem;margin-bottom:8px">Still loading the book... this may be a very large file.</div><div style="margin-bottom:12px"><button onclick="openReader(' + bookId + ')" style="padding:6px 16px;border:none;border-radius:4px;background:#334155;color:#e2e8f0;cursor:pointer;margin-right:8px">Retry</button><a href="' + API + '/api/book/' + bookId + '/download" style="padding:6px 16px;border-radius:4px;background:#0ea5e9;color:#fff;text-decoration:none">Download instead</a></div></div>';
-    }
-  }, 20000);
-  readerBook.opened.then(function() {
-    if (loadTimeout) clearTimeout(loadTimeout);
-  }).catch(function(err) {
-    if (loadTimeout) clearTimeout(loadTimeout);
-    area.innerHTML = '<div style="color:#ef4444;text-align:center;padding:40px"><div style="font-size:1rem;margin-bottom:8px">Could not load the EPUB: ' + (err || "unknown error") + '</div><div style="margin-bottom:12px"><button onclick="openReader(' + bookId + ')" style="padding:6px 16px;border:none;border-radius:4px;background:#334155;color:#e2e8f0;cursor:pointer;margin-right:8px">Retry</button><a href="' + API + '/api/book/' + bookId + '/download" style="padding:6px 16px;border-radius:4px;background:#0ea5e9;color:#fff;text-decoration:none">Download instead</a></div></div>';
-  });
-  readerRendition.display();
+  _readerLoadStatus("connecting", "Connecting\u2026", "contacting server");
 
-  document.getElementById("readerPrev").onclick = function() { readerPrev(); };
-  document.getElementById("readerNext").onclick = function() { readerNext(); };
-  document.removeEventListener("keydown", readerKeyHandler);
-  document.addEventListener("keydown", readerKeyHandler);
-
-  readerRendition.on("relocated", function(loc) {
-    var pct = loc && loc.start ? (loc.start.percentage * 100).toFixed(0) : 0;
-    document.getElementById("readerLocation").textContent = pct + "%";
-    document.getElementById("readerProgressFill").style.width = pct + "%";
-    if (readerSaveTimer) clearTimeout(readerSaveTimer);
-    readerSaveTimer = setTimeout(function() { saveReaderState(); }, 2000);
-  });
-
-  readerRendition.on("selected", function(cfiRange, contents) {
-    var text = "";
-    try {
-      var range = contents.range(cfiRange);
-      if (range) text = range.toString();
-    } catch(e) {}
-    if (text) showHighlightPopup(cfiRange, text);
-  });
-
-  document.getElementById("bookmarkBtn").style.display = "";
-  document.getElementById("pageNoteBtn").style.display = "";
-  document.getElementById("annToggleBtn").style.display = "";
-  document.getElementById("exportHighlightsBtn").style.display = "";
-  document.getElementById("readerZoomGroup").style.display = "flex";
-  _readerZoom = 100;
-  document.getElementById("readerZoomLevel").textContent = "100%";
-  document.getElementById("readerScrollBtn").style.background = _readerScrollMode ? "#0ea5e9" : "#475569";
-  document.getElementById("readerArea").style.overflowY = "hidden";
-  document.getElementById("readerDrawGroup").style.display = "none";
-  hideReaderDrawGroup();
-
-  // Restore saved position
-  var restoreFromState = function(state) {
-    if (state && state.location) {
-      try { readerRendition.display(state.location); } catch(e) {}
-    }
-  };
-  if (restoreCfi) {
-    try { readerRendition.display(restoreCfi); } catch(e) {}
-  } else {
-    fetch(API + "/api/book/" + bookId + "/reader-state").then(r => r.json()).then(restoreFromState).catch(function() {});
+  function tick() {
+    return Math.round((Date.now() - loadStart) / 1000);
   }
 
-  // Show annotations sidebar, load highlights + bookmarks + annotations
-  document.getElementById("annotationsSidebar").style.display = "block";
-  loadTimeline(bookId);
-  renderAllHighlights(bookId);
+  function fmt(n) {
+    return n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+  }
+
+  function statusDownloading(received, total, sizeLabel) {
+    var detail;
+    if (total > 0) {
+      var pct = Math.min(100, Math.round(received / total * 100));
+      detail = fmt(received) + " / " + sizeLabel + " \u00b7 " + pct + "% \u00b7 " + tick() + "s";
+    } else {
+      detail = fmt(received) + " downloaded \u00b7 " + tick() + "s";
+    }
+    _readerLoadStatus("downloading", "Downloading book\u2026", detail);
+  }
+
+  // Stream the book ourselves so we can report true download progress, then
+  // hand the bytes to epub.js as a buffer (avoids a second network pass and
+  // makes per-chapter resource loading local to the archive).
+  fetch(API + "/api/book/" + bookId + "/read").then(function(res) {
+    if (res.status >= 400) {
+      _readerLoadStatus("error", "Book unavailable", "HTTP " + res.status);
+      _showReaderError(bookId, areaId, res.status === 403 ? "Access denied \u2014 file outside served directories" : "Server returned HTTP " + res.status);
+      return null;
+    }
+    var total = parseInt(res.headers.get("content-length"), 10) || 0;
+    var sizeLabel = total >= 1048576 ? (total / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(total / 1024)) + " KB";
+    var received = 0;
+    var chunks = [];
+
+    if (!res.body || !res.body.getReader) {
+      _readerLoadStatus("ready", "Downloaded", sizeLabel + " \u00b7 " + tick() + "s");
+      return res.arrayBuffer().then(function(ab) {
+        return { buffer: ab, total: total, sizeLabel: sizeLabel };
+      });
+    }
+
+    _readerLoadStatus("downloading", "Downloading book\u2026", sizeLabel);
+    loadTimer = setInterval(function() {
+      var idle = Date.now() - lastProgress;
+      statusDownloading(received, total, sizeLabel);
+      if (idle > 8000 && received > 0) {
+        clearInterval(loadTimer);
+        _readerLoadStatus("stuck", "Download stalled\u2026", "no progress for " + Math.round(idle / 1000) + "s \u2014 check your network, or Retry / Download.");
+      } else if (idle > 15000) {
+        clearInterval(loadTimer);
+        _readerLoadStatus("stuck", "Download stuck\u2026", "no data received for " + Math.round(idle / 1000) + "s \u2014 the server may still be preparing or converting the file; Retry or Download.");
+      }
+    }, 1000);
+
+    var streamReader = res.body.getReader();
+
+    function pump() {
+      return streamReader.read().then(function(r) {
+        if (r.done) {
+          clearInterval(loadTimer);
+          var buf = new Uint8Array(received);
+          var off = 0;
+          for (var i = 0; i < chunks.length; i++) {
+            buf.set(chunks[i], off);
+            off += chunks[i].length;
+          }
+          _readerLoadStatus("ready", "Downloaded", sizeLabel + " \u00b7 " + tick() + "s");
+          return { buffer: buf.buffer, total: total, sizeLabel: sizeLabel };
+        }
+        chunks.push(r.value);
+        received += r.value.length;
+        lastProgress = Date.now();
+        return pump();
+      });
+    }
+    return pump();
+  }).then(function(dl) {
+    if (!dl) return;
+    var total = dl.total;
+    var sizeLabel = dl.sizeLabel;
+
+    readerBook = ePub(dl.buffer);
+    var ra = document.getElementById(areaId);
+    var rh = Math.max(ra.offsetHeight || 600, 400);
+    var opts = { width: "100%", height: rh, spread: "none" };
+    if (_readerScrollMode) opts.flow = "scrolled-doc";
+    readerRendition = readerBook.renderTo(areaId, opts);
+
+    var opened = false;
+    readerBook.opened.then(function() {
+      opened = true;
+      _readerLoadStatus("ready", "Loaded", sizeLabel + " \u00b7 rendering\u2026");
+    }).catch(function(err) {
+      _readerLoadStatus("error", "Load failed", String(err || "unknown error"));
+      _showReaderError(bookId, areaId, "Could not load the EPUB: " + (err || "unknown error"));
+      return;
+    });
+
+    // Stuck detector: parsing a buffer is fast, but give a large archive extra
+    // patience before surfacing a hint instead of an eternal spinner.
+    setTimeout(function() {
+      if (!opened) {
+        _readerLoadStatus("stuck", "Still loading\u2026", "(" + tick() + "s elapsed) \u2014 very large files can take a while; if it never finishes, Retry or Download.");
+      }
+    }, total > 26214400 ? 40000 : 20000);
+
+    readerRendition.display();
+
+    document.getElementById("readerPrev").onclick = function() { readerPrev(); };
+    document.getElementById("readerNext").onclick = function() { readerNext(); };
+    document.removeEventListener("keydown", readerKeyHandler);
+    document.addEventListener("keydown", readerKeyHandler);
+
+    readerRendition.on("relocated", function(loc) {
+      var pct = loc && loc.start ? (loc.start.percentage * 100).toFixed(0) : 0;
+      document.getElementById("readerLocation").textContent = pct + "%";
+      document.getElementById("readerProgressFill").style.width = pct + "%";
+      if (loc && loc.start && loc.start.href) markTocCurrent(loc.start.href);
+      if (readerSaveTimer) clearTimeout(readerSaveTimer);
+      readerSaveTimer = setTimeout(function() { saveReaderState(); }, 2000);
+    });
+
+    readerRendition.on("selected", function(cfiRange, contents) {
+      var text = "";
+      try {
+        var range = contents.range(cfiRange);
+        if (range) text = range.toString();
+      } catch(e) {}
+      if (text) showHighlightPopup(cfiRange, text);
+    });
+
+    document.getElementById("bookmarkBtn").style.display = "";
+    document.getElementById("pageNoteBtn").style.display = "";
+    document.getElementById("annToggleBtn").style.display = "";
+    document.getElementById("exportHighlightsBtn").style.display = "";
+    document.getElementById("readerZoomGroup").style.display = "flex";
+    _readerZoom = 100;
+    document.getElementById("readerZoomLevel").textContent = "100%";
+    document.getElementById("readerScrollBtn").style.background = _readerScrollMode ? "#0ea5e9" : "#475569";
+    document.getElementById("readerArea").style.overflowY = "hidden";
+    document.getElementById("readerDrawGroup").style.display = "none";
+    hideReaderDrawGroup();
+
+    // Restore saved position
+    var restoreFromState = function(state) {
+      if (state && state.location) {
+        try { readerRendition.display(state.location); } catch(e) {}
+      }
+    };
+    if (restoreCfi) {
+      try { readerRendition.display(restoreCfi); } catch(e) {}
+    } else {
+      fetch(API + "/api/book/" + bookId + "/reader-state").then(r => r.json()).then(restoreFromState).catch(function() {});
+    }
+
+    // Show annotations sidebar, load highlights + bookmarks + annotations
+    document.getElementById("annotationsSidebar").style.display = "block";
+    loadTimeline(bookId);
+    renderAllHighlights(bookId);
+    loadToc(bookId);
+  }).catch(function(err) {
+    if (loadTimer) clearInterval(loadTimer);
+    _readerLoadStatus("error", "Connection error", String(err && err.message || err || "network error"));
+    _showReaderError(bookId, areaId, "Network error contacting the server: " + (err && err.message || err));
+  });
 }
 
 // ═══ PDF Reader with PDF.js (P4.2d) ═══
@@ -2974,6 +3204,8 @@ function setupPdfSelection(canvas, bookId, pageNum) {
     document.getElementById("hlNoteInput").focus();
   };
 }
+
+function isEpubFormat(fmt) { return ["epub", "azw3", "mobi", "fb2"].indexOf(fmt) >= 0; }
 
 function pdfPrev() { if (_pdfDoc && readerPage > 1) pdfRenderPage(readerBookId, readerPage - 1); }
 function pdfNext() { if (_pdfDoc && readerPage < _pdfDoc.numPages) pdfRenderPage(readerBookId, readerPage + 1); }
@@ -3162,14 +3394,38 @@ function setupComicSelection(canvas, bookId, pageIdx) {
 }
 
 function readerKeyHandler(e) {
-  if (e.key === "ArrowLeft") { readerPrev(); e.preventDefault(); }
-  if (e.key === "ArrowRight") { readerNext(); e.preventDefault(); }
-  if (e.key === " ") {
-    if (_readerScrollMode) return; // let the browser scroll in scroll mode
-    readerNext(); e.preventDefault();
+  if (e.key === "ArrowLeft") { readerPrev(); e.preventDefault(); return; }
+  if (e.key === "ArrowRight") { readerNext(); e.preventDefault(); return; }
+  var epubScroll = readerFormat === "epub" && _readerScrollMode;
+  if (epubScroll) {
+    // Scrolled doc: scroll the epub.js iframe content.
+    var target = _scrollableElement();
+    if (target) {
+      var pph = target.clientHeight || window.innerHeight || 600;
+      var dy = null;
+      if (e.key === "ArrowUp") dy = -60;
+      else if (e.key === "ArrowDown") dy = 60;
+      else if (e.key === "PageUp") dy = -pph * 0.85;
+      else if (e.key === "PageDown" || e.key === " ") dy = pph * 0.85;
+      if (dy !== null) { target.scrollTop += dy; e.preventDefault(); }
+    }
+    return;
   }
-  if (e.key === "ArrowUp" && !_readerScrollMode) { readerPrev(); e.preventDefault(); }
-  if (e.key === "ArrowDown" && !_readerScrollMode) { readerNext(); e.preventDefault(); }
+  // Paginated PDF/comic/epub: arrows + paging keys turn pages.
+  if (e.key === "ArrowUp" || e.key === "PageUp") { readerPrev(); e.preventDefault(); }
+  else if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") { readerNext(); e.preventDefault(); }
+}
+
+function _scrollableElement() {
+  if (readerFormat === "epub" && readerRendition && _readerScrollMode) {
+    try {
+      var iframe = document.querySelector("#readerArea iframe");
+      if (iframe && iframe.contentDocument) {
+        return iframe.contentDocument.scrollingElement || iframe.contentDocument.documentElement;
+      }
+    } catch(e) {}
+  }
+  return document.querySelector("#readerArea");
 }
 
 function closeReader() {
@@ -3177,6 +3433,9 @@ function closeReader() {
   _saveDrawing();
   hideReaderDrawGroup();
   saveReaderState();
+  _readerLoadStatus(null);
+  var tb = document.getElementById("tocBlock"); if (tb) tb.style.display = "none";
+  var tl = document.getElementById("tocList"); if (tl) tl.innerHTML = '<div class="toc-empty">Loading...</div>';
   var bid = readerBookId;
   var fmt = readerFormat;
   var pct = 0;
@@ -3202,6 +3461,7 @@ function closeReader() {
   document.removeEventListener("keydown", readerKeyHandler);
   readerBookId = null;
   if (document.fullscreenElement) { document.exitFullscreen().catch(function(){}); }
+  var sbBtn = document.getElementById("sidebarToggleBtn"); if (sbBtn) sbBtn.style.display = "none";
   if (bid && (fmt === "cbz" || fmt === "cbr")) {
     fetch(API + "/api/book/" + bid + "/read/cache", {method: "DELETE"}).catch(function(){});
   }
@@ -3486,6 +3746,15 @@ function hideReaderDrawGroup() {
 
 document.addEventListener("fullscreenchange", function() {
   var ra = document.getElementById("readerArea");
+  var lay = document.getElementById("readerLayout");
+  if (lay) lay.classList.toggle("fs-auto-panes", !!document.fullscreenElement);
+  var sbtn = document.getElementById("sidebarToggleBtn");
+  if (sbtn) sbtn.style.display = document.fullscreenElement && readerBookId != null ? "" : "none";
+  if (!document.fullscreenElement) {
+    fsPinned = { left: false, right: false };
+    var lp = document.getElementById("readingListPanel"); if (lp) lp.classList.remove("fs-show");
+    var ap = document.getElementById("annotationsSidebar"); if (ap) ap.classList.remove("fs-show");
+  }
   if (!ra) return;
   var h = Math.max(ra.offsetHeight || window.innerHeight - 200, 400);
   if (readerRendition) {
@@ -3497,6 +3766,50 @@ document.addEventListener("fullscreenchange", function() {
   var img = ra.querySelector("img");
   if (img) img.style.maxHeight = (h - 20) + "px";
 });
+
+// Fullscreen edge-hover reveal / ribbon-pin for the two side panes.
+var fsPinned = { left: false, right: false };
+function fsApply(side) {
+  if (!document.fullscreenElement) return;
+  var el = side === "left" ? document.getElementById("readingListPanel") : document.getElementById("annotationsSidebar");
+  if (el) el.classList.toggle("fs-show", fsPinned[side]);
+}
+function fsRevealPane(side, on) {
+  if (fsPinned[side]) return;
+  if (!document.fullscreenElement) return;
+  var el = side === "left" ? document.getElementById("readingListPanel") : document.getElementById("annotationsSidebar");
+  if (el) el.classList.toggle("fs-show", on);
+}
+document.addEventListener("mouseover", function(ev) {
+  if (!document.fullscreenElement) return;
+  if (ev.target && ev.target.id === "fsLeftZone") fsRevealPane("left", true);
+  if (ev.target && ev.target.id === "fsRightZone") fsRevealPane("right", true);
+});
+document.addEventListener("mouseout", function(ev) {
+  if (!document.fullscreenElement) return;
+  if (ev.target && (ev.target.id === "fsLeftZone" || ev.target.id === "fsRightZone")) {
+    var side = ev.target.id === "fsLeftZone" ? "left" : "right";
+    var el = side === "left" ? document.getElementById("readingListPanel") : document.getElementById("annotationsSidebar");
+    if (el && ev.relatedTarget && el.contains(ev.relatedTarget)) return; // moving into the pane itself
+    fsRevealPane(side, false);
+  }
+});
+document.addEventListener("mousemove", function(ev) {
+  if (!document.fullscreenElement) return;
+  // Reveal while the cursor hugs the edge, close once it leaves the pane (unless pinned).
+  var lp = document.getElementById("readingListPanel");
+  var ap = document.getElementById("annotationsSidebar");
+  function inside(el, x, y) { if (!el) return false; var r = el.getBoundingClientRect(); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; }
+  if (ev.clientX <= 16 && !fsPinned.left) { fsRevealPane("left", true); return; }
+  if (ev.clientX >= window.innerWidth - 16 && !fsPinned.right) { fsRevealPane("right", true); return; }
+  if (!fsPinned.left && !inside(lp, ev.clientX, ev.clientY)) fsRevealPane("left", false);
+  if (!fsPinned.right && !inside(ap, ev.clientX, ev.clientY)) fsRevealPane("right", false);
+});
+
+function toggleFsPane(side) {
+  fsPinned[side] = !fsPinned[side];
+  fsApply(side);
+}
 
 // ═══ Annotations (R3 + R5) ═══
 
@@ -3786,6 +4099,7 @@ function navigateToBookmark(cfiLoc, pageNum) {
 
 // ═══ Annotations sidebar toggle ═══
 function toggleAnnotationsSidebar() {
+  if (document.fullscreenElement) { toggleFsPane("right"); return; }
   var sb = document.getElementById("annotationsSidebar");
   sb.style.display = sb.style.display === "none" ? "block" : "none";
 }

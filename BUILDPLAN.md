@@ -1562,6 +1562,8 @@ Expose the Pi's Book Organiser at a stable public URL through a Cloudflare Tunne
 - Path- or host-gated so private endpoints stay LAN-only
 - Keep `/api/health` (or similar) public for uptime checks only
 
+**Status**: ✅ Done (Cloudflare tunnel configured on the Pi)
+
 ### P7.3 — Mobile/Responsive Layout
 
 The Library tab's 3-panel layout is a single flex row with fixed widths: Tag Tree (200px) + Book Detail (320px) + Books (flex). On a phone those fixed panels total ~520px in a ~360px viewport, crushing the book list and leaving a detail panel that doesn't scale.

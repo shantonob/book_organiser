@@ -16,14 +16,15 @@ services:
       - ${DATA_HOST_PATH:-/mnt/ssd/book-organiser/data}:/data
       # SD card: logs, config overrides (tiny writes)
       - ${CONFIG_HOST_PATH:-/mnt/sd/book-organiser/config}:/config
-      # Source books (read-only)
-      - ${BOOKS_HOST_PATH:-/mnt/media_ssd/books}:/books:ro
+      # Source books. Writable so the pipeline can copy survivors into
+      # /books/processed and move originals out of 'to be sorted'.
+      - ${BOOKS_HOST_PATH:-/mnt/media_ssd/books}:/books
     environment:
       - BOOK_ORGANISER_DOCKER=1
       - BOOK_DATA_DIR=/data
       - BOOK_CONFIG_DIR=/config
       - BOOK_SOURCE_DIR=/books
-      - BOOK_FLAT_DIR=/data/processed/flat
+      - BOOK_FLAT_DIR=/books/processed
       - BOOK_DB_PATH=/data/catalog.db
       - BOOK_COVER_DIR=/data/covers
       - BOOK_LOG_DIR=/config/logs

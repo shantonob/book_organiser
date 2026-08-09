@@ -1499,6 +1499,7 @@ CSS: `.reader-layout` uses `min-height: calc(100vh - 160px)`, `#readerArea` uses
 | 13 | **P5.5** — Reader View Controls (zoom, page mode, scroll) | Medium | ✅ Done | Zoom in/out, single/2-page spread, fit-to-page/original, page-by-page/continuous scroll |
 | 14 | **P6.1** — Portable Config Module | Medium | ✅ Done | Split config/data from code for laptop→Pi transfer workflow |
 | 15 | **P6.2** — Coherence Recon Tool | Low | ✅ Done | `GET /api/recon`, `--phase recon` CLI; scans inbox/processed/archive + DB integrity checks |
+| 16 | **P6.3** — Pi Deployment Fixes | Medium | ✅ Done | Dockerised `/books` was `:ro` (pipeline/watcher writes failed); `pipeline.log` wrote to non-existent `/app/data` path → `config.LOG_DIR`. Full `/books` rescan now runs |
 
 ---
 
@@ -1534,3 +1535,33 @@ Allow the application to be split across two machines: a powerful laptop for bat
 **Implemented in:** `run_recon()` in `pipeline.py`. Invoked via `GET /api/recon` or `python app.py --phase recon`.
 
 **Status**: ✅ Done (a104df9)
+
+---
+
+## Phase 7 — Backlog (Planned)
+
+### P7.1 — Real User Authentication & Records Separation
+
+Single shared admin password (`BOOK_AUTH_PASSWORD`) is not enough for a multi-user deployment exposed outside the LAN.
+
+**Goals:**
+- Per-user credentials (username + password), correct password hashing (pbkdf2/bcrypt)
+- Roles: admin / user; admins manage users and config; disabled accounts blocked
+- `/register` (or admin-created only), `/login`, logout, session/Cookie or JWT, CSRF
+- Per-user scoping of personal data: `user_id` FK added to `reading_list`, `reader_state`, `annotations`, `drawings`, `bookmarks`; `reviewed_by` on quarantine
+- Backwards compatible: single baked-in admin seeded from `BOOK_AUTH_PASSWORD`
+
+### P7.2 — Public Exposure via Cloudflare Tunnel (auth-gated)
+
+Expose the Pi's Book Organiser at a stable public URL through a Cloudflare Tunnel, with auth enforced first.
+
+**Options evaluated:** sidecar/docker `cloudflared` in the same compose, host install, or CasaOS cloudflared app. See `casaos/cloudflare-tunnel.md`.
+
+**Hard requirements:**
+- Must require auth (P7.1) before anything over the tunnel — no unauthenticated access to `/`, `/covers`, `/download`, or reader
+- Path- or host-gated so private endpoints stay LAN-only
+- Keep `/api/health` (or similar) public for uptime checks only
+
+---
+
+*Status legend: 🔜 Planned · 🚧 WIP · ✅ Done*

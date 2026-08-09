@@ -583,7 +583,8 @@ def _start_pipeline_subprocess(phase, source=None, extra_args=None):
         args.extend(["--source", source])
     if extra_args:
         args.extend(extra_args)
-    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "logs", "pipeline.log")
+    log_path = os.path.join(config.LOG_DIR, "pipeline.log")
+    os.makedirs(config.LOG_DIR, exist_ok=True)
     log_fh = open(log_path, "a", encoding="utf-8")
     _pipeline_proc = subprocess.Popen(args, cwd=os.path.dirname(os.path.abspath(__file__)),
                                        stdout=log_fh, stderr=subprocess.STDOUT)
@@ -1265,7 +1266,7 @@ def api_admin_remap_paths():
                 new_path = new_prefix + r["source_path"][len(old_prefix):]
                 conn.execute("UPDATE files SET source_path=? WHERE id=?", (new_path, r["id"]))
                 changes["files_source"] += 1
-            if r.get("archive_path") and r["archive_path"].startswith(old_prefix):
+            if "archive_path" in r.keys() and r["archive_path"] and r["archive_path"].startswith(old_prefix):
                 new_path = new_prefix + r["archive_path"][len(old_prefix):]
                 conn.execute("UPDATE files SET archive_path=? WHERE id=?", (new_path, r["id"]))
                 changes["files_archive"] += 1

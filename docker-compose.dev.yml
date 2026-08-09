@@ -1,0 +1,11 @@
+# Dev overlay for "develop only on the Pi".
+# Usage (run from the repo dir on the Pi):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Binds the live source under /app so code/template edits take effect on
+# restart without rebuilding the image.
+services:
+  book-organiser:
+    volumes:
+      - ${REPO_HOST_PATH:-.}:/app
+    environment:
+      - BOOK_DEV_MODE=1

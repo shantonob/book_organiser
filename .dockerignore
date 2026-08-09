@@ -8,3 +8,6 @@ data/
 inbox/
 *.db
 app.log
+.venv/
+node_modules/
+venv/

@@ -1562,6 +1562,27 @@ Expose the Pi's Book Organiser at a stable public URL through a Cloudflare Tunne
 - Path- or host-gated so private endpoints stay LAN-only
 - Keep `/api/health` (or similar) public for uptime checks only
 
+### P7.3 — Mobile/Responsive Layout
+
+The Library tab's 3-panel layout is a single flex row with fixed widths: Tag Tree (200px) + Book Detail (320px) + Books (flex). On a phone those fixed panels total ~520px in a ~360px viewport, crushing the book list and leaving a detail panel that doesn't scale.
+
+**Approach (chosen):** Stack all 3 panels vertically below 768px — Tag Tree → Books → Detail, each full width.
+
+**Implementation:**
+- `@media (max-width: 768px)` in `templates/index.html`: `.library-row` becomes `flex-direction: column`; Tag Tree and Detail lose `flex-shrink:0`/fixed widths and go full width; keep `min-width:0`
+- Detail grid + covers scale to narrow widths (cover max-width caps)
+- Reader toolbar / controls wrap instead of overflow
+- Existing `max-width:800px` rules already handle summary/grid-2
+
+### P7.4 — Configurable Z-Library Quick Search
+
+Today the only search is internal FTS (`/api/search` → `db.search_books`); no external search exists. When a book is searched in the quick-search box, always add a pinned drop-down entry to search Z-Library in a new tab, even when there are 0 internal matches.
+
+**Implementation:**
+- `templates/index.html` `doQuickSearch()` (~L1188): prepend a row `Search Z-Library: <q>` → `zlib_base_url + "/s/" + encodeURIComponent(q)` (spaces encoded as `%20`), `target=_blank`
+- Add `zlib_base_url` (default `https://zlib.li`) to `CONFIG_SCHEMA` in `db.py` (category `"enrichment"`) and to the `attr_map` in `load_config_overrides` so it is editable in Settings and included in config export/import
+- Exposed to the frontend via `GET /api/config`
+
 ---
 
 *Status legend: 🔜 Planned · 🚧 WIP · ✅ Done*

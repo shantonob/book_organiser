@@ -381,7 +381,7 @@ def api_status():
             # Load persisted state from subprocess
             try:
                 import json
-                persist_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "pipeline_state.json")
+                persist_path = os.path.join(config.DATA_DIR, "pipeline_state.json")
                 with open(persist_path, "r", encoding="utf-8") as f:
                     sub_snap = json.load(f)
                 snap.update(sub_snap)

@@ -149,7 +149,7 @@ class PipelineState:
 
 
 state = PipelineState()
-state._persist_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "pipeline_state.json")
+state._persist_path = os.path.join(config.DATA_DIR, "pipeline_state.json")
 
 
 def add_to_inbox(filepath):

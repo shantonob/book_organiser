@@ -680,8 +680,8 @@ def run_phase_copy():
             try:
                 shutil.copy2(row["source_path"], dest)
                 now = datetime.utcnow().isoformat()
-                conn.execute("UPDATE files SET stage='copied', updated_at=? WHERE id=?",
-                             (now, row["id"]))
+                conn.execute("UPDATE files SET stage='copied', source_path=?, updated_at=? WHERE id=?",
+                             (dest, now, row["id"]))
                 conn.execute("INSERT INTO pipeline_log (file_id, stage, status, message) VALUES (?,?,?,?)",
                              (row["id"], "copied", "done", ""))
                 copied += 1

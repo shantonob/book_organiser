@@ -78,14 +78,20 @@ def resolve_book_path(book):
     fname = book["filename"] or ""
     if not fname:
         return None
+    book_id = book.get("id")
+    candidates = [fname]
+    if book_id:
+        stem, ext = os.path.splitext(fname)
+        candidates.append(f"{stem}_{book_id}{ext}")
     for d in (config.FLAT_DIR,
               getattr(config, "PROCESSED_DIR", config.FLAT_DIR),
               getattr(config, "ARCHIVE_DIR", os.path.join(config.FLAT_DIR, "archive"))):
         if not d:
             continue
-        candidate = os.path.join(d, fname)
-        if os.path.isfile(candidate):
-            return candidate
+        for name in candidates:
+            candidate = os.path.join(d, name)
+            if os.path.isfile(candidate):
+                return candidate
     return None
 
 

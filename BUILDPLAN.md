@@ -1566,6 +1566,8 @@ Expose the Pi's Book Organiser at a stable public URL through a Cloudflare Tunne
 
 ### P7.3 — Mobile/Responsive Layout
 
+**Status**: ✅ Done
+
 The Library tab's 3-panel layout is a single flex row with fixed widths: Tag Tree (200px) + Book Detail (320px) + Books (flex). On a phone those fixed panels total ~520px in a ~360px viewport, crushing the book list and leaving a detail panel that doesn't scale.
 
 **Approach (chosen):** Stack all 3 panels vertically below 768px — Tag Tree → Books → Detail, each full width.

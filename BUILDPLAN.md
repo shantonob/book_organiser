@@ -1581,9 +1581,11 @@ The Library tab's 3-panel layout is a single flex row with fixed widths: Tag Tre
 Today the only search is internal FTS (`/api/search` → `db.search_books`); no external search exists. When a book is searched in the quick-search box, always add a pinned drop-down entry to search Z-Library in a new tab, even when there are 0 internal matches.
 
 **Implementation:**
-- `templates/index.html` `doQuickSearch()` (~L1188): prepend a row `Search Z-Library: <q>` → `zlib_base_url + "/s/" + encodeURIComponent(q)` (spaces encoded as `%20`), `target=_blank`
-- Add `zlib_base_url` (default `https://zlib.li`) to `CONFIG_SCHEMA` in `db.py` (category `"enrichment"`) and to the `attr_map` in `load_config_overrides` so it is editable in Settings and included in config export/import
-- Exposed to the frontend via `GET /api/config`
+- `templates/index.html` `doQuickSearch()`: prepends a pinned `Search Z-Library: <q>` row → `zlib_base_url + "/s/" + encodeURIComponent(q)` (spaces → `%20`), `target=_blank`, shown even with 0 internal matches
+- `zlib_base_url` (default `https://zlib.li`) added to `CONFIG_SCHEMA` (`db.py`, category `enrichment`) and `load_config_overrides` attr_map → editable in Settings, exported/imported with config, exposed via `GET /api/config`
+- `.env.example`: `ZLIB_BASE_URL`
+
+**Status**: ✅ Done (c6f516e)
 
 ---
 

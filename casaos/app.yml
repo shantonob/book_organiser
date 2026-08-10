@@ -15,7 +15,7 @@ volumes:
     container: /config
     label: "Logs & configuration (SD card)"
   - host: ~
-    container: /books:ro
+    container: /books
     label: "Source book directories"
 environment:
   - label: "Admin password"

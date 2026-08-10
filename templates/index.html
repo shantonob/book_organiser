@@ -765,6 +765,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 <script>
 // Global error handler
 window.onerror = function(msg, url, line, col, err) {
+  // Benign: epub.js triggers ResizeObserver loop warnings that are not fatal.
+  if (String(msg).indexOf("ResizeObserver loop") !== -1) { return; }
   var el = document.getElementById("jsError");
   if (el) { el.style.display = "block"; el.innerHTML = "<strong>JS Error:</strong> " + String(msg) + " at line " + line; }
   console.error("Uncaught:", msg, url, line, col, err);
@@ -2857,19 +2859,31 @@ function loadReader(bookId, book) {
   if (convFormats.indexOf(readerFormat) >= 0) {
     area.innerHTML = '';
     _readerLoadStatus("converting", "Converting to EPUB\u2026", "may take up to 2 minutes for large files");
-    var pollTimer = setInterval(function() {
-      fetch(API + "/api/conversion-status/" + bookId).then(function(r) { return r.json(); }).then(function(d) {
-        if (d.status === "done") {
-          clearInterval(pollTimer);
-          _readerLoadStatus("ready", "Converted", "loading book\u2026");
-          _loadEpubReader(bookId, area);
-        } else if (d.status === "error") {
-          clearInterval(pollTimer);
-          _readerLoadStatus("error", "Conversion failed", d.error || "unknown");
-          _showReaderError(bookId, area.id || "readerArea", "Could not render: " + (d.error || "unknown"));
-        }
-      }).catch(function() {});
-    }, 2000);
+    // Kick off the conversion via the read endpoint (returns 202 while
+    // converting, 200 with the EPUB once a cached result exists).
+    fetch(API + "/api/book/" + bookId + "/read").then(function(r) {
+      if (r.status === 200) {
+        _readerLoadStatus("ready", "Converted", "loading book\u2026");
+        _loadEpubReader(bookId, area);
+        return;
+      }
+      var pollTimer = setInterval(function() {
+        fetch(API + "/api/conversion-status/" + bookId).then(function(r) { return r.json(); }).then(function(d) {
+          if (d.status === "done") {
+            clearInterval(pollTimer);
+            _readerLoadStatus("ready", "Converted", "loading book\u2026");
+            _loadEpubReader(bookId, area);
+          } else if (d.status === "error") {
+            clearInterval(pollTimer);
+            _readerLoadStatus("error", "Conversion failed", d.error || "unknown");
+            _showReaderError(bookId, area.id || "readerArea", "Could not render: " + (d.error || "unknown"));
+          }
+        }).catch(function() {});
+      }, 2000);
+    }).catch(function() {
+      _readerLoadStatus("error", "Conversion failed", "could not start conversion");
+      _showReaderError(bookId, area.id || "readerArea", "Could not render: failed to start the conversion.");
+    });
     return;
   }
   _loadEpubReader(bookId, area);

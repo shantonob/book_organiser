@@ -1193,12 +1193,19 @@ function doQuickSearch() {
     .then(r => r.json())
     .then(d => {
       const results = d.results || [];
+      const zlibCfg = (configData || []).find(f => f.name === "zlib_base_url");
+      const zlibBase = ((zlibCfg && zlibCfg.value) || (zlibCfg && zlibCfg.default) || "https://zlib.li").replace(/\/$/, "");
+      const zlibUrl = zlibBase + "/s/" + encodeURIComponent(q);
+      let html = '<a href="' + zlibUrl + '" target="_blank" rel="noopener" style="display:flex;gap:8px;padding:9px 12px;border-bottom:1px solid #1a2332;align-items:center;text-decoration:none">' +
+        '<span style="flex:1"><strong style="color:#38bdf8">Search Z-Library: <span style="color:#e2e8f0">' + esc(q) + '</span></strong></span>' +
+        '<span class="badge badge-purple">external</span></a>';
       if (!results.length) {
-        panel.innerHTML = '<div style="padding:12px;color:#64748b;text-align:center">No matches found</div>';
+        html += '<div style="padding:12px;color:#64748b;text-align:center">No matches found</div>';
+        panel.innerHTML = html;
         panel.style.display = "block";
         return;
       }
-      let html = results.map(b => {
+      html += results.map(b => {
         const t = b.title || b.filename || "?";
         const a = b.authors || "\u2014";
         const s = b.stage || "?";

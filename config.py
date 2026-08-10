@@ -96,5 +96,6 @@ SECRET_KEY = os.environ.get("BOOK_SECRET_KEY", os.environ.get("BOOK_AUTH_PASSWOR
 
 # ── External enrichment ──
 GOOGLE_BOOKS_API_KEY = os.environ.get("GOOGLE_BOOKS_API_KEY", "")
+ZLIB_BASE_URL = os.environ.get("ZLIB_BASE_URL", "https://zlib.li")
 ENRICH_CACHE_PATH = os.environ.get("BOOK_ENRICH_CACHE", os.path.join(DATA_DIR, "enrich_cache.json"))
 ENRICH_RATE_LIMIT = float(os.environ.get("BOOK_ENRICH_RATE_LIMIT", "1.0"))

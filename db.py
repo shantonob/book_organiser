@@ -1190,6 +1190,8 @@ CONFIG_SCHEMA = [
      "label": "Enrichment Rate Limit (s)", "desc": "Seconds between external API calls"},
     {"name": "google_books_api_key", "default": "", "type": "password", "category": "enrichment",
      "label": "Google Books API Key", "desc": "API key for Google Books enrichment"},
+    {"name": "zlib_base_url", "default": "https://zlib.li", "type": "text", "category": "enrichment",
+     "label": "Z-Library Base URL", "desc": "Base URL used for the quick-search Z-Library link (e.g. https://zlib.li)"},
 ]
 
 
@@ -1242,6 +1244,7 @@ def load_config_overrides(conn):
         "dup_similarity": "DUPLICATE_SIMILARITY_THRESHOLD",
         "enrich_rate_limit": "ENRICH_RATE_LIMIT",
         "google_books_api_key": "GOOGLE_BOOKS_API_KEY",
+        "zlib_base_url": "ZLIB_BASE_URL",
     }
     for name, value in overrides.items():
         attr = attr_map.get(name)

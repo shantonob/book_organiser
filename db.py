@@ -1013,15 +1013,16 @@ def get_reading_list(conn, status=None):
         LEFT JOIN metadata m ON m.file_id = rl.book_id
         LEFT JOIN reader_state rs ON rs.book_id = rl.book_id
         {where}
-        ORDER BY rl.updated_at DESC
+        ORDER BY rl.added_at DESC
     """, params).fetchall()
     return [dict(r) for r in rows]
 
 
 def add_to_reading_list(conn, book_id, status='to_read'):
     conn.execute("""
-        INSERT OR REPLACE INTO reading_list (book_id, status, updated_at)
-        VALUES (?, ?, datetime('now'))
+        INSERT INTO reading_list (book_id, status, added_at, updated_at)
+        VALUES (?, ?, datetime('now'), datetime('now'))
+        ON CONFLICT(book_id) DO UPDATE SET status=excluded.status
     """, (book_id, status))
 
 

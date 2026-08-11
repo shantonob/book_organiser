@@ -1,4 +1,7 @@
-import subprocess, sys, os
+import os
+import subprocess
+import sys
+
 import config
 from log_utils import setup_logger
 

@@ -1,0 +1,53 @@
+# Ruff lint configuration for Book Organiser.
+# Real defects (undefined names, unused imports/vars, duplicate defs) are
+# enforced. The ignores below codify deliberate patterns in this codebase:
+#   - BLE001 : broad `except Exception` used for resilience in the pipeline
+#     and API mutation handlers (downtime of a single file must not abort a
+#     scan); narrow exception types are not practical here.
+#   - DTZ003 : `datetime.utcnow()` is used consistently and timestamps are
+#     stored as ISO strings; switching to tz-aware `now(timezone.utc)` would
+#     change formatting and break existing comparisons.
+#   - EXE002 : scripts are invoked via `python3 <file>` / the docker entry,
+#     never executed as binaries, so shebangs are not required.
+#   - S110/S112 : silent recovery in optional paths (cover copy, per-row
+#     enrichment) is intentional; failures are counted, not aborted.
+#   - SIM105   : same as S110 — `try/except: pass` kept for consistency.
+#   - E701     : single-line `if x: stmt` used for compact guard clauses.
+#   - E402     : `setup_logger` must run before the module imports below it.
+#   - B007     : `os.walk` unpacks `root/dirs/files`; unused entries are kept
+#     for clarity of intent.
+#   - PLW0603  : module-level state (watcher observer, pipeline proc) is
+#     intentionally mutated via `global`.
+#   - S104     : binding 0.0.0.0 is required inside the docker container.
+
+line-length = 160
+target-version = "py311"
+
+[lint]
+select = [
+  "E4", "E7", "E9",      # pycodestyle errors
+  "F",                   # pyflakes (undefined names, unused imports/vars)
+  "I",                   # isort (import sorting)
+  "UP",                  # pyupgrade (modern syntax)
+  "B",                   # flake8-bugbear
+  "SIM",                 # simplify
+  "PIE",                 # flake8-pie
+  "C4",                  # flake8-comprehensions
+  "S1",                  # bandit (security)
+  "PLW",                 # pylint warnings
+  "FURB",                # refurb
+  "EXE",                 # executable-file checks
+  "DTZ",                 # datetime tz checks
+]
+ignore = [
+  "BLE001",   # broad except is deliberate (see header)
+  "DTZ003",   # utcnow is the codebase convention (see header)
+  "EXE002",   # scripts run via python3, no shebang needed (see header)
+  "S110",     # try/except pass is deliberate (see header)
+  "SIM105",   # try/except pass is deliberate (see header)
+  "E701",     # compact one-line guard clauses (see header)
+  "E402",     # logger init before imports (see header)
+  "B007",     # os.walk unpack keeps unused names (see header)
+  "PLW0603",  # module-level global state is intentional (see header)
+  "S104",     # 0.0.0.0 bind required in docker (see header)
+]

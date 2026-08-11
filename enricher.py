@@ -1,12 +1,12 @@
-import json
-import os
-import time
 import hashlib
-import urllib.request
-import urllib.parse
-import urllib.error
+import json
 import logging
+import os
 import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
 import config
 
@@ -32,7 +32,7 @@ def _with_cache(callback, default=None):
     """Thread-safe read-modify-write on enrich cache (D7.22)."""
     with _cache_lock:
         try:
-            with open(config.ENRICH_CACHE_PATH, "r", encoding="utf-8") as f:
+            with open(config.ENRICH_CACHE_PATH, encoding="utf-8") as f:
                 cache = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             cache = {}
@@ -125,9 +125,8 @@ def _download_cover(cover_url, dest_dir):
         if os.path.exists(dest):
             return dest
         req = urllib.request.Request(cover_url, headers={"User-Agent": "BookOrganiser/1.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            with open(dest, "wb") as f:
-                f.write(resp.read())
+        with urllib.request.urlopen(req, timeout=10) as resp, open(dest, "wb") as f:
+            f.write(resp.read())
         return dest
     except Exception as e:
         logger.warning("cover download failed for %s: %s", cover_url, e)

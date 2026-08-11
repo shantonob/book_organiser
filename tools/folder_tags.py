@@ -18,7 +18,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import config
-from db import get_connection, add_custom_tag
+from db import add_custom_tag, get_connection
 
 
 def get_top_level_folder(source_path, source_dirs):

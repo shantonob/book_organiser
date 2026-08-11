@@ -1,6 +1,6 @@
-import re
-import os
 import hashlib
+import os
+import re
 from difflib import SequenceMatcher
 
 BANNED_PATTERNS = [

@@ -1,4 +1,5 @@
 import os
+
 import ebooklib
 from ebooklib import epub
 
@@ -22,7 +23,7 @@ def extract_epub(filepath):
     ident = book.get_metadata("DC", "identifier")
     for i in ident:
         val = i[0]
-        if "isbn" in val.lower() or (val.startswith("978") or val.startswith("979")):
+        if "isbn" in val.lower() or val.startswith(("978", "979")):
             meta["isbn"] = val.replace("urn:isbn:", "").replace("-", "").strip()
             break
         if "://" not in val:

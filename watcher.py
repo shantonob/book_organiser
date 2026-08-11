@@ -1,13 +1,15 @@
 """watchdog-based filesystem watcher for the inbox/watch directory."""
 
 import os
-import time
 import threading
-from watchdog.observers import Observer
+import time
+
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+
 import config
-from pipeline import run_all_phases
 from log_utils import setup_logger
+from pipeline import run_all_phases
 
 logger = setup_logger("watcher", also_stdout=False)
 

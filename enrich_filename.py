@@ -1,5 +1,5 @@
-import re
 import os
+import re
 
 try:
     import spacy
@@ -157,9 +157,7 @@ def _looks_like_name(text):
         if w1.lower() in {"of", "in", "on", "at", "to", "by", "the", "and", "for", "a", "an"}:
             return False
     # Check for non-name suffixes (like .qxd, .pdf) that slipped through
-    if re.search(r"\.[a-z]{2,4}$", text, re.IGNORECASE):
-        return False
-    return True
+    return not re.search(r"\.[a-z]{2,4}$", text, re.IGNORECASE)
 
 
 def _spacy_author_hint(text):

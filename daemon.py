@@ -12,18 +12,28 @@ Usage:
     python daemon.py --run all --source "Z:\books"  # With custom source
 """
 
+import argparse
 import os
 import sys
-import argparse
 import time
-import json
-from datetime import datetime
 
 import config
 from config import DB_PATH
-from db import get_connection, init_db, daemon_heartbeat, get_daemon_status, load_config_overrides
-from pipeline import run_phase_metadata, run_phase_dedup, run_phase_copy, run_all_phases, state
+from db import (
+    daemon_heartbeat,
+    get_connection,
+    get_daemon_status,
+    init_db,
+    load_config_overrides,
+)
 from log_utils import setup_logger
+from pipeline import (
+    run_all_phases,
+    run_phase_copy,
+    run_phase_dedup,
+    run_phase_metadata,
+    state,
+)
 
 logger = setup_logger("daemon", also_stdout=False)
 

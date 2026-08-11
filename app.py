@@ -1,20 +1,29 @@
-import os
-import sys
-import json
-import threading
-import time
 import argparse
+import concurrent.futures
 import io
+import json
 import logging
+import os
 import shutil
 import subprocess
+import sys
 import tempfile
-import concurrent.futures
-from flask import Flask, render_template, jsonify, Response, request, send_file, session, make_response
+import threading
+
 import pandas as pd
+from flask import (
+    Flask,
+    Response,
+    jsonify,
+    make_response,
+    render_template,
+    request,
+    send_file,
+    session,
+)
 
 import config
-from config import DB_PATH, EBOOK_EXTS, EXCLUDE_EXTS
+from config import DB_PATH, EBOOK_EXTS
 from log_utils import setup_logger
 
 logger = setup_logger("app", also_stdout=False)
@@ -26,18 +35,67 @@ for noisy in ("werkzeug", "flask"):
     log = logging.getLogger(noisy)
     log.setLevel(logging.WARNING)
     log.handlers.clear()
-from db import get_connection, init_db, get_pipeline_summary, get_recent_books, get_pipeline_log, get_book_by_id
-from db import get_phase_counts, get_survivors, get_tags, add_custom_tag, remove_custom_tag, search_tags
-from db import get_summary, get_book_pipeline_log, rebuild_fts, search_books, get_funnel, get_daemon_status, daemon_heartbeat
-from db import get_quarantined, resolve_quarantine, QUARANTINE_ERRORS, get_quarantine_counts_by_error, get_quarantine_formats, bulk_dismiss, bulk_keep_both, bulk_delete_files, get_quarantine_rules, set_quarantine_rule, get_config_overrides, set_config_override, delete_config_override, get_all_config, load_config_overrides
-from db import get_reading_list, add_to_reading_list, update_reading_list_status, remove_from_reading_list
-from db import get_reader_state, save_reader_state
-from db import get_annotations, add_annotation, delete_annotation, export_annotations_markdown
-from db import get_drawing, save_drawing, delete_drawing
-from db import get_bookmarks, add_bookmark, delete_bookmark
-from pipeline import state, run_pipeline, run_all_phases, run_phase_metadata, run_phase_dedup, run_phase_copy, run_recon, discover_source_files, add_to_inbox, run_phase_enrich
-from enricher import enrich_book, _download_cover
-import enrich_filename
+from db import (
+    QUARANTINE_ERRORS,
+    add_annotation,
+    add_bookmark,
+    add_custom_tag,
+    add_to_reading_list,
+    bulk_delete_files,
+    bulk_dismiss,
+    bulk_keep_both,
+    daemon_heartbeat,
+    delete_annotation,
+    delete_bookmark,
+    delete_config_override,
+    delete_drawing,
+    export_annotations_markdown,
+    get_all_config,
+    get_annotations,
+    get_book_by_id,
+    get_book_pipeline_log,
+    get_bookmarks,
+    get_config_overrides,
+    get_connection,
+    get_daemon_status,
+    get_drawing,
+    get_funnel,
+    get_phase_counts,
+    get_pipeline_log,
+    get_pipeline_summary,
+    get_quarantine_counts_by_error,
+    get_quarantine_formats,
+    get_quarantine_rules,
+    get_quarantined,
+    get_reader_state,
+    get_reading_list,
+    get_recent_books,
+    get_summary,
+    get_survivors,
+    get_tags,
+    init_db,
+    load_config_overrides,
+    rebuild_fts,
+    remove_custom_tag,
+    remove_from_reading_list,
+    resolve_quarantine,
+    save_drawing,
+    save_reader_state,
+    search_books,
+    search_tags,
+    set_config_override,
+    set_quarantine_rule,
+)
+from enricher import _download_cover, enrich_book
+from pipeline import (
+    run_all_phases,
+    run_phase_copy,
+    run_phase_dedup,
+    run_phase_enrich,
+    run_phase_metadata,
+    run_recon,
+    state,
+)
 
 app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
@@ -197,7 +255,7 @@ def api_diagnostics():
         all_ok = False
     required_tables = ["files", "metadata", "pipeline_log", "tags", "books_fts", "reading_list", "reader_state", "annotations", "quarantined"]
     try:
-        present = set(r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall())
+        present = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         missing = [t for t in required_tables if t not in present]
         result["checks"]["db_schema"] = "ok" if not missing else f"missing: {missing}"
         if missing:
@@ -238,10 +296,10 @@ def api_diagnostics():
             all_ok = False
     covers_dir = config.COVER_DIR
     if os.path.isdir(covers_dir):
-        on_disk = set(f.split(".")[0] for f in os.listdir(covers_dir) if f.endswith(".jpg"))
+        on_disk = {f.split(".")[0] for f in os.listdir(covers_dir) if f.endswith(".jpg")}
         try:
             conn2 = get_connection(DB_PATH)
-            in_db = set(str(r["file_id"]) for r in conn2.execute("SELECT file_id FROM metadata WHERE cover_path IS NOT NULL").fetchall())
+            in_db = {str(r["file_id"]) for r in conn2.execute("SELECT file_id FROM metadata WHERE cover_path IS NOT NULL").fetchall()}
             conn2.close()
             orphaned = on_disk - in_db
             missing_covers = in_db - on_disk
@@ -346,6 +404,7 @@ def api_auth_logout():
 # ── CSRF Protection (D7.16) ──
 import secrets
 
+
 def _generate_csrf_token():
     if "_csrf_token" not in session:
         session["_csrf_token"] = secrets.token_hex(32)
@@ -358,9 +417,7 @@ def _validate_csrf():
         return True
     token = request.headers.get("X-CSRF-Token") or request.form.get("_csrf_token")
     expected = session.get("_csrf_token")
-    if not token or not expected or not secrets.compare_digest(token, expected):
-        return False
-    return True
+    return bool(token and expected and secrets.compare_digest(token, expected))
 
 @app.before_request
 def _csrf_check():
@@ -388,7 +445,7 @@ def api_status():
             try:
                 import json
                 persist_path = os.path.join(config.DATA_DIR, "pipeline_state.json")
-                with open(persist_path, "r", encoding="utf-8") as f:
+                with open(persist_path, encoding="utf-8") as f:
                     sub_snap = json.load(f)
                 snap.update(sub_snap)
                 snap["running"] = True
@@ -512,7 +569,6 @@ def api_scan_all():
 
 @app.route("/api/scan_inbox", methods=["POST"])
 def api_scan_inbox():
-    data = request.json or {}
     inbox_path = getattr(config, "WATCH_DIR", config.INBOX_DIR)
     if not os.path.isdir(inbox_path):
         inbox_path = os.path.join(os.path.dirname(__file__), "inbox")
@@ -573,7 +629,7 @@ def _start_pipeline_subprocess(phase, source=None, extra_args=None):
     lock_path = os.path.join(config.DATA_DIR, "pipeline.lock")
     try:
         if os.path.exists(lock_path):
-            with open(lock_path, "r") as f:
+            with open(lock_path) as f:
                 old_pid = int(f.read().strip())
             try:
                 os.kill(old_pid, 0)
@@ -591,9 +647,9 @@ def _start_pipeline_subprocess(phase, source=None, extra_args=None):
         args.extend(extra_args)
     log_path = os.path.join(config.LOG_DIR, "pipeline.log")
     os.makedirs(config.LOG_DIR, exist_ok=True)
-    log_fh = open(log_path, "a", encoding="utf-8")
-    _pipeline_proc = subprocess.Popen(args, cwd=os.path.dirname(os.path.abspath(__file__)),
-                                       stdout=log_fh, stderr=subprocess.STDOUT)
+    with open(log_path, "a", encoding="utf-8") as log_fh:
+        _pipeline_proc = subprocess.Popen(args, cwd=os.path.dirname(os.path.abspath(__file__)),
+                                           stdout=log_fh, stderr=subprocess.STDOUT)
     logger.info(f"Started pipeline subprocess PID={_pipeline_proc.pid} phase={phase}")
 
 
@@ -810,8 +866,9 @@ def api_daemon_watch_start():
     global _watcher_thread, _watcher_observer
     if _watcher_thread and _watcher_thread.is_alive():
         return jsonify({"status": "already running"})
-    from watcher import start_watcher
     import threading
+
+    from watcher import start_watcher
     watch_dir = getattr(config, "WATCH_DIR", config.INBOX_DIR)
     recursive = getattr(config, "WATCH_RECURSIVE", True)
     init_db(config.DB_PATH)
@@ -820,7 +877,6 @@ def api_daemon_watch_start():
     state.watcher_active = True
     _watcher_observer = start_watcher(watch_dir, recursive=recursive)
     def _run():
-        global _watcher_observer
         try:
             _watcher_observer.join()
         except Exception:
@@ -876,7 +932,8 @@ def api_book_update(book_id):
         if not fields and not data.get("add_tags"):
             return jsonify({"error": "no fields to update"}), 400
         from datetime import datetime
-        from db import upsert_metadata, set_tags
+
+        from db import set_tags, upsert_metadata
         if fields:
             upsert_metadata(conn, book_id, enrich_source="manual",
                             enriched_at=datetime.utcnow().isoformat(), **fields)
@@ -1071,11 +1128,10 @@ def api_quarantine_bulk_reprocess():
     file_ids = data.get("file_ids", [])
     if not file_ids:
         return jsonify({"error": "file_ids required"}), 400
-    from pipeline import state
     results = []
     for fid in file_ids:
         try:
-            resp = api_book_re_extract(fid)
+            api_book_re_extract(fid)
             results.append({"file_id": fid, "status": "ok"})
         except Exception as e:
             results.append({"file_id": fid, "status": "error", "detail": str(e)})
@@ -1272,7 +1328,7 @@ def api_admin_remap_paths():
                 new_path = new_prefix + r["source_path"][len(old_prefix):]
                 conn.execute("UPDATE files SET source_path=? WHERE id=?", (new_path, r["id"]))
                 changes["files_source"] += 1
-            if "archive_path" in r.keys() and r["archive_path"] and r["archive_path"].startswith(old_prefix):
+            if "archive_path" in r and r["archive_path"] and r["archive_path"].startswith(old_prefix):
                 new_path = new_prefix + r["archive_path"][len(old_prefix):]
                 conn.execute("UPDATE files SET archive_path=? WHERE id=?", (new_path, r["id"]))
                 changes["files_archive"] += 1
@@ -1303,13 +1359,17 @@ def api_book_re_extract(book_id):
         if not os.path.isfile(filepath):
             return jsonify({"error": f"source file not found: {filepath}"}), 404
 
-        from pipeline import state
-        from extractors import extract_metadata
-        from filename_cleaner import clean_filename, extract_year_from_filename, file_hash
+        from datetime import datetime
+
+        from classifier import classify, classify_all
+        from db import rebuild_fts, set_stage, set_tags, upsert_metadata
         from enrich_filename import enrich_from_filename
         from enricher import enrich_book
-        from classifier import classify, classify_all
-        from db import upsert_metadata, set_tags, rebuild_fts, set_stage
+        from extractors import extract_metadata
+        from filename_cleaner import (
+            extract_year_from_filename,
+        )
+        from pipeline import state
 
         state.update(log_msg=f"  â–¶ re-extracting book #{book_id}")
 
@@ -1406,12 +1466,12 @@ def api_book_re_dedup(book_id):
         if not book:
             return jsonify({"error": "not found"}), 404
 
-        from pipeline import state
-        from db import get_cataloged_files, mark_survivor, mark_duplicate
-        from filename_cleaner import normalize_title, is_duplicate_title
-
         # Reset the book to cataloged
         from datetime import datetime as dt
+
+        from db import get_cataloged_files, mark_duplicate, mark_survivor
+        from filename_cleaner import is_duplicate_title, normalize_title
+        from pipeline import state
         conn.execute("UPDATE files SET stage='cataloged', is_master=NULL, updated_at=? WHERE id=?",
                      (dt.utcnow().isoformat(), book_id))
         conn.execute("INSERT INTO pipeline_log (file_id, stage, status, message) VALUES (?,?,?,?)",
@@ -1462,10 +1522,9 @@ def api_book_re_dedup(book_id):
                     continue
                 rtitle = normalize_title(r.get("title") or "")
                 rcode = r.get("udc_code") or ""
-                if rtitle and tcode == rcode:
-                    if is_duplicate_title(rtitle, ttitle, config.DUPLICATE_SIMILARITY_THRESHOLD):
-                        from pipeline import _metadata_richness
-                        if _metadata_richness(target) <= _metadata_richness(r):
+                if rtitle and tcode == rcode and is_duplicate_title(rtitle, ttitle, config.DUPLICATE_SIMILARITY_THRESHOLD):
+                    from pipeline import _metadata_richness
+                    if _metadata_richness(target) <= _metadata_richness(r):
                             mark_duplicate(conn, book_id, "duplicate_by_title")
                             conn.commit()
                             state.update(log_msg=f"  âœ— re-dedup: title dup of #{r['id']}")
@@ -1481,15 +1540,13 @@ def api_book_re_dedup(book_id):
                 rauthors = (r.get("authors") or "").strip().lower()
                 ryear = r.get("year")
                 rtitle = normalize_title(r.get("title") or "")
-                if rtitle and rauthors and ryear:
-                    if tauthors == rauthors and tyear == ryear:
-                        if is_duplicate_title(rtitle, ttitle, config.DUPLICATE_SIMILARITY_THRESHOLD):
-                            from pipeline import _metadata_richness
-                            if _metadata_richness(target) <= _metadata_richness(r):
-                                mark_duplicate(conn, book_id, "duplicate_by_author_year_title")
-                                conn.commit()
-                                state.update(log_msg=f"  âœ— re-dedup: author+year+title dup of #{r['id']}")
-                                return jsonify({"status": "skipped", "reason": "duplicate_by_author_year_title", "dup_id": r["id"]})
+                if rtitle and rauthors and ryear and tauthors == rauthors and tyear == ryear and is_duplicate_title(rtitle, ttitle, config.DUPLICATE_SIMILARITY_THRESHOLD):
+                    from pipeline import _metadata_richness
+                    if _metadata_richness(target) <= _metadata_richness(r):
+                        mark_duplicate(conn, book_id, "duplicate_by_author_year_title")
+                        conn.commit()
+                        state.update(log_msg=f"  âœ— re-dedup: author+year+title dup of #{r['id']}")
+                        return jsonify({"status": "skipped", "reason": "duplicate_by_author_year_title", "dup_id": r["id"]})
 
         # Passed all checks
         mark_survivor(conn, book_id)
@@ -1533,6 +1590,7 @@ def api_book_re_copy(book_id):
             return jsonify({"error": "book must be at survivor stage"}), 400
 
         import shutil
+
         from filename_cleaner import clean_filename
 
         ext = os.path.splitext(book["source_path"])[1].lower()
@@ -1573,15 +1631,14 @@ def api_book_download(book_id):
         if not book:
             return jsonify({"error": "not found"}), 404
 
-        from filename_cleaner import clean_filename
         import mimetypes
 
+        from filename_cleaner import clean_filename
+
         filepath = resolve_book_path(book)
-        if filepath:
-            fname = clean_filename(os.path.basename(filepath))
-        else:
-            fname_orig = book["filename"] or f"book_{book_id}"
+        if not filepath:
             return jsonify({"error": "file not found on disk"}), 404
+        fname = clean_filename(os.path.basename(filepath))
 
         mt, _ = mimetypes.guess_type(filepath)
         return _safe_send_path(filepath, _readable_dirs(), as_attachment=True, download_name=fname, mimetype=mt or "application/octet-stream")
@@ -1955,6 +2012,7 @@ def api_book_enrich(book_id):
         if not result:
             return jsonify({"error": "enrichment returned no data"}), 404
         from datetime import datetime
+
         from db import upsert_metadata
         cover_path = None
         if result.get("cover_url"):
@@ -2166,8 +2224,8 @@ def api_bulk_classify():
         return jsonify({"error": "book_ids and udc_code required"}), 400
     conn = get_connection(DB_PATH)
     try:
-        from db import upsert_metadata, set_tags
         from classifier import UDC_LABELS
+        from db import set_tags, upsert_metadata
         udc_label = UDC_LABELS.get(udc_code, "")
         for bid in book_ids:
             upsert_metadata(conn, bid, udc_code=udc_code, udc_label=udc_label)
@@ -2302,9 +2360,10 @@ def _migrate_cover_paths():
                         try:
                             shutil.copy2(cp, dst)
                         except Exception:
-                            continue
-                    conn.execute("UPDATE metadata SET cover_path=? WHERE file_id=?", (dst, r["file_id"]))
-                    copied += 1
+                            dst = None
+                    if dst is not None:
+                        conn.execute("UPDATE metadata SET cover_path=? WHERE file_id=?", (dst, r["file_id"]))
+                        copied += 1
                 else:
                     candidate = os.path.join(config.COVER_DIR, f"{r['file_id']}.jpg")
                     if os.path.isfile(candidate):
@@ -2320,7 +2379,8 @@ def _migrate_cover_paths():
         logger.warning("P8.1 cover migration skipped: %s", e)
 
 def _handle_export_pi(zip_path):
-    import zipfile, json
+    import json
+    import zipfile
     data_dir = config.DATA_DIR
     if not os.path.isdir(data_dir):
         print(f"Error: data_dir not found: {data_dir}")
@@ -2359,7 +2419,8 @@ def _handle_export_pi(zip_path):
 
 
 def _handle_import_pi(zip_path):
-    import zipfile, json
+    import json
+    import zipfile
     data_dir = config.DATA_DIR
     os.makedirs(data_dir, exist_ok=True)
     print(f"Importing from {zip_path} into {data_dir} ...")
@@ -2460,7 +2521,7 @@ if __name__ == '__main__':
             run_phase_enrich(limit=args.enrich_limit)
     elif args.daemon:
         # Delegate to daemon.py
-        from daemon import cmd_run, cmd_watch, cmd_status
+        from daemon import cmd_run, cmd_status, cmd_watch
         init_db(config.DB_PATH)
         if config.FLAT_DIR: os.makedirs(config.FLAT_DIR, exist_ok=True)
         if args.watch:

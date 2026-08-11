@@ -1,24 +1,39 @@
 import os
 import shutil
-import json
-import threading
 import tempfile
-import logging
+import threading
 from datetime import datetime
 
 import config
-from db import get_connection, init_db, upsert_file, upsert_metadata, set_stage
+from db import get_connection, init_db, set_stage, upsert_file, upsert_metadata
 from log_utils import setup_logger
 
 logger = setup_logger("pipeline", also_stdout=False)
-from db import find_duplicate_by_hash, find_duplicate_by_title, get_pipeline_summary, trim_pipeline_log
-from db import get_cataloged_files, mark_duplicate, mark_survivor, get_survivors, get_phase_counts
-from db import set_tags, quarantine_file, QUARANTINE_ERRORS
-from extractors import extract_metadata
-from filename_cleaner import clean_filename, extract_year_from_filename, file_hash, is_duplicate_title, normalize_title, title_similarity
-from enrich_filename import enrich_from_filename
-from enricher import enrich_book, _download_cover
 from classifier import classify, classify_all
+from db import (
+    find_duplicate_by_hash,
+    find_duplicate_by_title,
+    get_cataloged_files,
+    get_phase_counts,
+    get_pipeline_summary,
+    get_survivors,
+    mark_duplicate,
+    mark_survivor,
+    quarantine_file,
+    set_tags,
+    trim_pipeline_log,
+)
+from enrich_filename import enrich_from_filename
+from enricher import _download_cover, enrich_book
+from extractors import extract_metadata
+from filename_cleaner import (
+    clean_filename,
+    extract_year_from_filename,
+    file_hash,
+    is_duplicate_title,
+    normalize_title,
+    title_similarity,
+)
 
 
 class PipelineState:
@@ -82,7 +97,7 @@ class PipelineState:
                 "total_scanned": self.total_scanned,
                 "total_discovered": self.total_discovered,
                 "running": self.running,
-                "log": [e for e in self.log[-50:]],
+                "log": list(self.log[-50:]),
             }
             with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=os.path.dirname(self._persist_path), delete=False) as f:
                 json.dump(data, f)
@@ -117,7 +132,7 @@ class PipelineState:
                 if len(self.log) > 500:
                     self.log = self.log[-500:]
                 # Mirror important log messages to file
-                if log_msg.startswith("▶") or log_msg.startswith("✓") or log_msg.startswith("✗") or log_msg.startswith("  ⚠"):
+                if log_msg.startswith(("▶", "✓", "✗", "  ⚠")):
                     logger.info(log_msg)
             self._persist()
 
@@ -709,7 +724,7 @@ def _acquire_lock():
     lock_path = os.path.join(config.DATA_DIR, "pipeline.lock")
     try:
         if os.path.exists(lock_path):
-            with open(lock_path, "r") as f:
+            with open(lock_path) as f:
                 old_pid = int(f.read().strip())
             try:
                 os.kill(old_pid, 0)  # Check if process still exists
@@ -931,10 +946,7 @@ def cleanup_source_dir(source_dir):
                 rel = os.path.relpath(norm_sp, real_source)
             except ValueError:
                 rel = os.path.basename(norm_sp)
-            if row["stage"] == "copied":
-                dest_dir = os.path.join(processed_dir, os.path.dirname(rel))
-            else:
-                dest_dir = os.path.join(archive_dir, os.path.dirname(rel))
+            dest_dir = os.path.join(processed_dir if row["stage"] == "copied" else archive_dir, os.path.dirname(rel))
             os.makedirs(dest_dir, exist_ok=True)
             dest = os.path.join(dest_dir, os.path.basename(rel))
             if os.path.exists(dest):
@@ -1022,7 +1034,7 @@ def run_recon():
 
         missing_source = 0
         for row in all_rows:
-            bid, sp, stage = row["id"], row["source_path"], row["stage"]
+            bid, sp = row["id"], row["source_path"]
             if sp and not os.path.isfile(sp):
                 missing_source += 1
                 if missing_source <= 10:

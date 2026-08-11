@@ -16,9 +16,8 @@ text. Each text record is PalmDOC-compressed independently.
 import os
 import re
 import struct
-import zipfile
 import xml.etree.ElementTree as ET
-
+import zipfile
 
 # ── shared EPUB builder ────────────────────────────────────────────────────
 
@@ -232,7 +231,8 @@ def _mobi_raw_text(path):
             offsets.append(len(data))
     if len(offsets) < 2:
         return None
-    sec = lambda r: data[offsets[r]: offsets[r + 1]] if r + 1 < len(offsets) else data[offsets[r]:]
+    def sec(r):
+        return data[offsets[r]: offsets[r + 1]] if r + 1 < len(offsets) else data[offsets[r]:]
 
     h0 = sec(0)
     if h0[16:20] != b"MOBI":
@@ -290,13 +290,13 @@ def _mobi_raw_text(path):
 def _html_to_body(html):
     """Safely embed extracted HTML into an XHTML body (best-effort)."""
     # strip <html>/<head>/<body> wrappers if present
-    m = re.search(r"<body[^>]*>(.*)</body>", html, re.S | re.I)
+    m = re.search(r"<body[^>]*>(.*)</body>", html, re.DOTALL | re.IGNORECASE)
     if m:
         html = m.group(1)
-    m = re.search(r"<html.*?>(.*)</html>", html, re.S | re.I)
+    m = re.search(r"<html.*?>(.*)</html>", html, re.DOTALL | re.IGNORECASE)
     if m:
         html = m.group(1)
-    html = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", html, flags=re.S)
+    html = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", html, flags=re.DOTALL)
     return html
 
 

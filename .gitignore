@@ -4,6 +4,7 @@ data/
 flask_*.log
 flask_*.txt
 flask_pid*.txt
+app_pid.txt
 test.html
 test_check.js
 .env

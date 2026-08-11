@@ -1,8 +1,8 @@
-import sqlite3
-import os
 import json
+import os
+import sqlite3
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 def get_connection(db_path):
@@ -482,7 +482,6 @@ def get_funnel(conn):
         by_stage.setdefault(s, 0)
 
     stages = ["arrived", "extracted", "cleaned", "cataloged", "survivor", "copied"]
-    stage_order = {s: i for i, s in enumerate(stages)}
     total_all = by_stage.get("arrived", 0) + by_stage.get("extracted", 0) + by_stage.get("cleaned", 0) + by_stage.get("cataloged", 0) + by_stage.get("survivor", 0) + by_stage.get("skipped", 0) + by_stage.get("copied", 0)
 
     funnel = []
@@ -550,21 +549,6 @@ def rebuild_fts(conn, book_id=None):
              r["publisher"] or "", r["isbn"] or "")
         )
     return len(rows)
-
-
-def update_fts_for_book(conn, book_id):
-    """Update or insert the FTS5 row for a single book."""
-    conn.execute("DELETE FROM books_fts WHERE rowid=?", (book_id,))
-    row = conn.execute("""
-        SELECT m.title, m.authors, m.description, m.publisher, m.isbn
-        FROM metadata m WHERE m.file_id=?
-    """, (book_id,)).fetchone()
-    if row and (row["title"] or row["authors"]):
-        conn.execute(
-            "INSERT INTO books_fts (rowid, title, authors, description, publisher, isbn) VALUES (?,?,?,?,?,?)",
-            (book_id, row["title"] or "", row["authors"] or "", row["description"] or "",
-             row["publisher"] or "", row["isbn"] or "")
-        )
 
 
 def update_fts_for_book(conn, book_id):
@@ -1260,9 +1244,9 @@ def load_config_overrides(conn):
         elif name == "watch_recursive":
             cfg.WATCH_RECURSIVE = value.lower() in ("true", "1", "yes")
         elif name == "ebook_exts":
-            cfg.EBOOK_EXTS = set(e.strip() for e in value.split(",") if e.strip())
+            cfg.EBOOK_EXTS = {e.strip() for e in value.split(",") if e.strip()}
         elif name == "exclude_exts":
-            cfg.EXCLUDE_EXTS = set(e.strip() for e in value.split(",") if e.strip())
+            cfg.EXCLUDE_EXTS = {e.strip() for e in value.split(",") if e.strip()}
         elif name == "exclude_dirs":
             pass  # handled below
         elif name == "dup_similarity":
@@ -1280,19 +1264,18 @@ def load_config_overrides(conn):
         if not overrides.get("archive_dir"):
             cfg.ARCHIVE_DIR = os.path.join(cfg.FLAT_DIR, "archive")
         if not overrides.get("watch_dir"):
-            cfg.WATCH_DIR = cfg.INBOX_DIR if cfg.INBOX_DIR else cfg.WATCH_DIR
+            cfg.WATCH_DIR = cfg.INBOX_DIR or cfg.WATCH_DIR
 
     # Rebuild EXCLUDE_DIRS from base to avoid leaks (D7.28)
     new_dirs = set(cfg._BASE_EXCLUDE_DIRS)
     if overrides.get("exclude_dirs"):
-        new_dirs = set(e.strip() for e in overrides["exclude_dirs"].split(",") if e.strip())
+        new_dirs = {e.strip() for e in overrides["exclude_dirs"].split(",") if e.strip()}
     if cfg.ARCHIVE_DIR:
         new_dirs.add(os.path.normpath(cfg.ARCHIVE_DIR))
     cfg.EXCLUDE_DIRS = new_dirs
 
 
 def get_all_config(conn):
-    import config as cfg
     overrides = get_config_overrides(conn)
     result = []
     for field in CONFIG_SCHEMA:

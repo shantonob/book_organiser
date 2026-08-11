@@ -1,8 +1,7 @@
-from .epub import extract_epub
-from .pdf import extract_pdf
-from .mobi import extract_mobi
 from .cbz import extract_cbz
-
+from .epub import extract_epub
+from .mobi import extract_mobi
+from .pdf import extract_pdf
 
 EXTRACTORS = {
     ".epub": extract_epub,

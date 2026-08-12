@@ -182,6 +182,25 @@ def _ensure_annotation_migration(conn):
         conn.execute("SELECT bbox FROM annotations LIMIT 1")
     except Exception:
         conn.execute("ALTER TABLE annotations ADD COLUMN bbox TEXT")
+    # P8.2 Zettelkasten: stable Z-ID, title, tags (JSON array), updated_at
+    for col, ddl in (
+        ("zid", "ALTER TABLE annotations ADD COLUMN zid TEXT"),
+        ("title", "ALTER TABLE annotations ADD COLUMN title TEXT"),
+        ("tags", "ALTER TABLE annotations ADD COLUMN tags TEXT"),
+        ("updated_at", "ALTER TABLE annotations ADD COLUMN updated_at TEXT"),
+    ):
+        try:
+            conn.execute(f"SELECT {col} FROM annotations LIMIT 1")
+        except Exception:
+            conn.execute(ddl)
+    # Backfill stable Z-IDs and updated_at for any pre-existing annotations
+    conn.execute("UPDATE annotations SET updated_at = COALESCE(updated_at, created_at) WHERE updated_at IS NULL")
+    rows = conn.execute("SELECT id, book_id FROM annotations WHERE zid IS NULL OR zid = ''").fetchall()
+    for r in rows:
+        conn.execute("UPDATE annotations SET zid=? WHERE id=?",
+                     (f"BK{r['book_id']}-N{r['id']}", r["id"]))
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_annotations_zid ON annotations(zid)")
+    conn.commit()
 
 
 def upsert_file(conn, source_path, filename, file_size, file_hash, fmt, source_group=None):
@@ -1041,12 +1060,64 @@ def get_annotations(conn, book_id):
     return [dict(r) for r in rows]
 
 
-def add_annotation(conn, book_id, ann_type, cfi_range, text, note=None, color='#fef08a', page=None, bbox=None):
+def _serialize_tags(tags):
+    """Store a tag list as JSON; accept None/string/list."""
+    if not tags:
+        return None
+    if isinstance(tags, str):
+        try:
+            tags = json.loads(tags)
+        except Exception:
+            tags = [t.strip() for t in tags.split(",") if t.strip()]
+    if not isinstance(tags, list):
+        tags = [tags]
+    return json.dumps([str(t).strip() for t in tags if str(t).strip()])
+
+
+def add_annotation(conn, book_id, ann_type, cfi_range, text, note=None, color='#fef08a', page=None, bbox=None,
+                   title=None, tags=None):
+    """Insert an annotation/note. Returns the new id and its stable Z-ID (P8.2)."""
     conn.execute("""
-        INSERT INTO annotations (book_id, type, cfi_range, text, note, color, page, bbox)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (book_id, ann_type, cfi_range, text, note, color, page, bbox))
-    return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        INSERT INTO annotations (book_id, type, cfi_range, text, note, color, page, bbox, title, tags, zid, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, datetime('now'))
+    """, (book_id, ann_type, cfi_range, text, note, color, page, bbox, title, _serialize_tags(tags)))
+    new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    zid = f"BK{book_id}-N{new_id}"
+    conn.execute("UPDATE annotations SET zid=? WHERE id=?", (zid, new_id))
+    return new_id, zid
+
+
+def update_annotation(conn, ann_id, title=None, note=None, tags=None, text=None, color=None):
+    """Edit an annotation's note fields (P8.2). Returns rowcount."""
+    sets, params = [], []
+    if title is not None:
+        sets.append("title=?"); params.append(title or None)
+    if note is not None:
+        sets.append("note=?"); params.append(note or None)
+    if text is not None:
+        sets.append("text=?"); params.append(text or None)
+    if color is not None:
+        sets.append("color=?"); params.append(color or None)
+    if tags is not None:
+        sets.append("tags=?"); params.append(_serialize_tags(tags))
+    if not sets:
+        return 0
+    sets.append("updated_at=datetime('now')")
+    params.append(ann_id)
+    return conn.execute(f"UPDATE annotations SET {', '.join(sets)} WHERE id=?", params).rowcount
+
+
+def get_annotation_backlinks(conn, ann_id):
+    """Notes in the same book whose body references this note's Z-ID (P8.2)."""
+    row = conn.execute("SELECT book_id, zid FROM annotations WHERE id=?", (ann_id,)).fetchone()
+    if not row or not row["zid"]:
+        return []
+    rows = conn.execute(
+        "SELECT id, zid, title, type, note, text FROM annotations "
+        "WHERE book_id=? AND id != ? AND note LIKE ?",
+        (row["book_id"], ann_id, f"%{row['zid']}%")
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def delete_annotation(conn, ann_id):
@@ -1116,7 +1187,21 @@ def export_annotations_markdown(conn, book_id):
                 lines.append(f"  — {item['note']}")
             lines.append("")
         else:
-            lines.append(f"**Note:** {item['text'] or item.get('note', '')}")
+            title_txt = item.get("title") or (item.get("text") or "untitled")
+            zid_txt = f" `{item['zid']}`" if item.get("zid") else ""
+            lines.append(f"**Note:** {title_txt}{zid_txt}")
+            if item.get("tags"):
+                try:
+                    t = json.loads(item["tags"])
+                    if t:
+                        lines.append(f"  Tags: {', '.join('#' + str(x) for x in t)}")
+                except Exception:
+                    pass
+            body = item.get("note") or ""
+            if body:
+                lines.append("")
+                for bl in str(body).splitlines():
+                    lines.append(f"  {bl}")
             lines.append("")
     return "\n".join(lines)
 

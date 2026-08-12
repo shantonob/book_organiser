@@ -189,8 +189,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .udc-sub-list { margin-left: 12px; border-left: 1px solid #334155; padding-left: 6px; }
 
   /* Reading List Sidebar */
-  .reader-layout { display: flex; gap: 14px; min-height: calc(100vh - 160px); }
+  .reader-layout { display: flex; gap: 14px; min-height: calc(100vh - 160px); position: relative; }
   .reading-list-sidebar { width: 220px; flex-shrink: 0; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px; max-height: calc(100vh - 120px); overflow-y: auto; }
+  .sb-collapse-btn { position: absolute; top: 50%; transform: translateY(-50%); width: 26px; height: 34px; padding: 0; border: 1px solid #334155; background: #1e293b; color: #94a3b8; border-radius: 6px; cursor: pointer; z-index: 60; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; line-height: 1; transition: left 0.18s ease, right 0.18s ease, background 0.15s; }
+  .sb-collapse-btn:hover { background: #334155; color: #e2e8f0; }
+  #collapseLeftBtn { left: 213px; }
+  #collapseRightBtn { right: 253px; }
+  .reader-layout.sb-left-closed #collapseLeftBtn { left: 0; }
+  .reader-layout.sb-right-closed #collapseRightBtn { right: 0; }
+  .reading-list-sidebar { transition: width 0.18s ease, margin 0.18s ease, padding 0.18s ease, border-width 0.18s ease; }
+  .reader-layout.sb-left-closed .reading-list-sidebar { width: 0; padding: 0; border-width: 0; margin-right: -14px; overflow: hidden; }
+  .annotations-sidebar { transition: width 0.18s ease, margin 0.18s ease, padding 0.18s ease, border-width 0.18s ease; }
+  .reader-layout.sb-right-closed .annotations-sidebar { width: 0; padding: 0; border-width: 0; margin-left: -14px; overflow: hidden; }
   .reading-list-sidebar h3 { font-size: 0.78rem; color: #94a3b8; margin-bottom: 8px; }
   .reading-list-sidebar .rl-item { padding: 6px 8px; border-radius: 4px; cursor: pointer; margin-bottom: 3px; transition: background 0.15s; }
   .reading-list-sidebar .rl-item:hover { background: #334155; }
@@ -229,6 +239,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .annotations-sidebar .ann-item .ann-del:hover { opacity: 1; }
   .annotations-sidebar .ann-empty { color: #475569; font-size: 0.7rem; text-align: center; padding: 12px 0; }
   .annotations-sidebar .ann-input-row { display: flex; gap: 6px; margin-bottom: 6px; }
+  .annotations-sidebar .ann-tabs { display: flex; gap: 4px; margin-top: 6px; }
+  .annotations-sidebar .ann-tab { flex: 1; padding: 3px 4px; border: 1px solid #334155; background: #0f172a; color: #94a3b8; border-radius: 4px; cursor: pointer; font-size: 0.68rem; }
+  .annotations-sidebar .ann-tab.active { background: #0ea5e9; color: #0f172a; font-weight: 600; border-color: #0ea5e9; }
+  .annotations-sidebar .ann-composer { margin-bottom: 6px; }
+  .annotations-sidebar .ann-zid { font-family: Consolas, monospace; font-size: 0.62rem; color: #38bdf8; }
+  .annotations-sidebar .ann-tag { display: inline-block; background: #334155; color: #94a3b8; border-radius: 3px; padding: 0 4px; font-size: 0.6rem; margin-right: 3px; }
+  .annotations-sidebar .ann-zlink { cursor: pointer; color: #38bdf8; text-decoration: underline; }
+  .annotations-sidebar .ann-edit { cursor: pointer; color: #94a3b8; float: right; margin-left: 8px; opacity: 0.6; }
+  .annotations-sidebar .ann-edit:hover { opacity: 1; color: #e2e8f0; }
+  .annotations-sidebar .ann-backlinks { margin-top: 3px; font-size: 0.64rem; color: #64748b; }
+  .annotations-sidebar .ann-backlinks b { color: #94a3b8; font-weight: 600; }
   /* Fullscreen reader */
   .reader-layout:fullscreen .reader-main { max-width: 100%; }
   .reader-layout:fullscreen #readerArea { width: 100%; height: calc(100vh - 60px); }
@@ -249,6 +270,22 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .fs-hotzone { position: fixed; top: 48px; bottom: 0; width: 12px; z-index: 499; display: none; }
   .fs-hotzone.fs-left { left: 0; }
   .fs-hotzone.fs-right { right: 0; }
+  /* Minimal fullscreen toolbar (P8.4): centered pill, auto-hides when idle */
+  .fs-toolbar { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 600; display: none; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.92); border: 1px solid #475569; border-radius: 999px; padding: 6px 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.5); transition: opacity 0.25s ease, transform 0.25s ease; }
+  .reader-layout:fullscreen .fs-toolbar,
+  .reader-layout:-webkit-full-screen .fs-toolbar { display: flex; }
+  .reader-layout:fullscreen .fs-toolbar.fs-hidden,
+  .reader-layout:-webkit-full-screen .fs-toolbar.fs-hidden { opacity: 0; transform: translateX(-50%) translateY(-16px); pointer-events: none; }
+  .fs-toolbar button { padding: 4px 10px; border: none; border-radius: 999px; cursor: pointer; font-size: 0.78rem; background: #334155; color: #e2e8f0; }
+  .fs-toolbar button:hover { background: #475569; }
+  .reader-fs-zoom { display: flex; align-items: center; gap: 3px; background: #1a2332; border-radius: 999px; padding: 2px 4px; }
+  .reader-fs-zoom button { background: transparent; padding: 2px 8px; }
+  .reader-fs-zoom button:hover { background: #334155; }
+  /* Collapse buttons hug the screen edges while in fullscreen */
+  .reader-layout.fs-auto-panes:fullscreen #collapseLeftBtn,
+  .reader-layout.fs-auto-panes:-webkit-full-screen #collapseLeftBtn { left: 0; }
+  .reader-layout.fs-auto-panes:fullscreen #collapseRightBtn,
+  .reader-layout.fs-auto-panes:-webkit-full-screen #collapseRightBtn { right: 0; }
   /* Highlight popup */
   .hl-popup { position: fixed; z-index: 1000; background: #1e293b; border: 1px solid #475569; border-radius: 8px; padding: 8px 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: none; min-width: 220px; }
   .hl-popup .hl-colors { display: flex; gap: 6px; margin-bottom: 6px; }
@@ -292,6 +329,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     .detail-grid { grid-template-columns: 1fr; }
     .detail-grid .dl { white-space: normal; }
     .reader-layout { flex-direction: column; }
+    .sb-collapse-btn { display: none; }
     .reading-list-sidebar, .annotations-sidebar { width: 100% !important; flex-shrink: 1; max-height: 240px; }
     .reader-main #readerArea { width: 100%; }
     #readerToolbar { flex-wrap: wrap; }
@@ -304,7 +342,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 </head>
 <body>
 <div class="container">
-  <h1><span id="globalStatusDot" class="idle" title="Server idle"></span>Book Organiser <small id="statusLabel">loading...</small> <span id="appVersion" style="color:#334155;font-size:0.55rem;font-family:monospace">v20260727</span></h1>
+  <h1><span id="globalStatusDot" class="idle" title="Server idle"></span>Book Organiser <small id="statusLabel">loading...</small> <span id="appVersion" style="color:#334155;font-size:0.55rem;font-family:monospace">v20260727</span> <button id="logoutBtn" onclick="doLogout()" style="display:none;margin-left:auto;padding:4px 10px;border:none;border-radius:4px;background:#334155;color:#ef4444;font-size:0.72rem;cursor:pointer" title="Log out">&#x1F512; Logout</button></h1>
   <noscript><div style="background:#701a22;color:#fca5a5;padding:12px;border-radius:6px;margin-bottom:12px;text-align:center">JavaScript is disabled or blocked. This app requires JavaScript to function.</div></noscript>
   <div id="jsError" style="display:none;background:#701a22;color:#fca5a5;padding:12px;border-radius:6px;margin-bottom:12px;text-align:center"></div>
 
@@ -325,8 +363,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <button class="tab-btn admin-tab" onclick="switchTab('quarantine')" id="quarantineTabBtn" style="display:none">Quarantine <span id="quarantineBadge" style="display:none;background:#701a22;color:#fca5a5;padding:1px 6px;border-radius:8px;font-size:0.65rem;margin-left:4px"></span></button>
     <button class="tab-btn admin-tab" onclick="switchTab('settings')" style="display:none">Settings</button>
     <span style="flex:1"></span>
-    <button class="tab-btn" id="loginBtn" onclick="showLoginModal()" style="color:#22c55e;font-size:0.78rem">&#x1F512; Login</button>
-    <button class="tab-btn" id="logoutBtn" onclick="doLogout()" style="display:none;color:#ef4444;font-size:0.78rem">Logout</button>
   </div>
 
   <!-- ════ PIPELINE TAB ════ -->
@@ -627,6 +663,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div class="reader-layout" id="readerLayout">
       <div class="fs-hotzone fs-left" id="fsLeftZone" title="Show contents &amp; reading list"></div>
       <div class="fs-hotzone fs-right" id="fsRightZone" title="Show notes &amp; annotations"></div>
+      <!-- Minimal fullscreen toolbar (P8.4): floats top-center, auto-hides when idle -->
+      <div id="readerFsToolbar" class="fs-toolbar" onmousemove="showFsToolbar()">
+        <button onclick="closeReader()" title="Close reader (bookmarks saved)">&#x2715;</button>
+        <span id="readerFsTitle" style="color:#e2e8f0;font-weight:600;font-size:0.8rem;max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <button onclick="readerPrev()" title="Previous page">&#x2190;</button>
+        <button onclick="readerNext()" title="Next page">&#x2192;</button>
+        <span class="reader-fs-zoom">
+          <button onclick="readerZoomOut()" title="Zoom out">&#x2212;</button>
+          <span id="readerFsZoomLevel" style="color:#94a3b8;font-size:0.72rem;min-width:34px;text-align:center">100%</span>
+          <button onclick="readerZoomIn()" title="Zoom in">&#x2B;</button>
+          <button onclick="readerZoomReset()" title="Reset zoom">&#x21BA;</button>
+        </span>
+        <button onclick="toggleFullscreen()" title="Exit fullscreen">&#x26F6;</button>
+      </div>
       <!-- Reading List Sidebar (R1) -->
       <div class="reading-list-sidebar" id="readingListPanel">
         <h3>Reading List</h3>
@@ -688,15 +738,29 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         </div>
         <div id="readerArea" style="width:100%;flex:1;border:1px solid #334155;border-radius:6px;background:#f8fafc;overflow-y:auto"></div>
       </div>
-      <!-- Annotations sidebar (right side, P4.2c) -->
+      <!-- Annotations sidebar (right side, P4.2c / P8.2 Zettelkasten) -->
       <div id="annotationsSidebar" class="annotations-sidebar">
-        <h3>Annotations &amp; Highlights <span id="annCount" style="color:#64748b;font-size:0.7rem"></span></h3>
-        <div class="ann-input-row">
-          <input type="text" id="annInput" placeholder="Add a note for this book..." style="flex:1;padding:4px 8px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.75rem">
-          <button onclick="addNote()" style="padding:4px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#0ea5e9;color:#0f172a;font-weight:600">Add Note</button>
+        <h3>Annotations <span id="annCount" style="color:#64748b;font-size:0.7rem"></span></h3>
+        <div class="ann-tabs" id="annTabs">
+          <button class="ann-tab active" data-anntab="notes" onclick="setAnnTab('notes')">Notes</button>
+          <button class="ann-tab" data-anntab="highlights" onclick="setAnnTab('highlights')">Highlights</button>
+          <button class="ann-tab" data-anntab="bookmarks" onclick="setAnnTab('bookmarks')">Bookmarks</button>
+        </div>
+        <input type="text" id="annFilter" placeholder="Search annotations..." oninput="filterTimeline()" style="width:100%;box-sizing:border-box;padding:4px 8px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.72rem;margin:6px 0 0">
+        <div class="ann-composer" id="noteComposer">
+          <div style="display:flex;gap:4px;margin-top:4px">
+            <input type="text" id="noteTitleInput" placeholder="Note title (optional)" style="flex:1;min-width:0;padding:4px 8px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.72rem">
+          </div>
+          <input type="text" id="noteTagInput" placeholder="Tags, comma separated" style="width:100%;box-sizing:border-box;padding:4px 8px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.72rem;margin-top:4px">
+          <textarea id="noteBodyInput" placeholder="Write your note... type [[ to link another note" rows="3" oninput="onNoteBodyInput(this.value)" style="width:100%;box-sizing:border-box;padding:4px 8px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.72rem;margin-top:4px;resize:vertical"></textarea>
+          <div id="zidPreview" style="font-size:0.66rem;color:#94a3b8;margin-top:3px"></div>
+          <div id="zidSuggestions" style="display:none;background:#0f172a;border:1px solid #334155;border-radius:4px;margin-top:3px;max-height:120px;overflow-y:auto"></div>
+          <button id="addNoteBtn" onclick="addNote()" style="width:100%;padding:5px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#0ea5e9;color:#0f172a;font-weight:600;margin-top:4px">Add Note</button>
         </div>
         <div id="timelineList"></div>
       </div>
+      <button class="sb-collapse-btn" id="collapseLeftBtn" onclick="toggleCollapseSidebar('left')" title="Collapse / expand contents &amp; reading list">&#x2039;</button>
+      <button class="sb-collapse-btn" id="collapseRightBtn" onclick="toggleCollapseSidebar('right')" title="Collapse / expand annotations">&#x203A;</button>
     </div>
     <!-- Highlight selection popup -->
     <div id="hlPopup" class="hl-popup">
@@ -751,12 +815,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   <!-- Login modal (P3.2) -->
   <div id="loginModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:2000;align-items:center;justify-content:center">
     <div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:24px;max-width:340px;width:90%">
-      <h3 style="color:#e2e8f0;margin-bottom:12px">Admin Login</h3>
+      <h3 style="color:#e2e8f0;margin-bottom:12px">Sign in to Book Organiser</h3>
       <input type="password" id="loginPassword" placeholder="Enter password" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.85rem;margin-bottom:10px" onkeydown="if(event.key==='Enter')doLogin()">
       <div id="loginError" style="color:#ef4444;font-size:0.75rem;margin-bottom:8px;display:none">Invalid password</div>
       <div style="display:flex;gap:8px">
         <button onclick="doLogin()" style="flex:1;padding:8px;border:none;border-radius:6px;background:#0ea5e9;color:#0f172a;font-weight:600;cursor:pointer;font-size:0.85rem">Login</button>
-        <button onclick="closeLoginModal()" style="padding:8px 16px;border:none;border-radius:6px;background:#334155;color:#e2e8f0;cursor:pointer;font-size:0.85rem">Cancel</button>
+        <button id="loginCancelBtn" onclick="closeLoginModal()" style="padding:8px 16px;border:none;border-radius:6px;background:#334155;color:#e2e8f0;cursor:pointer;font-size:0.85rem">Cancel</button>
       </div>
     </div>
   </div>
@@ -792,6 +856,34 @@ function showConfirm(msg) {
   });
 }
 
+// P8.6 — modal input prompt (replaces window.prompt, which mobile browsers block)
+function showPromptModal(title, placeholder, initial, okLabel) {
+  return new Promise(function(resolve) {
+    var overlay = document.getElementById("promptOverlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "promptOverlay";
+      overlay.style.cssText = "display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;";
+      overlay.innerHTML = '<div class="confirm-box" style="max-width:380px"><div class="confirm-msg" style="margin-bottom:10px"></div>'
+        + '<input type="text" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box" spellcheck="false">'
+        + '<div class="confirm-btns" style="margin-top:14px"><button class="confirm-cancel" style="background:#334155;color:#94a3b8;padding:6px 16px;border:none;border-radius:4px;font-size:0.78rem;cursor:pointer">Cancel</button><button class="confirm-ok" style="background:#0ea5e9;color:#0f172a;padding:6px 16px;border:none;border-radius:4px;font-size:0.78rem;font-weight:600;cursor:pointer">OK</button></div></div>';
+      document.body.appendChild(overlay);
+    }
+    overlay.querySelector(".confirm-msg").textContent = title;
+    var input = overlay.querySelector("input");
+    input.value = initial || "";
+    input.placeholder = placeholder || "";
+    overlay.querySelector(".confirm-ok").textContent = okLabel || "OK";
+    function done(val) { overlay.style.display = "none"; resolve(val); }
+    overlay.querySelector(".confirm-ok").onclick = function() { done(input.value); };
+    overlay.querySelector(".confirm-cancel").onclick = function() { done(null); };
+    input.onkeydown = function(e) { if (e.key === "Enter") done(input.value); if (e.key === "Escape") done(null); };
+    overlay.style.display = "flex";
+    input.focus();
+    input.select();
+  });
+}
+
 // Redirect localhost to 127.0.0.1 to avoid IPv6 timeout
 if (location.hostname === "localhost" || location.hostname === "::1") {
   location.replace(location.href.replace(/\/\/(localhost|::1)(?=[:/])/, "//127.0.0.1"));
@@ -811,15 +903,22 @@ var _csrfToken = null;
         opts.headers["X-CSRF-Token"] = _csrfToken;
       }
     }
-    return origFetch(url, opts);
+    return origFetch(url, opts).then(function(resp) {
+      // P8.7: any 401 outside the login flow means the session expired or is
+      // missing — re-lock the whole app behind the login modal.
+      if (resp.status === 401 && String(url).indexOf("/api/auth/login") === -1) {
+        window._authenticated = false;
+        showLoginModal();
+      }
+      return resp;
+    });
   };
 })();
 
 // ── Tab switching ──
 function switchTab(name, filters) {
-  // Check auth for admin tabs
-  var adminTabs = ["pipeline", "quarantine", "settings"];
-  if (adminTabs.indexOf(name) >= 0 && !window._authenticated) {
+  // P8.7: whole app is behind login — every tab requires auth.
+  if (!window._authenticated) {
     showLoginModal();
     return;
   }
@@ -827,9 +926,11 @@ function switchTab(name, filters) {
   if (name !== "reader" && readerBookId) {
     saveReaderState();
     if (readerSaveTimer) { clearTimeout(readerSaveTimer); readerSaveTimer = null; }
+    _teardownEpubProgress();  // P8.1
     if (readerRendition) { try { readerRendition.destroy(); } catch(e) {} readerRendition = null; }
     if (readerBook) { try { readerBook.destroy(); } catch(e) {} readerBook = null; }
     readerBook = null; readerRendition = null; readerPages = []; readerPage = 0;
+    _lastProgress = 0; _epubLocationsStarted = false;
     document.removeEventListener("keydown", readerKeyHandler);
   }
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
@@ -869,28 +970,27 @@ window._authenticated = false;
 
 function checkAuth() {
   fetch(API + "/api/auth/check").then(function(r) { return r.json(); }).then(function(d) {
-    window._authenticated = d.authenticated;
-    var loginBtn = document.getElementById("loginBtn");
+    var authed = d.authenticated;
+    window._authenticated = authed;
     var logoutBtn = document.getElementById("logoutBtn");
-    if (loginBtn) loginBtn.style.display = d.enabled && !d.authenticated ? "" : "none";
-    if (logoutBtn) logoutBtn.style.display = d.enabled && d.authenticated ? "" : "none";
+    if (logoutBtn) logoutBtn.style.display = authed ? "" : "none";
+    var cancelBtn = document.getElementById("loginCancelBtn");
+    if (cancelBtn) cancelBtn.style.display = (d.enabled && !authed) ? "none" : "";
     document.querySelectorAll(".admin-tab").forEach(function(el) {
-      el.style.display = d.authenticated ? "" : "none";
+      el.style.display = authed ? "" : "none";
     });
-    if (!d.authenticated) {
-      var active = document.querySelector(".tab-panel.active");
-      if (active) {
-        var adminPanels = ["tab-pipeline", "tab-quarantine", "tab-settings"];
-        if (adminPanels.indexOf(active.id) >= 0) {
-          switchTab("library");
-        }
-      }
+    if (d.enabled && !authed) {
+      // P8.7: whole app is behind login — block the UI with the modal.
+      showLoginModal();
+    } else if (authed) {
+      closeLoginModal();
     }
   }).catch(function() {});
 }
 
 function showLoginModal() {
-  document.getElementById("loginModal").style.display = "flex";
+  var modal = document.getElementById("loginModal");
+  if (modal && modal.style.display !== "flex") modal.style.display = "flex";
   var pw = document.getElementById("loginPassword");
   if (pw) { pw.value = ""; pw.focus(); }
   var err = document.getElementById("loginError");
@@ -919,6 +1019,10 @@ function doLogin() {
     if (d && d.authenticated) {
       closeLoginModal();
       checkAuth();
+      // Reload the current tab now that we are authenticated (P8.7).
+      var active = document.querySelector(".tab-panel.active");
+      if (active) switchTab(active.id.replace("tab-", ""));
+      else switchTab("library");
     }
   }).catch(function() {});
 }
@@ -1325,6 +1429,7 @@ function uploadFiles() {
 document.addEventListener("DOMContentLoaded", function() {
   const input = document.getElementById("uploadInput");
   if (input) input.addEventListener("change", uploadFiles);
+  applyCollapseState();
 });
 
 function updateGlobalStatus(p) {
@@ -2427,34 +2532,37 @@ function getSelectedIds() { return Object.keys(_selectedIds).map(Number); }
 function bulkTagAdd() {
   const ids = getSelectedIds();
   if (!ids.length) return alert("No books selected");
-  const tag = prompt("Enter tag name to add:");
-  if (!tag) return;
-  fetch(API + "/api/bulk/tags/add", {
-    method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({book_ids: ids, tag: tag})
-  }).then(r => r.json()).then(d => { alert(d.status + " — " + d.added + " book(s)"); loadLibrary(); }).catch(() => {});
+  showPromptModal("Add tag", "Tag name", "").then(function(tag) {
+    if (!tag) return;
+    fetch(API + "/api/bulk/tags/add", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({book_ids: ids, tag: tag})
+    }).then(r => r.json()).then(d => { alert(d.status + " — " + d.added + " book(s)"); loadLibrary(); }).catch(() => {});
+  });
 }
 
 function bulkTagRemove() {
   const ids = getSelectedIds();
   if (!ids.length) return alert("No books selected");
-  const tag = prompt("Enter tag name to remove:");
-  if (!tag) return;
-  fetch(API + "/api/bulk/tags/remove", {
-    method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({book_ids: ids, tag: tag})
-  }).then(r => r.json()).then(d => { alert(d.status + " — " + d.removed + " book(s)"); loadLibrary(); }).catch(() => {});
+  showPromptModal("Remove tag", "Tag name", "").then(function(tag) {
+    if (!tag) return;
+    fetch(API + "/api/bulk/tags/remove", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({book_ids: ids, tag: tag})
+    }).then(r => r.json()).then(d => { alert(d.status + " — " + d.removed + " book(s)"); loadLibrary(); }).catch(() => {});
+  });
 }
 
 function bulkClassify() {
   const ids = getSelectedIds();
   if (!ids.length) return alert("No books selected");
-  const udc = prompt("Enter UDC code (e.g. 800):");
-  if (!udc) return;
-  fetch(API + "/api/bulk/classify", {
-    method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({book_ids: ids, udc_code: udc})
-  }).then(r => r.json()).then(d => { alert(d.status + " — " + d.reclassified + " book(s)"); loadLibrary(); }).catch(() => {});
+  showPromptModal("Re-classify UDC", "UDC code (e.g. 800)", "").then(function(udc) {
+    if (!udc) return;
+    fetch(API + "/api/bulk/classify", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({book_ids: ids, udc_code: udc})
+    }).then(r => r.json()).then(d => { alert(d.status + " — " + d.reclassified + " book(s)"); loadLibrary(); }).catch(() => {});
+  });
 }
 
 function bulkDelete() {
@@ -2607,6 +2715,9 @@ let readerProgressTimer = null;
 let readerSaveTimer = null;
 let _readerZoom = 100;
 let _readerScrollMode = true;
+let _lastProgress = 0;          // last known reading % (all formats)
+let _epubProgressTimer = null;  // P8.1: polling timer for EPUB completion counter
+let _epubLocationsStarted = false;
 
 // ═══ Reading List (R1) ═══
 
@@ -2781,15 +2892,75 @@ function saveReaderState() {
       var locObj = readerRendition.currentLocation();
       if (locObj && locObj.start) {
         loc = locObj.start.cfi || "";
-        pct = Math.round((locObj.start.percentage || 0) * 100);
       }
     } catch(e) {}
+    pct = _lastProgress;  // P8.1: use the tracked counter (works in scrolled-doc)
+  } else if ((readerFormat === "pdf" || readerFormat === "djvu") && _pdfDoc) {
+    loc = String(readerPage);
+    pct = _pdfDoc.numPages ? Math.round(readerPage / _pdfDoc.numPages * 100) : 0;
   } else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPages.length > 0) {
     loc = String(readerPage);
     pct = Math.round((readerPage + 1) / readerPages.length * 100);
   }
   fetch(API + "/api/book/" + bid + "/reader-state", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({location: loc, progress_pct: pct})}).catch(function() {});
   document.getElementById("readerProgressFill").style.width = pct + "%";
+  var rlFill = document.querySelector(".rl-item.active .rl-progress-fill");
+  if (rlFill) rlFill.style.width = pct + "%";
+}
+
+// ═══ Reading completion counter (P8.1) ═══
+// epub.js only reports a real `percentage` after `locations.generate()` runs, and
+// in scrolled-doc mode `relocated` doesn't fire on scroll. This tracker fills both
+// gaps: it polls every few seconds and falls back to a spine-index estimate while
+// generated locations are still loading.
+
+function _epubSpineEstimate(loc) {
+  try {
+    if (!readerBook || !readerBook.spine) return 0;
+    var len = readerBook.spine.length || 0;
+    if (!len) return 0;
+    var idx = 0;
+    if (loc && loc.start && loc.start.href) {
+      var h = String(loc.start.href).split("#")[0];
+      for (var i = 0; i < len; i++) {
+        var item = readerBook.spine.get ? readerBook.spine.get(i) : readerBook.spine[i];
+        if (item && String(item.href || "").split("#")[0] === h) { idx = i; break; }
+      }
+    }
+    return Math.round(idx / len * 100);
+  } catch(e) { return 0; }
+}
+
+function _trackEpubProgress(triggerSave) {
+  if (readerFormat !== "epub" || !readerRendition) return;
+  var pct = 0;
+  try {
+    var loc = readerRendition.currentLocation();
+    if (loc && loc.start) {
+      var p = loc.start.percentage;
+      if (typeof p === "number" && isFinite(p) && p > 0) {
+        pct = Math.round(p * 100);
+      } else {
+        pct = _epubSpineEstimate(loc);
+      }
+    }
+  } catch(e) {}
+  pct = Math.max(0, Math.min(100, pct));
+  _lastProgress = pct;
+  var locEl = document.getElementById("readerLocation");
+  if (locEl) locEl.textContent = pct + "%";
+  var fill = document.getElementById("readerProgressFill");
+  if (fill) fill.style.width = pct + "%";
+  var rlFill = document.querySelector(".rl-item.active .rl-progress-fill");
+  if (rlFill) rlFill.style.width = pct + "%";
+  if (triggerSave) {
+    if (readerSaveTimer) clearTimeout(readerSaveTimer);
+    readerSaveTimer = setTimeout(function() { saveReaderState(); }, 2000);
+  }
+}
+
+function _teardownEpubProgress() {
+  if (_epubProgressTimer) { clearInterval(_epubProgressTimer); _epubProgressTimer = null; }
 }
 
 // ═══ Open Reader ═══
@@ -2809,6 +2980,7 @@ function openReader(bookId) {
     var epubLike = ["epub", "azw3", "mobi", "fb2"].indexOf(ext) !== -1;
     document.getElementById("exportHighlightsBtn").style.display = epubLike ? "" : "none";
     document.getElementById("annotationsSidebar").style.display = "block";
+    applyCollapseState();
     loadTimeline(bookId);
     // Check reading list
     fetch(API + "/api/reading-list").then(function(r) { return r.json(); }).then(function(items) {
@@ -2822,6 +2994,8 @@ function openReader(bookId) {
       loadReader(bookId, b);
     } else if (ext === "pdf") {
       loadPdfReader(bookId, b);
+    } else if (ext === "djvu") {
+      loadDjvuReader(bookId, b);
     } else if (ext === "cbz" || ext === "cbr") {
       loadComicReader(bookId, b);
     } else {
@@ -3028,12 +3202,8 @@ function _loadEpubReader(bookId, area, restoreCfi) {
     document.addEventListener("keydown", readerKeyHandler);
 
     readerRendition.on("relocated", function(loc) {
-      var pct = loc && loc.start ? (loc.start.percentage * 100).toFixed(0) : 0;
-      document.getElementById("readerLocation").textContent = pct + "%";
-      document.getElementById("readerProgressFill").style.width = pct + "%";
+      _trackEpubProgress(true);
       if (loc && loc.start && loc.start.href) markTocCurrent(loc.start.href);
-      if (readerSaveTimer) clearTimeout(readerSaveTimer);
-      readerSaveTimer = setTimeout(function() { saveReaderState(); }, 2000);
     });
 
     readerRendition.on("selected", function(cfiRange, contents) {
@@ -3071,9 +3241,22 @@ function _loadEpubReader(bookId, area, restoreCfi) {
 
     // Show annotations sidebar, load highlights + bookmarks + annotations
     document.getElementById("annotationsSidebar").style.display = "block";
+    applyCollapseState();
     loadTimeline(bookId);
     renderAllHighlights(bookId);
     loadToc(bookId);
+    // P8.1: start the completion-counter poller + generate epub.js locations
+    // (percentage is only accurate once locations are generated).
+    _teardownEpubProgress();
+    _epubProgressTimer = setInterval(function() { _trackEpubProgress(true); }, 3000);
+    if (!_epubLocationsStarted) {
+      _epubLocationsStarted = true;
+      try {
+        readerBook.locations.generate().then(function() {
+          if (readerBookId === bookId) _trackEpubProgress(true);
+        }).catch(function() {});
+      } catch(e) {}
+    }
   }).catch(function(err) {
     if (loadTimer) clearInterval(loadTimer);
     _readerLoadStatus("error", "Connection error", String(err && err.message || err || "network error"));
@@ -3104,6 +3287,7 @@ function loadPdfReader(bookId, book) {
   document.getElementById("readerScrollBtn").style.background = "#475569";
   document.getElementById("readerArea").style.overflowY = "hidden";
   document.getElementById("annotationsSidebar").style.display = "block";
+  applyCollapseState();
   setupReaderWheelZoom();
   loadTimeline(bookId);
   readerPage = 0;
@@ -3140,11 +3324,45 @@ var _pdfDoc = null;
 var _pdfHighlights = [];
 var _pdfRendering = false;
 
+// P8.6 — DJVU reader: server converts to PDF (ddjvu/calibre), then load the PDF viewer.
+function loadDjvuReader(bookId, book) {
+  const area = document.getElementById("readerArea");
+  const title = document.getElementById("readerTitle");
+  const fmt = document.getElementById("readerFormat");
+  title.textContent = book.title || "Book #" + bookId;
+  fmt.textContent = (book.format || "").toUpperCase() + " (converting to PDF)";
+  document.getElementById("readerPrev").style.display = "";
+  document.getElementById("readerNext").style.display = "";
+  document.getElementById("readerProgressFill").style.width = "0%";
+  area.innerHTML = '<div style="color:#f59e0b;text-align:center;padding:40px"><div style="font-size:1rem;margin-bottom:8px">Converting DJVU to PDF\u2026</div><div style="font-size:0.8rem;color:#64748b">This may take a minute for large files</div></div>';
+
+  // Kick off conversion, then poll djvu-status until the PDF is ready.
+  fetch(API + "/api/book/" + bookId + "/read").then(function(r) {
+    if (r.status === 200) { loadPdfReader(bookId, book); return; }
+    var pollTimer = setInterval(function() {
+      fetch(API + "/api/djvu-status/" + bookId).then(function(r2) { return r2.json(); }).then(function(d2) {
+        if (d2.status === "done") {
+          clearInterval(pollTimer);
+          loadPdfReader(bookId, book);
+        } else if (d2.status === "error") {
+          clearInterval(pollTimer);
+          area.innerHTML = '<div style="color:#ef4444;text-align:center;padding:40px">DJVU conversion failed. Use the <strong>Download</strong> button instead.</div>';
+          document.getElementById("readerPrev").style.display = "none";
+          document.getElementById("readerNext").style.display = "none";
+        }
+      }).catch(function() {});
+    }, 2000);
+  }).catch(function() {
+    area.innerHTML = '<div style="color:#ef4444;text-align:center;padding:40px">Failed to load DJVU</div>';
+  });
+}
+
 function pdfRenderPage(bookId, pageNum) {
   if (!_pdfDoc || _pdfRendering) return;
   _saveDrawing();
   _pdfRendering = true;
   readerPage = pageNum;
+  _lastProgress = Math.round(pageNum / _pdfDoc.numPages * 100);  // P8.1
   document.getElementById("readerLocation").textContent = pageNum + " / " + _pdfDoc.numPages;
   document.getElementById("readerProgressFill").style.width = (pageNum / _pdfDoc.numPages * 100) + "%";
   var viewer = document.getElementById("pdfViewer");
@@ -3247,14 +3465,14 @@ function pdfPrev() { if (_pdfDoc && readerPage > 1) pdfRenderPage(readerBookId, 
 function pdfNext() { if (_pdfDoc && readerPage < _pdfDoc.numPages) pdfRenderPage(readerBookId, readerPage + 1); }
 function readerPrev() {
   if (isEpubFormat(readerFormat) && readerRendition) { readerRendition.prev(); }
-  else if (readerFormat === "pdf" && _pdfDoc) { pdfPrev(); }
+  else if ((readerFormat === "pdf" || readerFormat === "djvu") && _pdfDoc) { pdfPrev(); }
   else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPage > 0) {
     showComicPage(readerBookId, readerPage - 1);
   }
 }
 function readerNext() {
   if (isEpubFormat(readerFormat) && readerRendition) { readerRendition.next(); }
-  else if (readerFormat === "pdf" && _pdfDoc) { pdfNext(); }
+  else if ((readerFormat === "pdf" || readerFormat === "djvu") && _pdfDoc) { pdfNext(); }
   else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPage < readerPages.length - 1) {
     showComicPage(readerBookId, readerPage + 1);
   }
@@ -3281,8 +3499,9 @@ function loadComicReader(bookId, book) {
   _readerZoom = 100; _readerScrollMode = false;
   document.getElementById("readerZoomLevel").textContent = "100%";
   document.getElementById("readerScrollBtn").style.background = "#475569";
-  document.getElementById("readerArea").style.overflowY = "hidden";
+  document.getElementById("readerArea").style.overflowY = "auto";  // BL-001: zoomed comic must scroll
   document.getElementById("annotationsSidebar").style.display = "block";
+  applyCollapseState();
   setupReaderWheelZoom();
   loadTimeline(bookId);
   document.removeEventListener("keydown", readerKeyHandler);
@@ -3337,6 +3556,7 @@ function showComicPage(bookId, idx) {
   readerPage = idx;
   const area = document.getElementById("readerArea");
   var pct = readerPages.length > 0 ? Math.round((idx + 1) / readerPages.length * 100) : 0;
+  _lastProgress = pct;  // P8.1
   document.getElementById("readerLocation").textContent = (idx + 1) + " / " + readerPages.length;
   document.getElementById("readerProgressFill").style.width = pct + "%";
 
@@ -3469,19 +3689,19 @@ function closeReader() {
   _saveDrawing();
   hideReaderDrawGroup();
   saveReaderState();
+  _teardownEpubProgress();  // P8.1
   _readerLoadStatus(null);
   var tb = document.getElementById("tocBlock"); if (tb) tb.style.display = "none";
   var tl = document.getElementById("tocList"); if (tl) tl.innerHTML = '<div class="toc-empty">Loading...</div>';
   var bid = readerBookId;
   var fmt = readerFormat;
-  var pct = 0;
-  try { pct = parseFloat(document.getElementById("readerLocation").textContent) || 0; } catch(e) {}
+  var pct = _lastProgress;  // P8.1: use the tracked counter, not the label text
   if (bid && pct > 5) {
     fetch(API + "/api/book/" + bid + "/bookmarks").then(function(r) { return r.json(); }).then(function(bms) {
       var near = bms.some(function(b) { return b.progress_pct && Math.abs(b.progress_pct - pct) < 3; });
       if (!near) {
         var label = fmt === "epub" ? "p." + Math.round(pct) + "%" : "p." + Math.round(pct) + "%";
-        var pageNum = (fmt === "cbz" || fmt === "cbr" || fmt === "pdf") ? readerPage : null;
+        var pageNum = (fmt === "cbz" || fmt === "cbr" || fmt === "pdf" || fmt === "djvu") ? readerPage : null;
         fetch(API + "/api/book/" + bid + "/bookmarks", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
@@ -3494,6 +3714,7 @@ function closeReader() {
   if (readerRendition) { try { readerRendition.destroy(); } catch(e) {} readerRendition = null; }
   if (readerBook) { try { readerBook.destroy(); } catch(e) {} readerBook = null; }
   readerBook = null; readerRendition = null; readerPages = []; readerPage = 0;
+  _lastProgress = 0; _epubLocationsStarted = false;
   document.removeEventListener("keydown", readerKeyHandler);
   readerBookId = null;
   if (document.fullscreenElement) { document.exitFullscreen().catch(function(){}); }
@@ -3507,6 +3728,7 @@ function closeReader() {
   document.getElementById("exportHighlightsBtn").style.display = "none";
   document.getElementById("readerZoomGroup").style.display = "none";
   document.getElementById("annotationsSidebar").style.display = "none";
+  applyCollapseState();
   switchTab("library");
   loadReadingList();
 }
@@ -3520,6 +3742,25 @@ function toggleFullscreen() {
     document.exitFullscreen().catch(function(){});
   }
 }
+
+// P8.4 — Minimal fullscreen toolbar auto-hide (show on any mousemove, hide after idle)
+var _fsToolbarTimer = null;
+function showFsToolbar() {
+  var tb = document.getElementById("readerFsToolbar");
+  if (!tb) return;
+  tb.classList.remove("fs-hidden");
+  if (_fsToolbarTimer) clearTimeout(_fsToolbarTimer);
+  _fsToolbarTimer = setTimeout(function() {
+    var t2 = document.getElementById("readerFsToolbar");
+    if (t2 && document.fullscreenElement) t2.classList.add("fs-hidden");
+  }, 2600);
+}
+function initFsToolbarHide() {
+  if (typeof _fsMouseBound !== "undefined" && _fsMouseBound) return;
+  _fsMouseBound = true;
+  document.addEventListener("mousemove", showFsToolbar);
+}
+var _fsMouseBound = false;
 
 // P5.5 — Reader View Controls
 function readerZoomIn() {
@@ -3540,9 +3781,26 @@ var _readerPageW = 0;         // buffer width of current content canvas
 var _readerPageH = 0;         // buffer height of current content canvas
 var _readerWheelZoom = false; // true once a wheel handler is attached
 
+// Force the reader's scroll container to recompute its scroll metrics after
+// the canvas is resized (BL-001). Without this the scrollbar range goes stale
+// and the page cannot be scrolled to the bottom after zooming in.
+function _refreshReaderScroll() {
+  var area = document.getElementById("readerArea");
+  if (!area) return;
+  var scroller = document.getElementById("pdfViewer") || area;
+  var prevTop = scroller.scrollTop;
+  var prevOverflow = scroller.style.overflowY;
+  scroller.style.overflowY = "hidden";   // forces reflow + scrollbar recompute
+  void scroller.scrollHeight;            // read layout to flush the reflow
+  scroller.style.overflowY = prevOverflow || "auto";
+  scroller.scrollTop = prevTop;          // keep the current scroll position
+}
+
 function _applyReaderZoom() {
   var lbl = document.getElementById("readerZoomLevel");
   if (lbl) lbl.textContent = _readerZoom + "%";
+  var fz = document.getElementById("readerFsZoomLevel");
+  if (fz) fz.textContent = _readerZoom + "%";
   if (readerFormat === "epub" && readerRendition) {
     readerRendition.themes.fontSize((_readerZoom / 100) + "em");
     return;
@@ -3558,6 +3816,7 @@ function _applyReaderZoom() {
     el.style.maxHeight = "none";
   }
   _syncDrawOverlay();
+  _refreshReaderScroll();
 }
 
 function _onReaderPageLoaded(canvas) {
@@ -3616,6 +3875,56 @@ function setupReaderWheelZoom() {
     else { _readerZoom = Math.max(30, _readerZoom - 10); }
     _applyReaderZoom();
   }, { passive: false });
+  setupReaderTouch(area);
+}
+
+// P8.5 — Touch controls: two-finger pinch zooms, horizontal swipe turns pages.
+var _touchStartDist = 0, _touchStartZoom = 100, _touchStartX = 0, _touchStartY = 0, _touchStartT = 0, _touchPinching = false;
+function setupReaderTouch(area) {
+  if (!area || area.dataset.touchReady) return;
+  area.dataset.touchReady = "1";
+  function pinchDistance(ev) {
+    var t = ev.touches;
+    if (t.length < 2) return 0;
+    var dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  area.addEventListener("touchstart", function(ev) {
+    if (readerFormat === "epub") return;
+    if (_drawMode) return; // let drawing take over
+    if (ev.touches.length >= 2) {
+      _touchStartDist = pinchDistance(ev);
+      _touchStartZoom = _readerZoom;
+      _touchPinching = true;
+      ev.preventDefault();
+    } else if (ev.touches.length === 1) {
+      _touchStartX = ev.touches[0].clientX;
+      _touchStartY = ev.touches[0].clientY;
+      _touchStartT = Date.now();
+      _touchPinching = false;
+    }
+  }, { passive: false });
+  area.addEventListener("touchmove", function(ev) {
+    if (readerFormat === "epub" || _touchPinching !== true) return;
+    if (_drawMode) return;
+    var d = pinchDistance(ev);
+    if (_touchStartDist > 0 && d > 0) {
+      ev.preventDefault();
+      _readerZoom = Math.min(300, Math.max(30, Math.round(_touchStartZoom * (d / _touchStartDist))));
+      _applyReaderZoom();
+    }
+  }, { passive: false });
+  area.addEventListener("touchend", function(ev) {
+    if (readerFormat === "epub" || _drawMode) return;
+    if (_touchPinching) { _touchPinching = false; return; }
+    var dx = ev.changedTouches[0].clientX - _touchStartX;
+    var dy = ev.changedTouches[0].clientY - _touchStartY;
+    var elapsed = Date.now() - _touchStartT;
+    var sl = area.scrollLeft || 0;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5 && sl === 0) {
+      if (dx < 0) readerNext(); else readerPrev();
+    }
+  }, { passive: true });
 }
 
 // --- Drawing overlay ---
@@ -3786,10 +4095,23 @@ document.addEventListener("fullscreenchange", function() {
   if (lay) lay.classList.toggle("fs-auto-panes", !!document.fullscreenElement);
   var sbtn = document.getElementById("sidebarToggleBtn");
   if (sbtn) sbtn.style.display = document.fullscreenElement && readerBookId != null ? "" : "none";
-  if (!document.fullscreenElement) {
+  if (document.fullscreenElement) {
+    initFsToolbarHide();
+    var ft = document.getElementById("readerFsToolbar");
+    if (ft) { ft.classList.remove("fs-hidden"); ft.style.display = "flex"; }
+    var ftitle = document.getElementById("readerFsTitle");
+    var t = document.getElementById("readerTitle");
+    if (ftitle && t) ftitle.textContent = t.textContent || "";
+    var fz = document.getElementById("readerFsZoomLevel");
+    var z = document.getElementById("readerZoomLevel");
+    if (fz && z) fz.textContent = z.textContent || "100%";
+    showFsToolbar();
+  } else {
     fsPinned = { left: false, right: false };
     var lp = document.getElementById("readingListPanel"); if (lp) lp.classList.remove("fs-show");
     var ap = document.getElementById("annotationsSidebar"); if (ap) ap.classList.remove("fs-show");
+    var ft2 = document.getElementById("readerFsToolbar");
+    if (ft2) ft2.style.display = "none";
   }
   if (!ra) return;
   var h = Math.max(ra.offsetHeight || window.innerHeight - 200, 400);
@@ -3805,6 +4127,28 @@ document.addEventListener("fullscreenchange", function() {
 
 // Fullscreen edge-hover reveal / ribbon-pin for the two side panes.
 var fsPinned = { left: false, right: false };
+
+// P8.3 — Collapsible sidebars (on-screen chevron buttons, state persisted)
+var _sbCollapsed = {};
+try { _sbCollapsed = JSON.parse(localStorage.getItem("reader.collapse") || "{}"); } catch(e) { _sbCollapsed = {}; }
+function applyCollapseState() {
+  var lay = document.getElementById("readerLayout");
+  if (!lay) return;
+  lay.classList.toggle("sb-left-closed", !!_sbCollapsed.left);
+  lay.classList.toggle("sb-right-closed", !!_sbCollapsed.right);
+  var on = readerBookId != null;
+  var lb = document.getElementById("collapseLeftBtn");
+  var rb = document.getElementById("collapseRightBtn");
+  if (lb) { lb.style.display = on ? "flex" : "none"; lb.innerHTML = _sbCollapsed.left ? "\u203A" : "\u2039"; }
+  if (rb) { rb.style.display = on ? "flex" : "none"; rb.innerHTML = _sbCollapsed.right ? "\u2039" : "\u203A"; }
+}
+function toggleCollapseSidebar(side) {
+  if (document.fullscreenElement) { toggleFsPane(side); return; }
+  _sbCollapsed[side] = !_sbCollapsed[side];
+  try { localStorage.setItem("reader.collapse", JSON.stringify(_sbCollapsed)); } catch(e) {}
+  applyCollapseState();
+}
+
 function fsApply(side) {
   if (!document.fullscreenElement) return;
   var el = side === "left" ? document.getElementById("readingListPanel") : document.getElementById("annotationsSidebar");
@@ -3875,59 +4219,134 @@ function loadAnnotations(bookId) {
   }).catch(function() {});
 }
 
+// ═══ Annotations timeline (P8.2 Zettelkasten) ═══
+var _annUI = { tab: "notes", filter: "", anns: [], bms: [], editing: null };
+
+function setAnnTab(tab) {
+  _annUI.tab = tab;
+  document.querySelectorAll("#annTabs .ann-tab").forEach(function(b) {
+    b.classList.toggle("active", b.getAttribute("data-anntab") === tab);
+  });
+  renderTimeline();
+}
+
+function filterTimeline() {
+  _annUI.filter = (document.getElementById("annFilter").value || "").toLowerCase();
+  renderTimeline();
+}
+
 function loadTimeline(bookId) {
   Promise.all([
     fetch(API + "/api/book/" + bookId + "/annotations").then(function(r) { return r.json(); }),
     fetch(API + "/api/book/" + bookId + "/bookmarks").then(function(r) { return r.json(); })
   ]).then(function(results) {
-    var anns = results[0] || [];
-    var bms = results[1] || [];
-    var el = document.getElementById("timelineList");
-    var countEl = document.getElementById("annCount");
-    if (!el) return;
-    if (!anns.length && !bms.length) {
-      el.innerHTML = '<div class="ann-empty">No annotations or bookmarks yet. Select text to highlight, or add a note below.</div>';
-      if (countEl) countEl.textContent = "";
+    _annUI.anns = (results[0] || []).slice().reverse();
+    _annUI.bms = (results[1] || []).slice().reverse();
+    renderTimeline();
+  }).catch(function() {});
+}
+
+function _zidTitle(zid) {
+  for (var i = 0; i < (_annUI.anns || []).length; i++) {
+    if (_annUI.anns[i].zid === zid) return _annUI.anns[i].title || _annUI.anns[i].text || zid;
+  }
+  return zid;
+}
+
+function _linkifyZids(text) {
+  return esc(text || "").replace(/\[\[([A-Za-z0-9]+-[A-Za-z0-9]+)\]\]/g, function(m, zid) {
+    var title = _zidTitle(zid);
+    return '<span class="ann-zlink" onclick="navigateToZid(\'' + esc(zid) + '\')">[[' + esc(title) + ']]</span>';
+  });
+}
+
+function navigateToZid(zid) {
+  var a = (_annUI.anns || []).filter(function(x) { return x.zid === zid; })[0];
+  if (a && a.cfi_range && readerRendition) { try { readerRendition.display(a.cfi_range); } catch(e) {} }
+}
+
+function _annTags(tags) {
+  if (!tags) return "";
+  return tags.map(function(t) { return '<span class="ann-tag">#' + esc(t) + '</span>'; }).join("");
+}
+
+function renderTimeline() {
+  var el = document.getElementById("timelineList");
+  var countEl = document.getElementById("annCount");
+  if (!el) return;
+  var anns = _annUI.anns || [];
+  var bms = _annUI.bms || [];
+  var filter = _annUI.filter || "";
+  var visible = [];
+  if (_annUI.tab === "bookmarks") {
+    bms.forEach(function(b) { visible.push({ kind: "bm", item: b }); });
+  } else {
+    anns.forEach(function(a) {
+      if (_annUI.tab === "notes" && a.type !== "note") return;
+      if (_annUI.tab === "highlights" && a.type !== "highlight") return;
+      visible.push({ kind: "ann", item: a });
+    });
+  }
+  if (filter) {
+    visible = visible.filter(function(v) {
+      var it = v.item;
+      var hay = [it.text, it.note, it.title, it.zid, it.label].join(" ") + " " + (it.tags || []).join(" ");
+      return hay.toLowerCase().indexOf(filter) >= 0;
+    });
+  }
+  visible.sort(function(x, y) { return (y.item.created_at || "").localeCompare(x.item.created_at || ""); });
+  if (countEl) countEl.textContent = "(" + visible.length + ")";
+  if (!visible.length) {
+    var msg = _annUI.tab === "bookmarks" ? "No bookmarks yet."
+      : (_annUI.tab === "notes" ? "No notes yet. Write one below." : "No highlights yet. Select text to highlight.");
+    el.innerHTML = '<div class="ann-empty">' + msg + '</div>';
+    return;
+  }
+  var html = "";
+  visible.forEach(function(v) {
+    if (v.kind === "bm") {
+      var it = v.item;
+      var pct = it.progress_pct ? Math.round(it.progress_pct) + "%" : "";
+      var loc = it.cfi_loc ? "EPUB" : it.page_num != null ? "Page " + (it.page_num + 1) : pct;
+      html += '<div class="ann-item" style="border-left-color:#eab308;cursor:pointer" onclick="navigateToBookmark(\'' + (it.cfi_loc||'') + '\',' + (it.page_num||0) + ')">'
+        + '<span class="ann-del" onclick="event.stopPropagation();deleteBookmark(' + it.id + ',' + readerBookId + ')" title="Delete">&times;</span>'
+        + '<div class="ann-text">\uD83D\uDCCC ' + esc(it.label || ("Bookmark #" + it.id)) + '</div>'
+        + '<div class="ann-note">' + esc(loc) + ' \xb7 ' + pct + '</div>'
+        + '<div style="font-size:0.62rem;color:#475569;margin-top:2px">' + (it.created_at || "").slice(0, 10) + '</div>'
+        + '</div>';
       return;
     }
-    if (countEl) countEl.textContent = "(" + (anns.length + bms.length) + ")";
-    // Merge and sort by created_at
-    var items = [];
-    anns.forEach(function(a) { a._type = "annotation"; items.push(a); });
-    bms.forEach(function(b) { b._type = "bookmark"; items.push(b); });
-    items.sort(function(x, y) { return (x.created_at || "").localeCompare(y.created_at || ""); });
-    var html = '<div style="margin-bottom:4px"><strong style="color:#94a3b8;font-size:0.72rem">Timeline</strong></div>';
-    items.forEach(function(item) {
-      if (item._type === "bookmark") {
-        var pct = item.progress_pct ? Math.round(item.progress_pct) + "%" : "";
-        var loc = item.cfi_loc ? "EPUB" : item.page_num != null ? "Page " + (item.page_num + 1) : pct;
-        html += '<div class="ann-item" style="border-left-color:#eab308;cursor:pointer" onclick="navigateToBookmark(\'' + (item.cfi_loc||'') + '\',' + (item.page_num||0) + ')">'
-          + '<span class="ann-del" onclick="event.stopPropagation();deleteBookmark(' + item.id + ',' + bookId + ')" title="Delete">&times;</span>'
-          + '<div class="ann-text">\uD83D\uDCCC ' + esc(item.label || ("Bookmark #" + item.id)) + '</div>'
-          + '<div class="ann-note">' + esc(loc) + ' \xb7 ' + pct + '</div>'
-          + '<div style="font-size:0.62rem;color:#475569;margin-top:2px">' + (item.created_at || "").slice(0, 10) + '</div>'
-          + '</div>';
-      } else {
-        var navFn = item.cfi_range ? "navigateToAnnotation('" + esc(item.cfi_range) + "')" : "";
-        html += '<div class="ann-item" style="border-left-color:' + (item.color || "#fef08a") + (navFn ? ';cursor:pointer' : '') + '"' + (navFn ? ' onclick="' + navFn + '"' : '') + '>';
-        html += '<span class="ann-del" onclick="event.stopPropagation();deleteAnnotation(' + item.id + ',' + bookId + ')" title="Delete">&times;</span>';
-        if (item.type === "highlight") {
-          html += '<div class="ann-text">"' + esc(item.text || "").substring(0, 120) + (item.text && item.text.length > 120 ? "..." : "") + '"</div>';
-          if (item.note) html += '<div class="ann-note">\u2014 ' + esc(item.note) + '</div>';
-        } else {
-          html += '<div class="ann-text"><strong>Note:</strong> ' + esc(item.note || item.text || "") + '</div>';
-        }
-        html += '<div style="font-size:0.62rem;color:#475569;margin-top:2px">' + (item.created_at || "").slice(0, 10) + '</div>';
-        html += '</div>';
+    var a = v.item;
+    var nav = a.cfi_range ? ' onclick="event.stopPropagation();navigateToAnnotation(\'' + esc(a.cfi_range) + '\')"' : '';
+    html += '<div class="ann-item" style="border-left-color:' + (a.color || "#fef08a") + (a.cfi_range ? ';cursor:pointer' : '') + '"' + nav + '>';
+    html += '<span class="ann-del" onclick="event.stopPropagation();deleteAnnotation(' + a.id + ',' + readerBookId + ')" title="Delete">&times;</span>';
+    if (a.type === "highlight") {
+      html += '<div class="ann-text">"' + esc(a.text || "").substring(0, 120) + (a.text && a.text.length > 120 ? "..." : "") + '"</div>';
+      if (a.note) html += '<div class="ann-note">\u2014 ' + _linkifyZids(a.note) + '</div>';
+    } else {
+      html += '<span class="ann-edit" onclick="event.stopPropagation();editNote(' + a.id + ')" title="Edit">\u270E</span>';
+      html += '<div class="ann-text"><strong>' + esc(a.title || a.text || "untitled") + '</strong></div>';
+      if (a.zid) html += '<div class="ann-zid">' + esc(a.zid) + '</div>';
+      html += '<div class="ann-note">' + _linkifyZids(a.note || a.text || "") + '</div>';
+      html += '<div style="margin-top:2px">' + _annTags(a.tags) + '</div>';
+      if (a.backlinks && a.backlinks.length) {
+        html += '<div class="ann-backlinks"><b>Backlinks:</b> ' + a.backlinks.map(function(b) {
+          return '<span class="ann-zlink" onclick="navigateToZid(\'' + esc(b.zid) + '\')">' + esc(b.title || b.zid) + '</span>';
+        }).join(", ") + '</div>';
       }
-    });
-    el.innerHTML = html;
-  }).catch(function() {});
+    }
+    html += '<div style="font-size:0.62rem;color:#475569;margin-top:2px">' + (a.created_at || "").slice(0, 10) + '</div>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
 }
 
 function deleteAnnotation(annId, bookId) {
   fetch(API + "/api/book/" + bookId + "/annotations/" + annId, {method: "DELETE"})
-    .then(function(r) { return r.json(); }).then(function() { loadTimeline(bookId); }).catch(function() {});
+    .then(function(r) { return r.json(); }).then(function() {
+      if (_annUI.editing === annId) cancelEditNote();
+      loadTimeline(bookId);
+    }).catch(function() {});
 }
 
 function exportHighlights() {
@@ -3939,23 +4358,105 @@ function exportHighlights() {
   a.click();
 }
 
+// ═══ Zettelkasten note composer ═══
+function onNoteBodyInput(value) {
+  var ta = document.getElementById("noteBodyInput");
+  var pos = ta.selectionStart || 0;
+  var m = value.slice(0, pos).match(/\[\[([^\]\[]*)$/);
+  var box = document.getElementById("zidSuggestions");
+  if (!m) { box.style.display = "none"; return; }
+  var q = m[1].toLowerCase();
+  var list = (_annUI.anns || []).filter(function(a) {
+    return a.type === "note" && a.zid && (a.zid.toLowerCase().indexOf(q) >= 0 || (a.title || "").toLowerCase().indexOf(q) >= 0);
+  });
+  if (!list.length) { box.style.display = "none"; return; }
+  box.style.display = "block";
+  box.innerHTML = list.slice(0, 8).map(function(a) {
+    return '<div style="padding:3px 8px;cursor:pointer;font-size:0.66rem;color:#e2e8f0" onclick="_pickZid(\'' + a.zid + '\')">'
+      + esc(a.zid) + (a.title ? " \u2014 " + esc(a.title) : "") + '</div>';
+  }).join("");
+}
+
+function _pickZid(zid) {
+  var ta = document.getElementById("noteBodyInput");
+  var pos = ta.selectionStart || 0;
+  var val = ta.value;
+  ta.value = val.slice(0, pos).replace(/\[\[[^\]\[]*$/, "[[" + zid + "]]") + val.slice(pos);
+  document.getElementById("zidSuggestions").style.display = "none";
+  ta.focus();
+}
+
+function _noteLocation() {
+  var cfi = readerFormat === "epub" && readerRendition ? (readerRendition.currentLocation() || {}).start : null;
+  var cfiRange = cfi && cfi.cfi ? cfi.cfi : null;
+  if (readerFormat === "pdf" || readerFormat === "djvu" || readerFormat === "cbz" || readerFormat === "cbr") {
+    cfiRange = cfiRange || ("page:" + (readerPage || 0));
+  }
+  return cfiRange;
+}
+
 function addNote() {
   var bid = readerBookId;
   if (!bid) return;
-  var text = document.getElementById("annInput").value.trim();
-  if (!text) return;
-  var cfi = readerFormat === "epub" && readerRendition ? (readerRendition.currentLocation() || {}).start : null;
-  var cfiRange = cfi && cfi.cfi ? cfi.cfi : null;
-  var pct = 0;
-  try { pct = cfi && cfi.percentage ? cfi.percentage * 100 : (parseFloat(document.getElementById("readerLocation").textContent) || 0); } catch(e) {}
-  fetch(API + "/api/book/" + bid + "/annotations", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({type: "note", text: text, note: text, cfi_range: cfiRange, color: "#94a3b8"})
-  }).then(function(r) { return r.json(); }).then(function() {
-    document.getElementById("annInput").value = "";
+  var title = document.getElementById("noteTitleInput").value.trim();
+  var body = document.getElementById("noteBodyInput").value.trim();
+  var tags = document.getElementById("noteTagInput").value.split(",").map(function(s) { return s.trim(); }).filter(Boolean);
+  if (!title && !body) return;
+  var payload = {
+    type: "note",
+    text: title || body,
+    note: body || title,
+    title: title || null,
+    tags: tags,
+    color: "#94a3b8",
+    cfi_range: _noteLocation()
+  };
+  var finish = function() {
+    document.getElementById("noteTitleInput").value = "";
+    document.getElementById("noteBodyInput").value = "";
+    document.getElementById("noteTagInput").value = "";
+    cancelEditNote();
     loadTimeline(bid);
-  }).catch(function() {});
+  };
+  if (_annUI.editing) {
+    fetch(API + "/api/book/" + bid + "/annotations/" + _annUI.editing, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({title: payload.title, note: payload.note, tags: tags})
+    }).then(function(r) { return r.json(); }).then(function() {
+      document.getElementById("zidPreview").textContent = "";
+      finish();
+    }).catch(function() {});
+  } else {
+    fetch(API + "/api/book/" + bid + "/annotations", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload)
+    }).then(function(r) { return r.json(); }).then(function(res) {
+      if (res && res.zid) document.getElementById("zidPreview").textContent = "Saved as " + res.zid;
+      finish();
+    }).catch(function() {});
+  }
+}
+
+function editNote(annId) {
+  var a = (_annUI.anns || []).filter(function(x) { return x.id === annId; })[0];
+  if (!a) return;
+  _annUI.editing = annId;
+  document.getElementById("noteTitleInput").value = a.title || "";
+  document.getElementById("noteBodyInput").value = a.note || a.text || "";
+  document.getElementById("noteTagInput").value = (a.tags || []).join(", ");
+  document.getElementById("zidPreview").textContent = "Editing " + (a.zid || "") + " \u2014 save keeps this page location";
+  document.getElementById("addNoteBtn").textContent = "Update Note";
+  document.getElementById("noteBodyInput").focus();
+}
+
+function cancelEditNote() {
+  _annUI.editing = null;
+  var btn = document.getElementById("addNoteBtn");
+  if (btn) btn.textContent = "Add Note";
+  var pv = document.getElementById("zidPreview");
+  if (pv) pv.textContent = "";
 }
 
 // ═══ Highlight popup ═══
@@ -4039,7 +4540,7 @@ function saveHighlightNoteOnly() {
   fetch(API + "/api/book/" + bid + "/annotations", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({type: "note", text: note, note: note, cfi_range: cfi, color: "#94a3b8"})
+    body: JSON.stringify({type: "note", text: note, note: note, title: note.split("\n")[0].slice(0, 60), cfi_range: cfi, color: "#94a3b8"})
   }).then(function(r) { return r.json(); }).then(function() {
     hideHighlightPopup();
     loadTimeline(bid);
@@ -4066,40 +4567,44 @@ function renderAllHighlights(bookId) {
 function addBookmark() {
   var bid = readerBookId;
   if (!bid) return;
-  var data = { label: prompt("Bookmark name (optional):") || null };
-  if (readerFormat === "epub" && readerRendition) {
-    var loc = readerRendition.currentLocation();
-    if (loc && loc.start) { data.cfi_loc = loc.start.cfi; data.progress_pct = loc.start.percentage ? loc.start.percentage * 100 : 0; }
-  } else if (readerFormat === "pdf" || readerFormat === "cbz" || readerFormat === "cbr") {
-    data.page_num = readerPage || 0;
-    data.progress_pct = readerPages && readerPages.length ? (readerPage / readerPages.length * 100) : 0;
-  }
-  fetch(API + "/api/book/" + bid + "/bookmarks", {
-    method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(data)
-  }).then(function(r) { return r.json(); }).then(function() {
-    loadTimeline(bid);
-  }).catch(function() {});
+  showPromptModal("Add bookmark", "Bookmark name (optional)", "").then(function(name) {
+    if (name === null) return;
+    var data = { label: name || null };
+    if (readerFormat === "epub" && readerRendition) {
+      var loc = readerRendition.currentLocation();
+      if (loc && loc.start) { data.cfi_loc = loc.start.cfi; data.progress_pct = loc.start.percentage ? loc.start.percentage * 100 : 0; }
+    } else if (readerFormat === "pdf" || readerFormat === "djvu" || readerFormat === "cbz" || readerFormat === "cbr") {
+      data.page_num = readerPage || 0;
+      data.progress_pct = readerPages && readerPages.length ? (readerPage / readerPages.length * 100) : 0;
+    }
+    fetch(API + "/api/book/" + bid + "/bookmarks", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(data)
+    }).then(function(r) { return r.json(); }).then(function() {
+      loadTimeline(bid);
+    }).catch(function() {});
+  });
 }
 
 function addPageNote() {
   var bid = readerBookId;
   if (!bid) return;
-  var note = prompt("Add a note for this page:");
-  if (!note) return;
-  var data = { type: "note", text: note, note: note };
-  if (readerFormat === "epub" && readerRendition) {
-    var loc = readerRendition.currentLocation();
-    if (loc && loc.start) data.cfi_range = loc.start.cfi;
-  } else if (readerFormat === "pdf" || readerFormat === "cbz" || readerFormat === "cbr") {
-    data.cfi_range = "page:" + (readerPage || 0);
-  }
-  fetch(API + "/api/book/" + bid + "/annotations", {
-    method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(data)
-  }).then(function(r) { return r.json(); }).then(function() {
-    loadTimeline(bid);
-  }).catch(function() {});
+  showPromptModal("Add page note", "Note text", "").then(function(note) {
+    if (!note) return;
+    var data = { type: "note", text: note, note: note, title: note.split("\n")[0].slice(0, 60) };
+    if (readerFormat === "epub" && readerRendition) {
+      var loc = readerRendition.currentLocation();
+      if (loc && loc.start) data.cfi_range = loc.start.cfi;
+    } else if (readerFormat === "pdf" || readerFormat === "djvu" || readerFormat === "cbz" || readerFormat === "cbr") {
+      data.cfi_range = "page:" + (readerPage || 0);
+    }
+    fetch(API + "/api/book/" + bid + "/annotations", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(data)
+    }).then(function(r) { return r.json(); }).then(function() {
+      loadTimeline(bid);
+    }).catch(function() {});
+  });
 }
 
 function loadBookmarks(bookId) {
@@ -4291,18 +4796,20 @@ function enrichBook(bookId) {
 }
 
 function mergeBook(bookId) {
-  var target = prompt("Enter the ID of the book to merge INTO this one (the target book will be marked as merged):");
-  if (!target || !target.trim()) return;
-  var tid = parseInt(target.trim());
-  if (isNaN(tid) || tid === bookId) { alert("Invalid target ID"); return; }
-  showConfirm("Merge book #" + tid + " into #" + bookId + "? Book #" + tid + " will be marked as merged.").then(function(ok) {
-    if (!ok) return;
-    fetch(API + "/api/book/" + bookId + "/merge", {method:"POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({target_id: tid})})
-    .then(r => r.json()).then(d => {
-      if (d.error) { alert("Merge failed: " + d.error); return; }
-      showDetail(bookId);
-      loadLibrary();
-    }).catch(() => { alert("Merge request failed"); });
+  showPromptModal("Merge books", "ID of the book to merge INTO this one", "").then(function(target) {
+    if (target === null) return;
+    if (!target || !target.trim()) return;
+    var tid = parseInt(target.trim());
+    if (isNaN(tid) || tid === bookId) { alert("Invalid target ID"); return; }
+    showConfirm("Merge book #" + tid + " into #" + bookId + "? Book #" + tid + " will be marked as merged.").then(function(ok) {
+      if (!ok) return;
+      fetch(API + "/api/book/" + bookId + "/merge", {method:"POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({target_id: tid})})
+      .then(r => r.json()).then(d => {
+        if (d.error) { alert("Merge failed: " + d.error); return; }
+        showDetail(bookId);
+        loadLibrary();
+      }).catch(() => { alert("Merge request failed"); });
+    });
   });
 }
 

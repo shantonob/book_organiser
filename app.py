@@ -52,6 +52,7 @@ from db import (
     export_annotations_markdown,
     get_all_config,
     get_annotations,
+    get_annotation_backlinks,
     get_book_by_id,
     get_book_pipeline_log,
     get_bookmarks,
@@ -81,10 +82,12 @@ from db import (
     resolve_quarantine,
     save_drawing,
     save_reader_state,
+    set_stage,
     search_books,
     search_tags,
     set_config_override,
     set_quarantine_rule,
+    update_annotation,
 )
 from enricher import _download_cover, enrich_book
 from pipeline import (
@@ -401,6 +404,27 @@ def api_auth_logout():
     return jsonify({"status": "logged_out"})
 
 
+# ── Whole-app auth gate (P8.7) ──
+# Registered before the CSRF hook so unauthenticated requests get a clean 401
+# instead of a CSRF 403. Everything is open when auth is disabled (the default).
+
+AUTH_PUBLIC_PATHS = {"/", "/favicon.ico"}
+AUTH_PUBLIC_PREFIXES = ("/api/auth/", "/api/csrf-token", "/api/health", "/static/")
+
+@app.before_request
+def _auth_gate():
+    if not config.AUTH_ENABLED:
+        return None
+    if is_authenticated():
+        return None
+    path = request.path
+    if path in AUTH_PUBLIC_PATHS or path.startswith(AUTH_PUBLIC_PREFIXES):
+        return None
+    if path.startswith("/api/"):
+        return jsonify({"error": "authentication required"}), 401
+    return jsonify({"error": "authentication required"}), 401
+
+
 # ── CSRF Protection (D7.16) ──
 import secrets
 
@@ -414,6 +438,9 @@ def _validate_csrf():
     if not config.AUTH_ENABLED:
         return True
     if request.method in ("GET", "HEAD", "OPTIONS"):
+        return True
+    # Login/logout are public pre-auth endpoints; they are session/password gated.
+    if request.path in ("/api/auth/login", "/api/auth/logout"):
         return True
     token = request.headers.get("X-CSRF-Token") or request.form.get("_csrf_token")
     expected = session.get("_csrf_token")
@@ -1757,6 +1784,55 @@ _conversion_cache = {}
 _conversion_cache_lock = threading.Lock()
 _conversion_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
+# ── DJVU → PDF conversion (P8.6) ──
+DJVU_EXTS = {".djvu"}
+_djvu_cache = {}
+_djvu_cache_lock = threading.Lock()
+_djvu_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+def _convert_djvu_to_pdf(filepath):
+    """Convert a DJVU file to PDF using djvulibre `ddjvu`, falling back to
+    calibre `ebook-convert`. Returns the temp PDF path or None."""
+    if not os.path.isfile(filepath):
+        return None
+    # 1) djvulibre (native, lossless)
+    exe = shutil.which("ddjvu")
+    if exe:
+        fd, outpath = tempfile.mkstemp(suffix=".pdf")
+        os.close(fd)
+        try:
+            subprocess.run([exe, "-format=pdf", filepath, outpath], capture_output=True, timeout=180, check=True)
+            if os.path.isfile(outpath) and os.path.getsize(outpath) > 0:
+                return outpath
+        except Exception:
+            try: os.unlink(outpath)
+            except Exception: pass
+    # 2) calibre fallback
+    exe2 = shutil.which("ebook-convert")
+    if exe2:
+        fd, outpath = tempfile.mkstemp(suffix=".pdf")
+        os.close(fd)
+        try:
+            subprocess.run([exe2, filepath, outpath], capture_output=True, timeout=180, check=True)
+            if os.path.isfile(outpath) and os.path.getsize(outpath) > 0:
+                return outpath
+        except Exception:
+            try: os.unlink(outpath)
+            except Exception: pass
+    return None
+
+@app.route("/api/djvu-status/<int:book_id>")
+def api_djvu_status(book_id):
+    with _djvu_cache_lock:
+        entry = _djvu_cache.get(book_id)
+    if not entry:
+        return jsonify({"status": "not_found"}), 404
+    if entry.get("path"):
+        return jsonify({"status": "done"})
+    if entry.get("error"):
+        return jsonify({"status": "error", "error": entry["error"]})
+    return jsonify({"status": "converting"})
+
 @app.route("/api/conversion-status/<int:book_id>")
 def api_conversion_status(book_id):
     with _conversion_cache_lock:
@@ -1805,6 +1881,34 @@ def api_book_read(book_id):
             if result is not None:
                 return jsonify({"format": ext, "total": len(result), "book_id": book_id})
             return jsonify({"status": "extracting", "book_id": book_id}), 202
+        elif ext in DJVU_EXTS:
+            with _djvu_cache_lock:
+                cached = _djvu_cache.get(book_id)
+            if cached and cached.get("path"):
+                return send_file(cached["path"], mimetype="application/pdf")
+            if cached and cached.get("error"):
+                return jsonify({"error": cached["error"]}), 500
+            if cached and cached.get("future"):
+                future = cached["future"]
+                if future.done():
+                    try:
+                        result = future.result()
+                        with _djvu_cache_lock:
+                            if result:
+                                _djvu_cache[book_id] = {"path": result, "future": None, "error": None}
+                                return send_file(result, mimetype="application/pdf")
+                            else:
+                                _djvu_cache[book_id] = {"path": None, "future": None, "error": "conversion failed"}
+                                return jsonify({"error": "DJVU conversion failed"}), 500
+                    except Exception as exc:
+                        with _djvu_cache_lock:
+                            _djvu_cache[book_id] = {"path": None, "future": None, "error": str(exc)}
+                        return jsonify({"error": str(exc)}), 500
+            if not cached:
+                future = _djvu_executor.submit(_convert_djvu_to_pdf, filepath)
+                with _djvu_cache_lock:
+                    _djvu_cache[book_id] = {"future": future, "path": None, "error": None}
+            return jsonify({"status": "converting", "book_id": book_id}), 202
         elif ext in CONVERT_EXTS:
             with _conversion_cache_lock:
                 entry = _conversion_cache.get(book_id)
@@ -1905,32 +2009,68 @@ def api_reader_state(book_id):
         conn.close()
 
 
+def _coerce_tags(raw):
+    """Normalize the tags column (JSON string, list, or comma text) to a list."""
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return [str(t) for t in raw]
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, list) else [str(raw)]
+        except Exception:
+            return [t.strip() for t in raw.split(",") if t.strip()]
+    return [str(raw)]
+
+
 @app.route("/api/book/<int:book_id>/annotations", methods=["GET", "POST"])
 def api_annotations(book_id):
     conn = get_connection(DB_PATH)
     try:
         if request.method == "POST":
             data = request.json or {}
-            ann_id = add_annotation(conn, book_id,
-                                    ann_type=data.get("type", "highlight"),
-                                    cfi_range=data.get("cfi_range", ""),
-                                    text=data.get("text", ""),
-                                    note=data.get("note"),
-                                    color=data.get("color", "#fef08a"),
-                                    page=data.get("page"),
-                                    bbox=data.get("bbox"))
+            ann_id, zid = add_annotation(conn, book_id,
+                                         ann_type=data.get("type", "highlight"),
+                                         cfi_range=data.get("cfi_range", ""),
+                                         text=data.get("text", ""),
+                                         note=data.get("note"),
+                                         color=data.get("color", "#fef08a"),
+                                         page=data.get("page"),
+                                         bbox=data.get("bbox"),
+                                         title=data.get("title"),
+                                         tags=data.get("tags"))
             conn.commit()
-            return jsonify({"id": ann_id, "status": "created"})
+            return jsonify({"id": ann_id, "zid": zid, "status": "created"})
         anns = get_annotations(conn, book_id)
+        # P8.2: attach backlinks (other notes referencing this note's Z-ID)
+        for a in anns:
+            a["tags"] = _coerce_tags(a.get("tags"))
+            if a.get("type") == "note":
+                a["backlinks"] = get_annotation_backlinks(conn, a["id"])
+            else:
+                a["backlinks"] = []
         return jsonify(anns)
     finally:
         conn.close()
 
 
-@app.route("/api/book/<int:book_id>/annotations/<int:ann_id>", methods=["DELETE"])
-def api_annotation_delete(book_id, ann_id):
+@app.route("/api/book/<int:book_id>/annotations/<int:ann_id>", methods=["PATCH", "DELETE"])
+def api_annotation_update(book_id, ann_id):
     conn = get_connection(DB_PATH)
     try:
+        if request.method == "PATCH":
+            data = request.json or {}
+            n = update_annotation(conn, ann_id,
+                                  title=data.get("title"),
+                                  note=data.get("note"),
+                                  tags=data.get("tags"),
+                                  text=data.get("text"),
+                                  color=data.get("color"))
+            conn.commit()
+            if n == 0:
+                return jsonify({"status": "not_found"}), 404
+            return jsonify({"status": "updated"})
         delete_annotation(conn, ann_id)
         conn.commit()
         return jsonify({"status": "deleted"})

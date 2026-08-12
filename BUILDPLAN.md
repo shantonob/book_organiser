@@ -1591,4 +1591,72 @@ Today the only search is internal FTS (`/api/search` → `db.search_books`); no 
 
 ---
 
+## Phase 8 — Reader UX Overhaul (Backlog)
+
+_Focused in-browser ebook reader: fix completion counter, Zettelkasten notes, collapsible sidebars, minimal fullscreen toolbar, pinch zoom, and graceful handling of every catalogued format._
+
+### P8.1 — Fix Reading Completion Counter
+
+The status bar (`#readerLocation` + `#readerProgressFill`) stays stuck near 0% for EPUB.
+
+**Root cause:** EPUBs open in scrolled-doc flow by default (`_readerScrollMode = true`). Progress is only updated from the `relocated` event (index.html:3030), which epub.js does not fire reliably while scrolling in scrolled-doc mode, and `currentLocation().percentage` is unreliable there. The reading-list progress bar (`progress_pct` from `reader_state`) also only refreshes on open/close/tab-switch.
+
+**Changes:**
+- `_trackEpubProgress()`: paginated → `currentLocation().start.percentage * 100`; scrolled-doc → spine-based (current section index + iframe `scrollTop/scrollHeight` ratio blended over spine length).
+- Wire to `relocated` + a throttled scroll listener on the epub iframe's `contentDocument` + a ~4s interval fallback while reading.
+- Update `#readerLocation`/`#readerProgressFill`, then save via the existing debounced `saveReaderState()`.
+- Live-refresh the active reading-list item's progress bar (throttled `loadReadingList()` ~8s or in-place DOM update).
+- `closeReader()` reads a stored `_lastProgress` variable instead of parsing the label text (index.html:3478).
+- Remove dead `loadAnnotations()` (references nonexistent `#annotationsList`, index.html:3852).
+- Also save `progress_pct` for PDF (page/numPages) and reset poller state on reader close/tab-switch.
+
+**Status**: ✅ Done
+
+### P8.2 — Zettelkasten Notes (In-Reader Lightweight)
+
+Every standalone note gets a stable Z-ID, a title, optional tags, and `[[Z-ID]]` backlinks to other notes.
+
+- **DB (`db.py`)**: `ALTER TABLE annotations ADD COLUMN zid/title/tags/updated_at`; migration + backfill `zid = 'BK{book_id}-N{id}'` for existing notes; index on `zid`; `add_annotation()` returns `(id, zid)`; new `update_annotation()`; `get_annotation_backlinks()`; markdown export includes Z-IDs + tags.
+- **API (`app.py`/`db.py`)**: POST `/annotations` accepts `title`/`tags`/body and auto-assigns zid; new `PATCH /api/book/<id>/annotations/<ann_id>` for editing; GET `/annotations` returns `zid`, `title`, `tags` (coerced to list), and computed `backlinks`; `export_annotations_markdown()` includes Z-IDs and a backlinks section.
+- **UI (`templates/index.html`)**: annotations sidebar split into **Notes / Highlights / Bookmarks** tabs + a search filter. Note composer = title + tags + multi-line body with `[[` autocomplete (this book's Z-IDs) and a rendered **Backlinks** list per note; notes are editable (✎). Existing highlight flow unchanged.
+
+**Status**: ✅ Done
+
+### P8.3 — Collapsible Sidebars with On-Screen Toggle Buttons
+
+Persistent small chevron buttons floating on the inner edge of each sidebar (left: reading list/contents, right: annotations) — work in normal, fullscreen, and mobile-stacked layouts; ~28px touch target; collapse animates width to 0; collapsed state persisted in `localStorage` (`reader.collapse.left/right`). Fullscreen edge hot-zones stay as a bonus.
+
+**Status**: ✅ Done — `#collapseLeftBtn`/`#collapseRightBtn` are absolutely positioned on the inner edges of `#readingListPanel`/`#annotationsSidebar`. Non-fullscreen toggles a `.sb-left-closed`/`.sb-right-closed` class on `#readerLayout` (width→0 animation, flex-gap cancelled via negative margin) and persists to `localStorage`; in fullscreen the buttons delegate to the existing pin toggle (`toggleFsPane`); hidden on narrow screens. `applyCollapseState()` runs on boot, each reader open, and reader close.
+
+### P8.4 — Minimal Fullscreen Toolbar
+
+When `.reader-layout:fullscreen`, the toolbar auto-hides: `translateY(-100%)` after ~2s idle, reappears on mouse-move near the top or a tap on the top strip. Slim always-visible strip = close, title, prev/next, progress, exit-fullscreen. `#readerArea` height recalcs when the toolbar is hidden.
+
+### P8.5 — Pinch Zoom + Page-Turn Controls
+
+- Add touch pinch-to-zoom on `#readerArea` (two-pointer distance ratio → `_readerZoom`, clamp 30–300%) driving the existing `_applyReaderZoom()` (canvas scale for PDF/comic, font-size for EPUB).
+- Keep mouse Ctrl/Shift+wheel zoom and the toolbar Prev/Next buttons + keyboard shortcuts.
+- No tap-to-turn zones (decision: avoid conflicts with selection/drawing).
+
+### P8.6 — DJVU & Graceful Format Handling
+
+DJVU is in `EBOOK_EXTS` but shows "Cannot preview". Make every catalogued format render or degrade gracefully.
+
+- **djvu.js (client-side)** canvas renderer mirroring the comic reader (per-page canvas, zoom, drawing overlay, bbox highlights); add `.djvu` branch to `/api/book/<id>/read` serving raw bytes. Best-effort decode; on failure show the existing Retry + Download error.
+- Ensure **calibre** is enabled in the Docker build (`WITH_CALIBRE=1`, already supported in Dockerfile) as a conversion fallback (djvu→pdf and others).
+- Polish: replace native `prompt()` in `addBookmark()`/`addPageNote()` with the styled modal (consistent with D7.32); consistent "Page X · Y%" location label across formats.
+
+### P8.7 — Whole-App Authentication Gate
+
+Today only admin tabs (Pipeline / Quarantine / Settings) require login; Library, Gallery, the Reader, and all `/api/book/*`, `/covers`, `/download`, `/api/books` endpoints are open. Put the entire app behind the existing shared-password login (scaffold for P7.1 real per-user auth).
+
+**Changes:**
+- **Backend (`app.py`)**: enforce auth on all non-auth endpoints — a `before_request` hook that requires a valid session for every route except `/login`, `/api/auth/*`, `/api/csrf-token`, `/api/health`, `/static/*` (and the login page assets). Return `401` (JSON for `/api/*`, redirect or login screen for page routes).
+- **Frontend (`templates/index.html`)**: treat every tab as auth-gated — `checkAuth()` on boot; if unauthenticated, show the login modal and block the whole UI (not just admin tabs); remove the "Login"/"Logout" tab-button split in favour of a global session state; handle 401 on any fetch by re-showing login.
+- **Covers/downloads**: `/covers`, `/download`, and reader endpoints covered by the same gate so nothing leaks without a session.
+- **Public endpoints kept**: `/api/health` (uptime checks) and the login flow itself.
+- **Backwards compatible**: disabled by default when `BOOK_AUTH_PASSWORD` is unset (matches current behaviour); enabling it is one env var.
+
+---
+
 *Status legend: 🔜 Planned · 🚧 WIP · ✅ Done*

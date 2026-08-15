@@ -73,6 +73,8 @@ from db import (
     get_reader_state,
     get_reading_list,
     get_recent_books,
+    get_series_facets,
+    get_saved_searches,
     get_summary,
     get_survivors,
     get_tags,
@@ -958,7 +960,15 @@ def api_book_update(book_id):
             fields["udc_code"] = udc_code
             from classifier import UDC_LABELS
             fields["udc_label"] = UDC_LABELS.get(udc_code, "")
-        if not fields and not data.get("add_tags"):
+        series_fields = {}
+        if any(k in data for k in ("series", "series_num", "volume", "issue")):
+            series_fields = {
+                "series": data.get("series"),
+                "series_num": data.get("series_num"),
+                "volume": data.get("volume"),
+                "issue": data.get("issue"),
+            }
+        if not fields and not data.get("add_tags") and not series_fields:
             return jsonify({"error": "no fields to update"}), 400
         from datetime import datetime
 
@@ -968,6 +978,17 @@ def api_book_update(book_id):
                             enriched_at=datetime.utcnow().isoformat(), **fields)
             if udc_code:
                 set_tags(conn, book_id, [{"tag": udc_code, "tag_label": fields.get("udc_label", "")}], tag_type="udc")
+        if series_fields:
+            from db import update_metadata_series
+            # Merge so omitted keys keep their current value (edit form sends all four).
+            cur = dict(book)
+            update_metadata_series(
+                conn, book_id,
+                series_fields["series"] if series_fields["series"] is not None else cur.get("series"),
+                series_fields["series_num"] if series_fields["series_num"] is not None else cur.get("series_num"),
+                series_fields["volume"] if series_fields["volume"] is not None else cur.get("volume"),
+                series_fields["issue"] if series_fields["issue"] is not None else cur.get("issue"),
+            )
         add_tags = data.get("add_tags")
         if add_tags:
             for tag in add_tags:
@@ -2381,6 +2402,7 @@ def api_search():
     if max_size is not None:
         max_size = int(max_size)
     source = request.args.get("source") or None
+    series = request.args.get("series") or None
     masters_only = request.args.get("masters_only", type=int) == 1
     untagged = request.args.get("untagged", type=int) == 1
     duplicate_only = request.args.get("duplicate_only", type=int) == 1
@@ -2398,7 +2420,7 @@ def api_search():
                                        masters_only=masters_only, source=source, limit=limit, offset=offset,
                                        sort=sort, order=order,
                                        untagged=untagged, duplicate_only=duplicate_only,
-                                       archive_only=archive_only,
+                                       archive_only=archive_only, series=series,
                                        archive_dir=getattr(config, "ARCHIVE_DIR", None))
         return jsonify({"results": results, "total": total, "query": q})
     finally:
@@ -2412,6 +2434,56 @@ def api_rebuild_fts():
         count = rebuild_fts(conn)
         conn.commit()
         return jsonify({"status": "ok", "indexed": count})
+    finally:
+        conn.close()
+
+
+# ── BL-006: series facets + saved searches ─────────────────────
+
+@app.route("/api/search/series")
+def api_search_series():
+    q = request.args.get("q") or None
+    conn = get_connection(DB_PATH)
+    try:
+        return jsonify({"series": get_series_facets(conn, q=q)})
+    finally:
+        conn.close()
+
+
+@app.route("/api/saved-searches")
+def api_saved_searches():
+    conn = get_connection(DB_PATH)
+    try:
+        return jsonify({"results": [dict(r) for r in get_saved_searches(conn)]})
+    finally:
+        conn.close()
+
+
+@app.route("/api/saved-searches", methods=["POST"])
+def api_saved_searches_create():
+    from db import add_saved_search
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    payload = data.get("payload")
+    if not name or not isinstance(payload, str):
+        return jsonify({"error": "name and payload required"}), 400
+    conn = get_connection(DB_PATH)
+    try:
+        sid = add_saved_search(conn, name, payload)
+        conn.commit()
+        return jsonify({"status": "ok", "id": sid})
+    finally:
+        conn.close()
+
+
+@app.route("/api/saved-searches/<int:search_id>", methods=["DELETE"])
+def api_saved_searches_delete(search_id):
+    from db import delete_saved_search
+    conn = get_connection(DB_PATH)
+    try:
+        delete_saved_search(conn, search_id)
+        conn.commit()
+        return jsonify({"status": "ok", "deleted": search_id})
     finally:
         conn.close()
 

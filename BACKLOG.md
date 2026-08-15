@@ -291,8 +291,26 @@ with 0 pages and no error, silently.
 ## BL-006 — Series / volume / issue fields + collections + saved searches
 
 - **Priority:** High
-- **Status:** open
+- **Status:** closed
 - **Reported:** 2026-08-13
+- **Closed:** 2026-08-15
+
+### Done
+
+- `metadata.series / series_num / volume / issue` columns added via the existing
+  ad-hoc ALTER TABLE migration pattern (db.py:122).
+- `enrich_filename.py` now returns `series`, `series_num`, `volume`, `issue`
+  (BL-006 block, enrich_filename.py:268); digits-only "series" names (ISBNs /
+  catalogue ids) are discarded.
+- `pipeline.py` persists all series fields into `metadata`.
+- `db.py`: reading-order sort (`series`, then `series_num`, `volume`, `issue`),
+  `series` search filter + `/api/search/series` facet endpoint, series facets in
+  results, `update_metadata_series` helper.
+- `saved_searches` table + GET/POST/DELETE endpoints (app.py:2453-2488);
+  `tools/backfill_series.py` backfilled 93 + 8 existing books from filenames
+  (UUID-named, digit-only, and z-lib-spam filenames skipped).
+- Library UI: series facet/filter, series sort, series badges, editable series
+  fields in the detail panel, saved-searches list in the sidebar.
 
 ### Symptom
 

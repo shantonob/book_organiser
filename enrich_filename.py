@@ -171,6 +171,48 @@ def _spacy_author_hint(text):
     return None
 
 
+def _parse_series(base):
+    """Extract (series, series_num, volume, issue) from a filename string.
+
+    Recognises markers: #N, No. N, Issue N, Vol(ume) N, Book N, Part N, and a
+    dashed "X - NN - rest" pattern. The series name is the text before the
+    numeric marker (e.g. "Batman" in "Batman (2016) #024").
+    """
+    vol = issue = num = series = None
+
+    m = re.search(r"\bVol(?:ume)?\.?\s*\.?([0-9]+)", base, re.IGNORECASE)
+    if m:
+        vol = m.group(1)
+    m = re.search(r"\bIssue\s*\.?([0-9]+)", base, re.IGNORECASE)
+    if m:
+        issue = m.group(1)
+
+    mc = re.search(r"(?:#|No\.?)\s*\.?([0-9]+)", base, re.IGNORECASE)
+    mb = re.search(r"\bBook\s*([0-9IVX]+)", base, re.IGNORECASE)
+    mp = re.search(r"\bPart\s*([0-9IVX]+)", base, re.IGNORECASE)
+    md = re.search(r"[-–—]\s*([0-9]+)\s*[-–—]", base)
+    num = (mc or mb or mp or md).group(1) if (mc or mb or mp or md) else None
+
+    if issue is None and mc and not mb and not mp and not re.search(r"\bVol\b", base, re.IGNORECASE):
+        # A bare "#24" in a comic stem is an issue number.
+        issue = num
+
+    pre = None
+    if num is not None:
+        pre = re.sub(r"[-–—]\s*[0-9]+\s*[-–—].*$", "", base, flags=re.IGNORECASE)
+        pre = re.sub(r"(?:#|No\.?|Issue)\s*\.?[0-9]+.*$", "", pre, flags=re.IGNORECASE)
+        pre = re.sub(r"\b(Book|Part)\s*([0-9IVX]+).*$", "", pre, flags=re.IGNORECASE)
+        pre = re.sub(r"\bVol(?:ume)?\.?\s*\.?[0-9]+.*$", "", pre, flags=re.IGNORECASE)
+    elif vol is not None:
+        pre = re.sub(r"\bVol(?:ume)?\.?\s*\.?[0-9]+.*$", "", base, flags=re.IGNORECASE)
+    if pre is not None:
+        pre = re.sub(r"\(\s*\d{4}\s*\)", "", pre).strip(" -–—()_.\t,")
+        if pre:
+            series = pre
+
+    return series, num, vol, issue
+
+
 def _strip_trailing_year(cleaned):
     """Remove a trailing year (YYYY) from the filename string."""
     parts = re.split(r"\s+[-–—]\s+(?=\d{4}$)", cleaned)
@@ -185,13 +227,14 @@ def _strip_trailing_year(cleaned):
 def enrich_from_filename(fname):
     """Parse author, title, year, series from a cleaned filename string.
 
-    Returns a dict with any of: title, author, year, series_name, series_num.
-    Only populated when confidently extracted.
+    Returns a dict with any of: title, author, year, series, series_num,
+    volume, issue. Only populated when confidently extracted.
     """
     result = {}
 
     # Strip extension, clean
     base = os.path.splitext(fname)[0]
+    orig_base = base
     year_match = YEAR.search(base)
     if year_match:
         result["year"] = int(year_match.group(0))
@@ -221,5 +264,19 @@ def enrich_from_filename(fname):
 
     if series_num:
         result["series_num"] = series_num
+
+    # BL-006: richer series parse on the original filename string
+    s_name, s_num, s_vol, s_issue = _parse_series(orig_base)
+    if s_name and not re.search(r"[A-Za-z]", s_name):
+        # digits-only "series" is an ISBN/catalogue id, not a real series
+        s_name = s_num = s_vol = s_issue = None
+    if s_name and not result.get("series"):
+        result["series"] = s_name
+    if s_num and not result.get("series_num"):
+        result["series_num"] = s_num
+    if s_vol:
+        result["volume"] = s_vol
+    if s_issue:
+        result["issue"] = s_issue
 
     return result

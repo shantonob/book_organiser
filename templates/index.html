@@ -527,6 +527,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         <option value="file_size:DESC">Size (largest)</option>
         <option value="file_size:ASC">Size (smallest)</option>
         <option value="format:ASC">Format</option>
+        <option value="series:ASC">Series (reading order)</option>
       </select>
       <button id="viewToggleBtn" onclick="toggleLibraryView()" title="Toggle table / cover view" style="padding:4px 10px;font-size:0.85rem;background:#334155;border:none;border-radius:4px;color:#e2e8f0;cursor:pointer">&#x25A6; Covers</button>
       <span id="libTotal" style="color:#64748b;font-size:0.75rem;align-self:center"></span>
@@ -583,6 +584,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <input type="text" id="libTagFilter" placeholder="tag name" oninput="loadLibrary()" style="width:100px;padding:4px 6px;font-size:0.78rem">
         </div>
         <div>
+          <label style="font-size:0.7rem;color:#64748b">Series</label>
+          <input type="text" id="libSeriesFilter" list="seriesList" placeholder="series name" oninput="loadLibrary()" style="width:120px;padding:4px 6px;font-size:0.78rem">
+          <datalist id="seriesList"></datalist>
+        </div>
+        <div>
           <label style="font-size:0.7rem;color:#64748b">Year Min</label>
           <input type="number" id="libYearMin" placeholder="e.g. 1900" oninput="loadLibrary()" style="width:70px;padding:4px 6px;font-size:0.78rem">
         </div>
@@ -608,12 +614,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         FTS syntax: <code style="background:#1a2332;padding:1px 5px;border-radius:3px">term</code> <code style="background:#1a2332;padding:1px 5px;border-radius:3px">term1 AND term2</code> <code style="background:#1a2332;padding:1px 5px;border-radius:3px">term OR term</code> <code style="background:#1a2332;padding:1px 5px;border-radius:3px">"exact phrase"</code> <code style="background:#1a2332;padding:1px 5px;border-radius:3px">-exclude</code>
         <button onclick="rebuildFTS()" style="margin-left:12px;padding:3px 10px;font-size:0.7rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">Rebuild FTS index</button>
       </div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:8px;border-top:1px solid #1e293b;padding-top:8px">
+        <input type="text" id="savedSearchName" placeholder="saved search name" style="width:160px;padding:4px 6px;font-size:0.78rem;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px">
+        <button onclick="saveCurrentSearch()" style="padding:4px 10px;font-size:0.72rem;background:#0ea5e9;border:none;border-radius:3px;color:#0f172a;cursor:pointer;font-weight:600">+ Save Search</button>
+        <span id="savedSearchInfo" style="color:#64748b;font-size:0.72rem"></span>
+      </div>
     </div>
 
     <div class="library-row">
       <div id="udcTreePanel" class="panel library-panel" style="width:200px;flex-shrink:0;font-size:0.75rem">
         <h2 style="margin-bottom:6px">Tag Tree</h2>
         <div id="udcTree"></div>
+        <div id="savedSearchPanel" style="margin-top:12px;border-top:1px solid #1e293b;padding-top:8px">
+          <h2 style="margin-bottom:4px">Saved Searches</h2>
+          <div id="savedSearchList" style="font-size:0.75rem"></div>
+        </div>
       </div>
       <div class="panel library-panel" style="flex:1;min-width:0;display:flex;flex-direction:column;max-height:calc(100vh - 210px)">
         <div style="flex-shrink:0">
@@ -2343,11 +2358,13 @@ function loadLibrary(filters) {
     filters = filters || {};
   }
   if (!filters.skipTree) renderUdcTree();
+  loadSeriesFacets();
   const q = document.getElementById("libSearch").value.trim();
   const stage = filters.stage || document.getElementById("libStageFilter").value;
   const udc = filters.udc || document.getElementById("libUdcFilter").value;
   const fmt = filters.format || document.getElementById("libFormatFilter").value;
   const tag = document.getElementById("libTagFilter").value.trim();
+  const series = document.getElementById("libSeriesFilter").value.trim();
   const yearMin = document.getElementById("libYearMin").value;
   const yearMax = document.getElementById("libYearMax").value;
   const minSize = document.getElementById("libMinSize").value;
@@ -2366,6 +2383,7 @@ function loadLibrary(filters) {
   if (udc) url += "&udc=" + udc;
   if (fmt) url += "&format=" + fmt;
   if (tag) url += "&tag=" + encodeURIComponent(tag);
+  if (series) url += "&series=" + encodeURIComponent(series);
   if (yearMin) url += "&year_min=" + yearMin;
   if (yearMax) url += "&year_max=" + yearMax;
   if (minSize) url += "&min_size=" + (parseFloat(minSize) * 1024 * 1024);
@@ -2452,11 +2470,125 @@ function renderLibraryGrid(books) {
       + '<img src="' + coverUrl + '" alt="' + esc(b.title || '') + '" loading="lazy"'
       + ' onerror="this.outerHTML=\'<div class=cover-missing>' + (b.format||'?').replace('.','').toUpperCase() + '</div>\'">'
       + '<div class="info">'
-      + '<div class="gt" title="' + esc(b.title || '') + '">' + esc(b.title || b.filename || '?') + '</div>'
+      + '<div class="gt" title="' + esc(b.title || '') + '">' + esc(b.title || b.filename || '?') + seriesBadge(b) + '</div>'
       + '<div class="ga">' + esc(b.authors || '') + '</div>'
       + '<div class="gmeta">' + meta.join(' · ') + ' <span class="tag ' + stageClass + '" style="font-size:0.6rem;padding:1px 5px">' + esc(b.stage || '') + '</span></div>'
       + '</div></div>';
   }).join("");
+}
+
+function seriesBadge(b) {
+  if (!b.series) return "";
+  var num = b.issue ? " #" + esc(b.issue) : (b.volume ? " Vol. " + esc(b.volume) : (b.series_num ? " #" + esc(b.series_num) : ""));
+  var s = esc(b.series);
+  return ' <span class="badge badge-blue"><a href="#" onclick="event.stopPropagation();filterBySeries(' + JSON.stringify(b.series) + ');return false" title="Filter by series">' + s + num + '</a></span>';
+}
+
+function filterBySeries(name) {
+  document.getElementById("libSeriesFilter").value = name;
+  loadLibrary();
+}
+
+var _seriesFacetTimer = null;
+function loadSeriesFacets() {
+  if (_seriesFacetTimer) clearTimeout(_seriesFacetTimer);
+  _seriesFacetTimer = setTimeout(function() {
+    fetch(API + "/api/search/series").then(function(r) { return r.json(); }).then(function(d) {
+      var dl = document.getElementById("seriesList");
+      if (!dl) return;
+      dl.innerHTML = (d.series || []).map(function(s) {
+        return '<option value="' + esc(s.series) + '">' + esc(s.series) + ' (' + s.count + ')</option>';
+      }).join("");
+    }).catch(function(_e) {});
+  }, 400);
+}
+
+// ── Saved (virtual-library) searches (BL-006) ──
+function currentSearchPayload() {
+  return {
+    q: document.getElementById("libSearch").value,
+    stage: document.getElementById("libStageFilter").value,
+    udc: document.getElementById("libUdcFilter").value,
+    format: document.getElementById("libFormatFilter").value,
+    tag: document.getElementById("libTagFilter").value,
+    series: document.getElementById("libSeriesFilter").value,
+    yearMin: document.getElementById("libYearMin").value,
+    yearMax: document.getElementById("libYearMax").value,
+    minSize: document.getElementById("libMinSize").value,
+    maxSize: document.getElementById("libMaxSize").value,
+    masterOnly: document.getElementById("libMasterOnly").checked,
+    source: document.getElementById("libSourceFilter").value,
+    sort: document.getElementById("libSort").value
+  };
+}
+
+function saveCurrentSearch() {
+  var name = (document.getElementById("savedSearchName").value || "").trim();
+  if (!name) { document.getElementById("savedSearchInfo").textContent = "Enter a name first"; return; }
+  var payload = JSON.stringify(currentSearchPayload());
+  fetch(API + "/api/saved-searches", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({name: name, payload: payload})
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    document.getElementById("savedSearchInfo").textContent = "Saved: " + name;
+    document.getElementById("savedSearchName").value = "";
+    loadSavedSearches();
+  }).catch(function(_e) {});
+}
+
+function applySearchPayload(p) {
+  var map = {
+    q: "libSearch", stage: "libStageFilter", udc: "libUdcFilter", format: "libFormatFilter",
+    tag: "libTagFilter", series: "libSeriesFilter", yearMin: "libYearMin", yearMax: "libYearMax",
+    minSize: "libMinSize", maxSize: "libMaxSize", source: "libSourceFilter", sort: "libSort"
+  };
+  var advanced = false;
+  Object.keys(map).forEach(function(k) {
+    var el = document.getElementById(map[k]);
+    if (!el) return;
+    var v = p[k] != null ? String(p[k]) : "";
+    el.value = v;
+    if (k !== "q" && k !== "sort" && v) advanced = true;
+  });
+  var mo = document.getElementById("libMasterOnly");
+  if (mo) mo.checked = !!(p.masterOnly);
+  if (advanced) {
+    var av = document.getElementById("advancedSearch");
+    if (av) av.style.display = "block";
+  }
+}
+
+function runSavedSearch(id) {
+  fetch(API + "/api/saved-searches").then(function(r) { return r.json(); }).then(function(d) {
+    var item = (d.results || []).find(function(s) { return s.id === id; });
+    if (!item) return;
+    try { applySearchPayload(JSON.parse(item.payload)); } catch (_e) {}
+    loadLibrary();
+  }).catch(function(_e) {});
+}
+
+function deleteSavedSearch(id) {
+  showConfirm("Delete this saved search?").then(function(ok) {
+    if (!ok) return;
+    fetch(API + "/api/saved-searches/" + id, {method: "DELETE"})
+      .then(function(r) { return r.json(); }).then(function() { loadSavedSearches(); })
+      .catch(function(_e) {});
+  });
+}
+
+function loadSavedSearches() {
+  fetch(API + "/api/saved-searches").then(function(r) { return r.json(); }).then(function(d) {
+    var list = document.getElementById("savedSearchList");
+    if (!list) return;
+    var items = d.results || [];
+    if (!items.length) { list.innerHTML = '<div style="color:#64748b;font-size:0.72rem">None saved</div>'; return; }
+    list.innerHTML = items.map(function(s) {
+      return '<div style="display:flex;align-items:center;gap:4px;margin:2px 0">'
+        + '<a href="#" onclick="runSavedSearch(' + s.id + ');return false" style="color:#a5b4fc;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="Run this search">' + esc(s.name) + '</a>'
+        + '<button onclick="deleteSavedSearch(' + s.id + ')" title="Delete" style="padding:0 4px;font-size:0.65rem;background:none;border:none;color:#ef4444;cursor:pointer">\u2716</button>'
+        + '</div>';
+    }).join("");
+  }).catch(function(_e) {});
 }
 
 function renderLibrary(books) {
@@ -2476,7 +2608,7 @@ function renderLibrary(books) {
     + `<td onclick="showDetail(${b.id})">${coverImg}</td>`
     + `<td onclick="showDetail(${b.id})">${b.id}</td>`
     + `<td onclick="showDetail(${b.id})" style="font-size:0.65rem;color:#64748b;font-family:monospace">${esc(b.uuid || "")}</td>`
-    + `<td onclick="showDetail(${b.id})">${esc(b.title || b.filename || "?")}${b.enrich_source ? ' <span class="source-badge source-' + b.enrich_source + '">' + b.enrich_source + '</span>' : ""}</td>`
+    + `<td onclick="showDetail(${b.id})">${esc(b.title || b.filename || "?")}${seriesBadge(b)}${b.enrich_source ? ' <span class="source-badge source-' + b.enrich_source + '">' + b.enrich_source + '</span>' : ""}</td>`
     + `<td onclick="showDetail(${b.id})">${esc(b.authors || "\u2014")}</td>`
     + `<td onclick="showDetail(${b.id})"><span class="badge badge-purple">${esc(b.udc_code || "\u2014")} ${b.udc_label ? esc(b.udc_label) : ""}</span></td>`
     + `<td onclick="showDetail(${b.id})">${esc(b.format || "")}</td>`
@@ -2587,6 +2719,10 @@ function showDetail(bookId) {
       html += `<span class="dl">UUID</span><span class="dd" style="font-family:monospace;font-size:0.7rem">${esc(b.uuid || "\u2014")}</span>`;
       html += `<span class="dl">Title</span><span class="dd" id="dv_title">${esc(b.title || "\u2014")}</span>`;
       html += `<span class="dl">Author</span><span class="dd" id="dv_author">${esc(b.authors || "\u2014")}</span>`;
+      html += `<span class="dl">Series</span><span class="dd" id="dv_series">${b.series ? seriesBadge(b) : "\u2014"}</span>`;
+      html += `<span class="dl">Series #</span><span class="dd" id="dv_series_num">${esc(b.series_num || "\u2014")}</span>`;
+      html += `<span class="dl">Volume</span><span class="dd" id="dv_volume">${esc(b.volume || "\u2014")}</span>`;
+      html += `<span class="dl">Issue</span><span class="dd" id="dv_issue">${esc(b.issue || "\u2014")}</span>`;
       html += `<span class="dl">Year</span><span class="dd" id="dv_year">${b.year || "\u2014"}</span>`;
       html += `<span class="dl">UDC</span><span class="dd">${esc(b.udc_code || "\u2014")} ${b.udc_label ? "- " + esc(b.udc_label) : ""}</span>`;
       html += `<span class="dl">Format</span><span class="dd">${b.format || "\u2014"}</span>`;
@@ -4913,7 +5049,7 @@ function removeTag(bookId, tag) {
 // ── Manual metadata edit ──
 function editBook(bookId) {
   const grid = document.getElementById("detailGrid");
-  const fields = ["title","author","publisher","isbn","language","pages","year","description"];
+  const fields = ["title","author","publisher","isbn","language","pages","year","description","series","series_num","volume","issue"];
   fields.forEach(f => {
     const el = document.getElementById("dv_" + f);
     if (!el) return;
@@ -4945,10 +5081,10 @@ function editBook(bookId) {
 
 function saveBook(bookId) {
   const payload = {};
-  const fields = ["title","author","publisher","isbn","language","pages","year","description"];
+  const fields = ["title","author","publisher","isbn","language","pages","year","description","series","series_num","volume","issue"];
   fields.forEach(f => {
     const el = document.getElementById("inp_" + f);
-    if (el) payload[f] = el.value.trim() || null;
+    if (el) payload[f === "author" ? "authors" : f] = el.value.trim() || null;
   });
   const udcEl = document.getElementById("inp_udc_code");
   if (udcEl && udcEl.value) payload.udc_code = udcEl.value;
@@ -5081,6 +5217,8 @@ document.getElementById("statusLabel").textContent = "idle";
 // Fetch CSRF token (D7.16)
 fetch(API + "/api/csrf-token").then(function(r) { return r.json(); }).then(function(d) { _csrfToken = d.csrf_token; }).catch(function() {});
 loadLibrary({skipTree: true});
+  loadSeriesFacets();
+  loadSavedSearches();
 loadSummary();
 loadSources();
 loadConfig();

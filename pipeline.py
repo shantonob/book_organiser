@@ -344,6 +344,10 @@ def run_phase_metadata(source=None, inbox_files=None):
                         year=year,
                         description=raw_meta.get("description"),
                         subjects=subjects,
+                        series=raw_meta.get("series") or enriched.get("series"),
+                        series_num=raw_meta.get("series_num") or enriched.get("series_num"),
+                        volume=raw_meta.get("volume") or enriched.get("volume"),
+                        issue=raw_meta.get("issue") or enriched.get("issue"),
                         enrich_source=enrich_source,
                         enriched_at=datetime.utcnow().isoformat())
         set_stage(conn, file_id, "cleaned")

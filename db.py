@@ -49,6 +49,10 @@ def init_db(db_path):
             cover_path      TEXT,
             enrich_source   TEXT,
             enriched_at     TEXT,
+            series          TEXT,
+            series_num      TEXT,
+            volume          TEXT,
+            issue           TEXT,
             FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
         );
 
@@ -115,6 +119,18 @@ def init_db(db_path):
     except Exception:
         pass
 
+    # BL-006: series / volume / issue columns on metadata
+    for _col, _decl in (("series", "TEXT"), ("series_num", "TEXT"),
+                        ("volume", "TEXT"), ("issue", "TEXT")):
+        try:
+            conn.execute(f"ALTER TABLE metadata ADD COLUMN {_col} {_decl}")
+        except Exception:
+            pass
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_series ON metadata(series)")
+    except Exception:
+        pass
+
     # Daemon status table for IPC (headless daemon ↔ API)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS daemon_status (
@@ -143,6 +159,17 @@ def init_db(db_path):
             reviewed_at TEXT,
             user_notes  TEXT,
             created_at  TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    # BL-006: saved (virtual-library) searches
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS saved_searches (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT NOT NULL UNIQUE,
+            payload     TEXT NOT NULL,
+            created_at  TEXT DEFAULT (datetime('now')),
+            updated_at  TEXT
         )
     """)
 
@@ -227,8 +254,8 @@ def upsert_metadata(conn, file_id, **kw):
             return "; ".join(str(x) for x in v)
         return v
     conn.execute("""
-        INSERT INTO metadata (file_id, title, authors, publisher, isbn, language, pages, year, description, subjects, udc_code, udc_label, cover_path, enrich_source, enriched_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        INSERT INTO metadata (file_id, title, authors, publisher, isbn, language, pages, year, description, subjects, udc_code, udc_label, cover_path, enrich_source, enriched_at, series, series_num, volume, issue)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(file_id) DO UPDATE SET
             title       = COALESCE(excluded.title, metadata.title),
             authors     = COALESCE(excluded.authors, metadata.authors),
@@ -243,14 +270,29 @@ def upsert_metadata(conn, file_id, **kw):
             udc_label   = COALESCE(excluded.udc_label, metadata.udc_label),
             cover_path  = COALESCE(excluded.cover_path, metadata.cover_path),
             enrich_source = COALESCE(excluded.enrich_source, metadata.enrich_source),
-            enriched_at   = COALESCE(excluded.enriched_at, metadata.enriched_at)
+            enriched_at   = COALESCE(excluded.enriched_at, metadata.enriched_at),
+            series        = COALESCE(excluded.series, metadata.series),
+            series_num    = COALESCE(excluded.series_num, metadata.series_num),
+            volume        = COALESCE(excluded.volume, metadata.volume),
+            issue         = COALESCE(excluded.issue, metadata.issue)
     """, (
         file_id, _str(kw.get("title")), _str(kw.get("authors")), _str(kw.get("publisher")),
         _str(kw.get("isbn")), _str(kw.get("language")), kw.get("pages"), kw.get("year"),
         _str(kw.get("description")), _str(kw.get("subjects")), _str(kw.get("udc_code")),
         _str(kw.get("udc_label")), _str(kw.get("cover_path")), _str(kw.get("enrich_source")),
-        _str(kw.get("enriched_at"))
+        _str(kw.get("enriched_at")),
+        _str(kw.get("series")), _str(kw.get("series_num")),
+        _str(kw.get("volume")), _str(kw.get("issue"))
     ))
+
+
+def update_metadata_series(conn, file_id, series, series_num, volume, issue):
+    """Explicitly set the series fields (allows clearing, unlike upsert)."""
+    now = datetime.utcnow().isoformat()
+    conn.execute("""
+        UPDATE metadata SET series=?, series_num=?, volume=?, issue=?,
+            enriched_at=? WHERE file_id=?
+    """, (series or None, series_num or None, volume or None, issue or None, now, file_id))
 
 
 def set_stage(conn, file_id, stage, error=None):
@@ -594,7 +636,7 @@ def search_books(conn, fts_query, stage=None, udc=None, tag=None, fmt=None,
                  year_min=None, year_max=None, min_size=None, max_size=None,
                  masters_only=False, source=None, limit=100, offset=0,
                  sort=None, order=None, untagged=False, duplicate_only=False,
-                 archive_only=False, archive_dir=None):
+                 archive_only=False, archive_dir=None, series=None):
     """Full-text search across books with faceted filters.
 
     Returns (results_list, total_count).
@@ -655,6 +697,10 @@ def search_books(conn, fts_query, stage=None, udc=None, tag=None, fmt=None,
         where_clauses.append("t.tag = ?")
         params.append(tag)
 
+    if series:
+        where_clauses.append("LOWER(m.series) = LOWER(?)")
+        params.append(series)
+
     if fmt:
         where_clauses.append("f.format = ?")
         params.append(fmt)
@@ -704,8 +750,13 @@ def search_books(conn, fts_query, stage=None, udc=None, tag=None, fmt=None,
     _sort_map = {"title": "m.title", "authors": "m.authors", "year": "m.year",
                  "format": "f.format", "file_size": "f.file_size", "stage": "f.stage",
                  "created_at": "f.created_at"}
-    safe_sort = _sort_map.get(sort, "f.id")
-    safe_order = "DESC" if (order or "").upper() not in ("ASC", "DESC") else order.upper()
+    if sort == "series":
+        # BL-006: reading order — series name, then #, volume, issue.
+        safe_sort = "m.series IS NULL, m.series, CAST(m.series_num AS INTEGER), CAST(m.volume AS INTEGER), CAST(m.issue AS INTEGER), m.title"
+        safe_order = "ASC"
+    else:
+        safe_sort = _sort_map.get(sort, "f.id")
+        safe_order = "DESC" if (order or "").upper() not in ("ASC", "DESC") else order.upper()
     if not sort:
         safe_order = "DESC"
 
@@ -714,7 +765,7 @@ def search_books(conn, fts_query, stage=None, udc=None, tag=None, fmt=None,
                f.is_master, f.source_path, f.source_group,
                m.title, m.authors, m.year, m.publisher, m.isbn, m.language,
                m.pages, m.description, m.udc_code, m.udc_label, m.enrich_source,
-               m.cover_path
+               m.cover_path, m.series, m.series_num, m.volume, m.issue
         {base}{where}
         ORDER BY {safe_sort} {safe_order}
         LIMIT ? OFFSET ?
@@ -1397,3 +1448,38 @@ def get_all_config(conn):
         entry["overridden"] = key in overrides
         result.append(entry)
     return result
+
+
+# ── BL-006: series facets + saved searches ────────────────────
+
+def get_series_facets(conn, q=None):
+    """Distinct series with book counts (for the library filter dropdown)."""
+    like = f"%{q}%" if q else "%"
+    rows = conn.execute("""
+        SELECT m.series, COUNT(*) as cnt FROM metadata m
+        JOIN files f ON f.id = m.file_id AND f.stage IN ('cataloged','copied','survivor')
+        WHERE m.series IS NOT NULL AND m.series <> '' AND m.series LIKE ?
+        GROUP BY m.series COLLATE NOCASE ORDER BY m.series COLLATE NOCASE LIMIT 200
+    """, (like,)).fetchall()
+    return [{"series": r["series"], "count": r["cnt"]} for r in rows]
+
+
+def get_saved_searches(conn):
+    return conn.execute("""
+        SELECT id, name, payload, created_at, updated_at
+        FROM saved_searches ORDER BY name COLLATE NOCASE
+    """).fetchall()
+
+
+def add_saved_search(conn, name, payload):
+    now = datetime.utcnow().isoformat()
+    conn.execute("""
+        INSERT INTO saved_searches (name, payload, updated_at)
+        VALUES (?,?,?)
+        ON CONFLICT(name) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
+    """, (name, payload, now))
+    return conn.execute("SELECT last_insert_rowid() rowid").fetchone()["rowid"]
+
+
+def delete_saved_search(conn, search_id):
+    conn.execute("DELETE FROM saved_searches WHERE id=?", (search_id,))

@@ -607,15 +607,41 @@ def search_books(conn, fts_query, stage=None, udc=None, tag=None, fmt=None,
     where_clauses = []
     params = []
 
+    fts_query = (fts_query or "").strip()
     if fts_query:
         base = """
             FROM files f
             JOIN metadata m ON m.file_id = f.id
-            JOIN books_fts bfts ON bfts.rowid = f.id
+            LEFT JOIN books_fts bfts ON bfts.rowid = f.id
             LEFT JOIN tags t ON t.file_id = f.id AND t.tag_type = 'custom'
         """
-        where_clauses.append("books_fts MATCH ?")
-        params.append(fts_query)
+        # Substring fallback so every book still matches (partial words,
+        # filename hits, rows missing from the FTS index, etc.).
+        terms = [t for t in fts_query.replace('"', " ").split() if t]
+        term_conds = []
+        like_params = []
+        for term in terms:
+            pat = f"%{term}%"
+            term_conds.append(
+                "(m.title LIKE ? OR m.authors LIKE ? OR f.filename LIKE ? "
+                "OR m.publisher LIKE ? OR m.isbn LIKE ? OR m.description LIKE ? "
+                "OR m.udc_code LIKE ? OR m.udc_label LIKE ? "
+                "OR EXISTS (SELECT 1 FROM tags tg WHERE tg.file_id = f.id AND tg.tag LIKE ?))"
+            )
+            like_params.extend([pat] * 8)
+            like_params.append(pat)
+        like_sql = " AND ".join(term_conds)
+        # FTS must run in its own subquery — SQLite rejects a bare MATCH
+        # mixed with OR in a joined WHERE clause.
+        fts_sql = "f.id IN (SELECT rowid FROM books_fts WHERE books_fts MATCH ?)"
+        try:
+            conn.execute("SELECT rowid FROM books_fts WHERE books_fts MATCH ? LIMIT 1", (fts_query,)).fetchone()
+            where_clauses.append(f"({fts_sql} OR ({like_sql}))")
+            params.append(fts_query)          # MATCH placeholder comes first
+            params.extend(like_params)        # then the LIKE placeholders
+        except sqlite3.OperationalError:
+            where_clauses.append(f"({like_sql})")
+            params.extend(like_params)
 
     if stage:
         where_clauses.append("f.stage = ?")

@@ -1752,6 +1752,7 @@ CONVERT_EXTS = {".azw3", ".mobi", ".fb2"}
 
 def _convert_to_epub(filepath):
     ext = (os.path.splitext(filepath)[1] or ".epub").lower()
+    logger.info("conversion start: %s", filepath)
     # 1) calibre (full fidelity) if installed
     exe = shutil.which("ebook-convert")
     if exe:
@@ -1760,6 +1761,7 @@ def _convert_to_epub(filepath):
         try:
             subprocess.run([exe, filepath, outpath], capture_output=True, timeout=120, check=True)
             if os.path.isfile(outpath) and os.path.getsize(outpath) > 0:
+                logger.info("conversion done (calibre): %s (%.2f MB)", outpath, os.path.getsize(outpath) / 1048576.0)
                 return outpath
         except Exception:
             try:
@@ -1772,17 +1774,27 @@ def _convert_to_epub(filepath):
     os.close(fd)
     result = mobi_reader.render_to_epub(filepath, outpath, ext)
     if result:
+        logger.info("conversion done (stdlib): %s (%.2f MB)", result, os.path.getsize(result) / 1048576.0)
         return result
     try:
         os.unlink(outpath)
     except Exception:
         pass
+    logger.warning("conversion failed: %s", filepath)
     return None
 
 CONVERT_EXTS = {".azw3", ".mobi", ".fb2"}
 _conversion_cache = {}
 _conversion_cache_lock = threading.Lock()
 _conversion_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+# Persistent conversion cache (survives restarts/full web reloads):
+# DATA_DIR/cache/converted/<book_id>.epub
+CONVERTED_CACHE_DIR = os.path.join(config.DATA_DIR, "cache", "converted")
+os.makedirs(CONVERTED_CACHE_DIR, exist_ok=True)
+
+def _converted_disk_path(book_id):
+    return os.path.join(CONVERTED_CACHE_DIR, f"{book_id}.epub")
 
 # ── DJVU → PDF conversion (P8.6) ──
 DJVU_EXTS = {".djvu"}
@@ -1835,6 +1847,8 @@ def api_djvu_status(book_id):
 
 @app.route("/api/conversion-status/<int:book_id>")
 def api_conversion_status(book_id):
+    if os.path.isfile(_converted_disk_path(book_id)):
+        return jsonify({"status": "done"})
     with _conversion_cache_lock:
         entry = _conversion_cache.get(book_id)
     if not entry:
@@ -1843,6 +1857,26 @@ def api_conversion_status(book_id):
         return jsonify({"status": "done"})
     if entry.get("error"):
         return jsonify({"status": "error", "error": entry["error"]})
+    # Finalize a completed future so the polling UI sees "done" without having
+    # to re-hit the read endpoint (was previously stuck on "converting" forever).
+    future = entry.get("future")
+    if future and future.done():
+        try:
+            result = future.result()
+            with _conversion_cache_lock:
+                if result:
+                    _conversion_cache[book_id] = {"path": result, "future": None, "error": None}
+                    try:
+                        shutil.copyfile(result, _converted_disk_path(book_id))
+                    except Exception:
+                        pass
+                    return jsonify({"status": "done"})
+                _conversion_cache[book_id] = {"path": None, "future": None, "error": "conversion failed"}
+                return jsonify({"status": "error", "error": "conversion failed"}), 500
+        except Exception as exc:
+            with _conversion_cache_lock:
+                _conversion_cache[book_id] = {"path": None, "future": None, "error": str(exc)}
+            return jsonify({"status": "error", "error": str(exc)}), 500
     return jsonify({"status": "converting"})
 
 
@@ -1910,6 +1944,9 @@ def api_book_read(book_id):
                     _djvu_cache[book_id] = {"future": future, "path": None, "error": None}
             return jsonify({"status": "converting", "book_id": book_id}), 202
         elif ext in CONVERT_EXTS:
+            disk_path = _converted_disk_path(book_id)
+            if os.path.isfile(disk_path):
+                return send_file(disk_path, mimetype="application/epub+zip")
             with _conversion_cache_lock:
                 entry = _conversion_cache.get(book_id)
             if entry and entry.get("path"):
@@ -1924,6 +1961,10 @@ def api_book_read(book_id):
                         with _conversion_cache_lock:
                             if result:
                                 _conversion_cache[book_id] = {"path": result, "future": None, "error": None}
+                                try:
+                                    shutil.copyfile(result, disk_path)
+                                except Exception:
+                                    pass
                                 return send_file(result, mimetype="application/epub+zip")
                             else:
                                 _conversion_cache[book_id] = {"path": None, "future": None, "error": "conversion failed"}

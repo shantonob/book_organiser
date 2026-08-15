@@ -295,14 +295,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .hl-popup .hl-actions { display: flex; gap: 4px; }
   .hl-popup .hl-actions button { flex: 1; padding: 4px 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.72rem; font-weight: 600; }
   /* PDF.js viewer */
-  .pdf-viewer { width: 100%; height: 100%; overflow-y: auto; }
+  .pdf-viewer { width: 100%; height: auto; overflow: visible; }
   .pdf-canvas-wrap { position: relative; margin: 0 auto 8px auto; }
   .pdf-canvas-wrap canvas { display: block; width: 100%; height: auto; }
+  /* Two-page (opposite page) spread */
+  .pdf-spread { display: flex; justify-content: center; align-items: flex-start; gap: 12px; }
+  .pdf-spread .pdf-canvas-wrap { margin: 0; }
   .pdf-text-layer { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; opacity: 0.2; }
   .pdf-text-layer span { cursor: text; }
   /* Comic canvas overlay */
   .comic-canvas-wrap { position: relative; display: inline-block; }
   .comic-canvas-wrap canvas { max-width: 100%; max-height: calc(100vh - 220px); border-radius: 4px; box-shadow: 0 2px 12px rgba(0,0,0,0.3); }
+  /* Reader converting/downloading spinner */
+  .reader-spinner { display: inline-block; width: 36px; height: 36px; border: 3px solid #cbd5e1; border-top-color: #0ea5e9; border-radius: 50%; animation: readerSpin 0.8s linear infinite; }
+  @keyframes readerSpin { to { transform: rotate(360deg); } }
   /* Selection overlay during drag */
   .sel-overlay { position: absolute; border: 2px dashed #0ea5e9; background: rgba(14,165,233,0.15); pointer-events: none; display: none; z-index: 10; }
   /* Drawing overlay */
@@ -345,16 +351,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   <h1><span id="globalStatusDot" class="idle" title="Server idle"></span>Book Organiser <small id="statusLabel">loading...</small> <span id="appVersion" style="color:#334155;font-size:0.55rem;font-family:monospace">v20260727</span> <button id="logoutBtn" onclick="doLogout()" style="display:none;margin-left:auto;padding:4px 10px;border:none;border-radius:4px;background:#334155;color:#ef4444;font-size:0.72rem;cursor:pointer" title="Log out">&#x1F512; Logout</button></h1>
   <noscript><div style="background:#701a22;color:#fca5a5;padding:12px;border-radius:6px;margin-bottom:12px;text-align:center">JavaScript is disabled or blocked. This app requires JavaScript to function.</div></noscript>
   <div id="jsError" style="display:none;background:#701a22;color:#fca5a5;padding:12px;border-radius:6px;margin-bottom:12px;text-align:center"></div>
-
-  <!-- Global search bar -->
-  <div class="search-bar" style="display:flex;gap:8px;margin-bottom:12px;align-items:center;position:relative">
-    <input type="text" id="quickSearch" placeholder="Search any book by title, author, or filename..."
-           style="flex:1;padding:8px 12px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.85rem"
-           onkeydown="if(event.key==='Enter')doQuickSearch()">
-    <button onclick="doQuickSearch()" style="padding:8px 20px;border:none;border-radius:6px;background:#0ea5e9;color:#0f172a;font-weight:600;cursor:pointer;font-size:0.85rem;white-space:nowrap">Search</button>
-    <button onclick="exportExcel()" style="padding:8px 16px;border:none;border-radius:6px;background:#22c55e;color:#0f172a;font-weight:600;cursor:pointer;font-size:0.82rem;white-space:nowrap">Export Excel</button>
-    <div id="searchResults" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:100;background:#1e293b;border:1px solid #334155;border-radius:8px;margin-top:4px;max-height:400px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.4)"></div>
-  </div>
 
   <div class="tab-bar">
     <button class="tab-btn active" onclick="switchTab('library')">Library</button>
@@ -517,6 +513,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       <button onclick="toggleAdvancedSearch()" id="advToggleBtn" style="padding:5px 12px;font-size:0.78rem;background:#334155;border:none;border-radius:4px;color:#e2e8f0;cursor:pointer">&#x25BC; Advanced</button>
       <button onclick="loadLibrary(); return false" style="padding:5px 12px">Search</button>
       <button onclick="resetLibrary()" style="padding:5px 12px;background:#334155;color:#e2e8f0;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem">Reset</button>
+      <button onclick="zlibSearchNow()" title="Search Z-Library for the text in this search box" style="padding:5px 12px;background:#a855f7;color:#f8fafc;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;white-space:nowrap">&#x1F50D; Z-Library</button>
+      <button onclick="exportExcel()" style="padding:5px 12px;background:#22c55e;color:#0f172a;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;white-space:nowrap">Export Excel</button>
       <select id="libSort" onchange="loadLibrary()" style="padding:4px 6px;font-size:0.78rem;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px">
         <option value="created_at:DESC">Date Added (newest)</option>
         <option value="created_at:ASC">Date Added (oldest)</option>
@@ -674,6 +672,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <span id="readerFsZoomLevel" style="color:#94a3b8;font-size:0.72rem;min-width:34px;text-align:center">100%</span>
           <button onclick="readerZoomIn()" title="Zoom in">&#x2B;</button>
           <button onclick="readerZoomReset()" title="Reset zoom">&#x21BA;</button>
+          <button onclick="readerToggleTwoPage()" id="readerFsTwoPageBtn" title="Toggle two-page (opposite page) view">&#x2621;</button>
         </span>
         <button onclick="toggleFullscreen()" title="Exit fullscreen">&#x26F6;</button>
       </div>
@@ -691,33 +690,33 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       </div>
       <!-- Reader Main -->
       <div class="reader-main">
-        <div id="readerToolbar" style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
-          <button onclick="closeReader()" style="padding:5px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0" title="Close reader (bookmarks saved)">&#x2715;</button>
+        <div id="readerToolbar" style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+          <button onclick="closeReader()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.8rem;background:#334155;color:#e2e8f0" title="Close reader (bookmarks saved)">&#x2715;</button>
           <span id="readerTitle" style="color:#e2e8f0;font-weight:600;font-size:0.9rem;flex:1;min-width:80px"></span>
           <span id="readerFormat" style="color:#64748b;font-size:0.75rem"></span>
           <div class="reader-progress-wrap" id="readerProgressWrap" style="display:none">
             <div class="reader-progress-fill" id="readerProgressFill" style="width:0%"></div>
           </div>
           <span id="readerLocation" style="color:#64748b;font-size:0.78rem;min-width:35px"></span>
-          <button id="readerPrev" onclick="readerPrev()" style="padding:4px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">&#x2190; Prev</button>
-          <button id="readerNext" onclick="readerNext()" style="padding:4px 12px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0">Next &#x2192;</button>
-          <button id="readingListBtn" onclick="toggleReadingListForBook()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#0ea5e9;color:#0f172a;font-weight:600;display:none">+ List</button>
-          <button id="exportHighlightsBtn" onclick="exportHighlights()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#22c55e;color:#0f172a;font-weight:600;display:none">Export</button>
-          <button id="fullscreenBtn" onclick="toggleFullscreen()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0;font-weight:600">&#x26F6; Fullscreen</button>
-          <button id="sidebarToggleBtn" onclick="toggleFsPane('left')" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0;font-weight:600;display:none">&#x2630; Contents</button>
-          <button id="annToggleBtn" onclick="toggleAnnotationsSidebar()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0;font-weight:600;display:none">&#x1F4DD; Notes</button>
-          <button id="bookmarkBtn" onclick="addBookmark()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#eab308;color:#0f172a;font-weight:600;display:none">&#x1F516; Bookmark</button>
-          <button id="pageNoteBtn" onclick="addPageNote()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#a78bfa;color:#0f172a;font-weight:600;display:none">&#x1F4DD; Page Note</button>
+          <button id="readerPrev" onclick="readerPrev()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.8rem;background:#334155;color:#e2e8f0" title="Previous page">&#x2190;</button>
+          <button id="readerNext" onclick="readerNext()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.8rem;background:#334155;color:#e2e8f0" title="Next page">&#x2192;</button>
+          <button id="readingListBtn" onclick="toggleReadingListForBook()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#0ea5e9;color:#0f172a;font-weight:600;display:none" title="Add to reading list">&#x2795;</button>
+          <button id="exportHighlightsBtn" onclick="exportHighlights()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a;font-weight:600;display:none" title="Export highlights">&#x1F4E4;</button>
+          <button id="fullscreenBtn" onclick="toggleFullscreen()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#475569;color:#e2e8f0;font-weight:600" title="Fullscreen">&#x26F6;</button>
+          <button id="sidebarToggleBtn" onclick="toggleFsPane('left')" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#475569;color:#e2e8f0;font-weight:600;display:none" title="Show contents &amp; reading list">&#x2630;</button>
+          <button id="annToggleBtn" onclick="toggleAnnotationsSidebar()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#475569;color:#e2e8f0;font-weight:600;display:none" title="Show notes &amp; annotations">&#x1F4DD;</button>
+          <button id="bookmarkBtn" onclick="addBookmark()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#eab308;color:#0f172a;font-weight:600;display:none" title="Add bookmark">&#x1F516;</button>
+          <button id="pageNoteBtn" onclick="addPageNote()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#a78bfa;color:#0f172a;font-weight:600;display:none" title="Add page note">&#x270F;</button>
           <span class="reader-zoom-group" id="readerZoomGroup" style="display:none;gap:4px;align-items:center">
-            <button onclick="readerZoomOut()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0" title="Zoom out">&#x1F50D;-</button>
+            <button onclick="readerZoomOut()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.8rem;background:#475569;color:#e2e8f0" title="Zoom out">&#x2212;</button>
             <span id="readerZoomLevel" style="color:#94a3b8;font-size:0.72rem;min-width:30px;text-align:center">100%</span>
-            <button onclick="readerZoomIn()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0" title="Zoom in">&#x1F50D;+</button>
-            <button onclick="readerZoomReset()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0" title="Reset zoom">&#x21BA;</button>
-            <button onclick="readerToggleScroll()" id="readerScrollBtn" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0" title="Toggle scroll mode">&#x21C5; Scroll</button>
+            <button onclick="readerZoomIn()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.8rem;background:#475569;color:#e2e8f0" title="Zoom in">&#x2B;</button>
+            <button onclick="readerZoomReset()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.8rem;background:#475569;color:#e2e8f0" title="Reset zoom">&#x21BA;</button>
+            <button onclick="readerToggleTwoPage()" id="readerTwoPageBtn" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.8rem;background:#475569;color:#e2e8f0" title="Toggle two-page (opposite page) view">&#x2621;</button>
           </span>
           <span class="reader-draw-group" id="readerDrawGroup" style="display:none;gap:4px;align-items:center">
-            <button onclick="toggleDrawMode()" id="drawBtn" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#ef4444;color:#fff;font-weight:600" title="Toggle drawing mode">&#x270E; Draw</button>
-            <button onclick="clearDrawing()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#334155;color:#e2e8f0" title="Clear drawing on this page">&#x1F9F9; Clear</button>
+            <button onclick="toggleDrawMode()" id="drawBtn" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#ef4444;color:#fff;font-weight:600" title="Toggle drawing mode">&#x270E;</button>
+            <button onclick="clearDrawing()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0" title="Clear drawing on this page">&#x1F9F9;</button>
             <input type="color" id="drawColor" value="#ef4444" style="width:28px;height:24px;padding:0;border:none;background:none;cursor:pointer" title="Pen colour">
             <select id="drawSize" style="padding:3px 4px;font-size:0.7rem;background:#1a2332;color:#e2e8f0;border:1px solid #334155;border-radius:3px" title="Pen size">
               <option value="2">Thin</option>
@@ -988,11 +987,19 @@ function checkAuth() {
   }).catch(function() {});
 }
 
-function showLoginModal() {
+function showLoginModal(clearPw) {
   var modal = document.getElementById("loginModal");
-  if (modal && modal.style.display !== "flex") modal.style.display = "flex";
-  var pw = document.getElementById("loginPassword");
-  if (pw) { pw.value = ""; pw.focus(); }
+  var wasHidden = modal && modal.style.display !== "flex";
+  if (wasHidden) modal.style.display = "flex";
+  // Only clear + focus the password on first open — background pollers hit 401
+  // repeatedly and must not erase what the user is typing.
+  if (wasHidden || clearPw) {
+    var pw = document.getElementById("loginPassword");
+    if (pw) { pw.value = ""; pw.focus(); }
+  } else {
+    var pw2 = document.getElementById("loginPassword");
+    if (pw2 && document.activeElement.id !== "loginPassword") pw2.focus();
+  }
   var err = document.getElementById("loginError");
   if (err) err.style.display = "none";
 }
@@ -1303,53 +1310,21 @@ function fetchSourceConfig() {
   }).catch(function(_e) { console.warn("fetch:", _e); });
 }
 
-// ── Quick Search ──
-let searchHideTimer = null;
+// ── Z-Library Search ──
 
-function doQuickSearch() {
-  const q = document.getElementById("quickSearch").value.trim();
-  const panel = document.getElementById("searchResults");
-  if (!q) { panel.style.display = "none"; return; }
-  fetch(API + "/api/search?q=" + encodeURIComponent(q) + "&limit=20")
-    .then(r => r.json())
-    .then(d => {
-      const results = d.results || [];
-      const zlibCfg = (configData || []).find(f => f.name === "zlib_base_url");
-      const zlibBase = ((zlibCfg && zlibCfg.value) || (zlibCfg && zlibCfg.default) || "https://zlib.li").replace(/\/$/, "");
-      const zlibUrl = zlibBase + "/s/" + encodeURIComponent(q);
-      let html = '<a href="' + zlibUrl + '" target="_blank" rel="noopener" style="display:flex;gap:8px;padding:9px 12px;border-bottom:1px solid #1a2332;align-items:center;text-decoration:none">' +
-        '<span style="flex:1"><strong style="color:#38bdf8">Search Z-Library: <span style="color:#e2e8f0">' + esc(q) + '</span></strong></span>' +
-        '<span class="badge badge-purple">external</span></a>';
-      if (!results.length) {
-        html += '<div style="padding:12px;color:#64748b;text-align:center">No matches found</div>';
-        panel.innerHTML = html;
-        panel.style.display = "block";
-        return;
-      }
-      html += results.map(b => {
-        const t = b.title || b.filename || "?";
-        const a = b.authors || "\u2014";
-        const s = b.stage || "?";
-        const skipBtn = (s === "skipped" || b.is_master === 0)
-          ? '<button onclick="event.stopPropagation();forceKeepBook(' + b.id + ')" style="padding:2px 8px;border:none;border-radius:3px;cursor:pointer;font-size:0.7rem;background:#22c55e;color:#0f172a;font-weight:600;white-space:nowrap">Keep</button>'
-          : '';
-        return `<div onclick="showDetail(${b.id});switchTab('library');document.getElementById('searchResults').style.display='none'" style="padding:8px 12px;border-bottom:1px solid #1a2332;cursor:pointer;display:flex;gap:8px;align-items:center">
-          <span style="flex:1"><strong style="color:#e2e8f0">${esc(t)}</strong> <span style="color:#64748b;font-size:0.75rem">${esc(a)}</span></span>
-          <span class="badge badge-purple">${esc(b.udc_code || "")} ${b.udc_label ? "- " + esc(b.udc_label) : ""}</span>
-          ${skipBtn}
-          <span class="tag ${s}">${s}</span>
-        </div>`;
-      }).join("");
-      panel.innerHTML = html;
-      panel.style.display = "block";
-    });
+function zlibBaseUrl() {
+  const zlibCfg = (configData || []).find(f => f.name === "zlib_base_url");
+  return ((zlibCfg && zlibCfg.value) || (zlibCfg && zlibCfg.default) || "https://zlib.li").replace(/\/$/, "");
 }
 
-document.addEventListener("click", function(e) {
-  const panel = document.getElementById("searchResults");
-  const bar = document.querySelector(".search-bar");
-  if (panel && bar && !bar.contains(e.target)) panel.style.display = "none";
-});
+// Z-Library search: searches the text in the library search box, or opens the
+// Z-Library home when the box is empty.
+function zlibSearchNow() {
+  const q = (document.getElementById("libSearch").value || "").trim();
+  const base = zlibBaseUrl();
+  const url = q ? base + "/s/" + encodeURIComponent(q) : base;
+  window.open(url, "_blank", "noopener");
+}
 
 // ── Excel Export ──
 function exportExcel() {
@@ -2358,6 +2333,8 @@ function resolveAmbiguousKeepBoth(aId, bId) {
 // ── Library tab ──
 let selectedLibId = null;
 
+let _libFetchSeq = 0;  // drops stale/out-of-order search responses
+
 function loadLibrary(filters) {
   if (typeof filters === "number") {
     _libOffset = Math.max(0, filters);
@@ -2401,17 +2378,23 @@ function loadLibrary(filters) {
   var sortVal = document.getElementById("libSort").value || "created_at:DESC";
   var sortParts = sortVal.split(":");
   url += "&sort=" + encodeURIComponent(sortParts[0]) + "&order=" + encodeURIComponent(sortParts[1]);
-  fetch(url).then(r => r.json()).then(d => {
-    document.getElementById("libTotal").textContent = d.total + " results" + (d.query ? " for \"" + d.query + "\"" : "");
-    _libCurrentResults = d.results || [];
-    _libTotal = d.total || 0;
-    if (_libViewMode === "grid") {
-      renderLibraryGrid(_libCurrentResults);
-    } else {
-      renderLibrary(_libCurrentResults);
-    }
-    updatePagination();
-  }).catch(function(_e) { console.warn("fetch:", _e); });
+  const seq = ++_libFetchSeq;
+  fetch(url, {cache: "no-store"})
+    .then(r => r.json())
+    .then(d => {
+      if (seq !== _libFetchSeq) return;  // a newer search superseded this one
+      document.getElementById("libTotal").textContent = d.total + " results" + (d.query ? " for \"" + d.query + "\"" : "");
+      _libCurrentResults = d.results || [];
+      _libTotal = d.total || 0;
+      try {
+        if (_libViewMode === "grid") {
+          renderLibraryGrid(_libCurrentResults);
+        } else {
+          renderLibrary(_libCurrentResults);
+        }
+      } catch (e) { console.warn("render:", e); }
+      updatePagination();
+    }).catch(function(_e) { console.warn("fetch:", _e); });
 }
 
 function updatePagination() {
@@ -2754,7 +2737,7 @@ function removeReadingListItem(bid) {
   fetch(API + "/api/reading-list/" + bid, {method: "DELETE"}).then(function(r) { return r.json(); }).then(function() {
     loadReadingList();
     var btn = document.getElementById("readingListBtn");
-    if (btn && readerBookId === bid) { btn.textContent = "+ List"; btn.style.background = "#0ea5e9"; }
+    if (btn && readerBookId === bid) { _setReadingListBtn(btn, false); }
   }).catch(function() {});
 }
 
@@ -2780,21 +2763,33 @@ function updateReadingListBookInfo() {
   }).catch(function() {});
 }
 
+function _setReadingListBtn(btn, inList) {
+  if (!btn) return;
+  btn.dataset.inlist = inList ? "1" : "0";
+  if (inList) {
+    btn.textContent = "\u2716";   // ✖ remove
+    btn.style.background = "#ef4444";
+    btn.title = "Remove from reading list";
+  } else {
+    btn.textContent = "\u2795";   // ＋ add
+    btn.style.background = "#0ea5e9";
+    btn.title = "Add to reading list";
+  }
+}
+
 function toggleReadingListForBook() {
   var bid = readerBookId;
   if (!bid) return;
   var btn = document.getElementById("readingListBtn");
-  if (btn.textContent.indexOf("Remove") >= 0) {
+  if (btn.dataset.inlist === "1") {
     fetch(API + "/api/reading-list/" + bid, {method: "DELETE"}).then(function(r) { return r.json(); }).then(function() {
-      btn.textContent = "+ Reading List";
-      btn.style.background = "#0ea5e9";
+      _setReadingListBtn(btn, false);
       loadReadingList();
       closeReader();
     }).catch(function() {});
   } else {
     fetch(API + "/api/reading-list/" + bid, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({status: "reading"})}).then(function(r) { return r.json(); }).then(function() {
-      btn.textContent = "Remove";
-      btn.style.background = "#ef4444";
+      _setReadingListBtn(btn, true);
       loadReadingList();
     }).catch(function() {});
   }
@@ -2903,9 +2898,36 @@ function saveReaderState() {
     pct = Math.round((readerPage + 1) / readerPages.length * 100);
   }
   fetch(API + "/api/book/" + bid + "/reader-state", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({location: loc, progress_pct: pct})}).catch(function() {});
-  document.getElementById("readerProgressFill").style.width = pct + "%";
+  _applyReaderProgress(pct);
+}
+
+// P8.1: single place that writes the progress bar + reading-list progress so every
+// format stays in sync. Only the bar is updated here, never the location label.
+function _applyReaderProgress(pct) {
+  pct = Math.max(0, Math.min(100, Math.round(pct)));
+  _lastProgress = pct;
+  var fill = document.getElementById("readerProgressFill");
+  if (fill) fill.style.width = pct + "%";
   var rlFill = document.querySelector(".rl-item.active .rl-progress-fill");
   if (rlFill) rlFill.style.width = pct + "%";
+}
+
+// P8.1: recompute the current reading position from whatever is on screen. Called
+// after every page/spread load so the bar reflects the real view position.
+function _updateReaderProgress() {
+  if (isEpubFormat(readerFormat) && readerRendition) { _trackEpubProgress(false); return; }
+  var pct = 0;
+  var label = "";
+  if ((readerFormat === "pdf" || readerFormat === "djvu") && _pdfDoc && _pdfDoc.numPages) {
+    pct = Math.round(readerPage / _pdfDoc.numPages * 100);
+    label = readerPage + " / " + _pdfDoc.numPages;
+  } else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPages.length > 0) {
+    pct = Math.round((readerPage + 1) / readerPages.length * 100);
+    label = (readerPage + 1) + " / " + readerPages.length;
+  }
+  var locEl = document.getElementById("readerLocation");
+  if (label && locEl) locEl.textContent = label;
+  _applyReaderProgress(pct);
 }
 
 // ═══ Reading completion counter (P8.1) ═══
@@ -2949,10 +2971,7 @@ function _trackEpubProgress(triggerSave) {
   _lastProgress = pct;
   var locEl = document.getElementById("readerLocation");
   if (locEl) locEl.textContent = pct + "%";
-  var fill = document.getElementById("readerProgressFill");
-  if (fill) fill.style.width = pct + "%";
-  var rlFill = document.querySelector(".rl-item.active .rl-progress-fill");
-  if (rlFill) rlFill.style.width = pct + "%";
+  _applyReaderProgress(pct);
   if (triggerSave) {
     if (readerSaveTimer) clearTimeout(readerSaveTimer);
     readerSaveTimer = setTimeout(function() { saveReaderState(); }, 2000);
@@ -2975,7 +2994,12 @@ function openReader(bookId) {
     document.getElementById("readerPrev").style.display = "";
     document.getElementById("readerNext").style.display = "";
     document.getElementById("readerProgressWrap").style.display = "";
-    document.getElementById("readerProgressFill").style.width = "0%";
+    _applyReaderProgress(0);
+    _readerTwoPage = false;  // BL-003: two-page mode is per-book
+    var _tpBtn = document.getElementById("readerTwoPageBtn");
+    if (_tpBtn) _tpBtn.style.background = "#475569";
+    var _tpFbtn = document.getElementById("readerFsTwoPageBtn");
+    if (_tpFbtn) _tpFbtn.style.background = "#475569";
     document.getElementById("readingListBtn").style.display = "";
     var epubLike = ["epub", "azw3", "mobi", "fb2"].indexOf(ext) !== -1;
     document.getElementById("exportHighlightsBtn").style.display = epubLike ? "" : "none";
@@ -2986,8 +3010,7 @@ function openReader(bookId) {
     fetch(API + "/api/reading-list").then(function(r) { return r.json(); }).then(function(items) {
       var inList = items.some(function(i) { return i.book_id === bookId; });
       var btn = document.getElementById("readingListBtn");
-      if (inList) { btn.textContent = "Remove"; btn.style.background = "#ef4444"; }
-      else { btn.textContent = "+ List"; btn.style.background = "#0ea5e9"; }
+      _setReadingListBtn(btn, inList);
     }).catch(function() {});
     switchTab("reader");
     if (epubLike) {
@@ -3031,12 +3054,40 @@ function loadReader(bookId, book) {
 
   var convFormats = ["mobi", "azw3", "fb2"];
   if (convFormats.indexOf(readerFormat) >= 0) {
-    area.innerHTML = '';
-    _readerLoadStatus("converting", "Converting to EPUB\u2026", "may take up to 2 minutes for large files");
+    var convStart = Date.now();
+    var convTimer = null;
+    area.innerHTML =
+      '<div style="padding:48px 24px;text-align:center;color:#334155">' +
+        '<div class="reader-spinner"></div>' +
+        '<div style="font-size:1.05rem;font-weight:600;margin-top:16px">Converting to EPUB&hellip;</div>' +
+        '<div style="font-size:0.85rem;margin-top:8px;color:#475569;max-width:440px;margin-left:auto;margin-right:auto">The <b>' + readerFormat.toUpperCase() + '</b> file is being converted so it can be read in the browser. This happens once per book &mdash; the result is cached, so the next open is instant.</div>' +
+        '<div style="font-size:0.85rem;margin-top:12px;color:#0ea5e9;font-variant-numeric:tabular-nums" id="readerConvTime">0s elapsed</div>' +
+        '<div style="font-size:0.75rem;margin-top:6px;color:#94a3b8">Most books convert in a few seconds; very large files can take up to ~2 minutes.</div>' +
+        '<div style="margin-top:22px">' +
+          '<button onclick="openReader(' + bookId + ')" style="padding:6px 16px;border:none;border-radius:4px;background:#334155;color:#e2e8f0;cursor:pointer;margin-right:8px">Retry</button>' +
+          '<a href="' + API + '/api/book/' + bookId + '/download" style="padding:6px 16px;border-radius:4px;background:#0ea5e9;color:#fff;text-decoration:none">Download instead</a>' +
+        '</div>' +
+      '</div>';
+    function convTick() {
+      var el = document.getElementById("readerConvTime");
+      if (!el) return;
+      var s = Math.floor((Date.now() - convStart) / 1000);
+      el.textContent = s + "s elapsed";
+      if (s > 240) {
+        el.textContent += " \u2014 unusually long; if it never finishes, use Download instead";
+        el.style.color = "#ef4444";
+      } else if (s > 90) {
+        el.textContent += " (still working \u2014 large files take a while)";
+      }
+    }
+    if (document.getElementById("readerConvTime")) convTimer = setInterval(convTick, 1000);
+    convTick();
+    _readerLoadStatus("converting", "Converting to EPUB\u2026", "first open converts the file \u2014 the result is cached");
     // Kick off the conversion via the read endpoint (returns 202 while
     // converting, 200 with the EPUB once a cached result exists).
     fetch(API + "/api/book/" + bookId + "/read").then(function(r) {
       if (r.status === 200) {
+        clearInterval(convTimer);
         _readerLoadStatus("ready", "Converted", "loading book\u2026");
         _loadEpubReader(bookId, area);
         return;
@@ -3045,16 +3096,31 @@ function loadReader(bookId, book) {
         fetch(API + "/api/conversion-status/" + bookId).then(function(r) { return r.json(); }).then(function(d) {
           if (d.status === "done") {
             clearInterval(pollTimer);
+            clearInterval(convTimer);
             _readerLoadStatus("ready", "Converted", "loading book\u2026");
             _loadEpubReader(bookId, area);
           } else if (d.status === "error") {
             clearInterval(pollTimer);
+            clearInterval(convTimer);
             _readerLoadStatus("error", "Conversion failed", d.error || "unknown");
             _showReaderError(bookId, area.id || "readerArea", "Could not render: " + (d.error || "unknown"));
+          } else if (Date.now() - convStart > 10000) {
+            // Self-heal: if "done" was never observed, re-kick the read
+            // endpoint. It returns 200 with the cached EPUB if the conversion
+            // finished meanwhile, or re-submits a queued one otherwise.
+            fetch(API + "/api/book/" + bookId + "/read").then(function(r2) {
+              if (r2.status === 200) {
+                clearInterval(pollTimer);
+                clearInterval(convTimer);
+                _readerLoadStatus("ready", "Converted", "loading book\u2026");
+                _loadEpubReader(bookId, area);
+              }
+            }).catch(function() {});
           }
         }).catch(function() {});
       }, 2000);
     }).catch(function() {
+      clearInterval(convTimer);
       _readerLoadStatus("error", "Conversion failed", "could not start conversion");
       _showReaderError(bookId, area.id || "readerArea", "Could not render: failed to start the conversion.");
     });
@@ -3172,8 +3238,9 @@ function _loadEpubReader(bookId, area, restoreCfi) {
     readerBook = ePub(dl.buffer);
     var ra = document.getElementById(areaId);
     var rh = Math.max(ra.offsetHeight || 600, 400);
-    var opts = { width: "100%", height: rh, spread: "none" };
+    var opts = { width: "100%", height: rh, spread: _readerTwoPage ? "auto" : "none" };
     if (_readerScrollMode) opts.flow = "scrolled-doc";
+    ra.innerHTML = "";  // clear any leftover loading/converting panel before mounting
     readerRendition = readerBook.renderTo(areaId, opts);
 
     var opened = false;
@@ -3222,7 +3289,6 @@ function _loadEpubReader(bookId, area, restoreCfi) {
     document.getElementById("readerZoomGroup").style.display = "flex";
     _readerZoom = 100;
     document.getElementById("readerZoomLevel").textContent = "100%";
-    document.getElementById("readerScrollBtn").style.background = _readerScrollMode ? "#0ea5e9" : "#475569";
     document.getElementById("readerArea").style.overflowY = "hidden";
     document.getElementById("readerDrawGroup").style.display = "none";
     hideReaderDrawGroup();
@@ -3275,7 +3341,7 @@ function loadPdfReader(bookId, book) {
   document.getElementById("readerLocation").textContent = "";
   document.getElementById("readerPrev").style.display = "";
   document.getElementById("readerNext").style.display = "";
-  document.getElementById("readerProgressFill").style.width = "0%";
+  _applyReaderProgress(0);
   document.removeEventListener("keydown", readerKeyHandler);
   document.getElementById("bookmarkBtn").style.display = "";
   document.getElementById("annToggleBtn").style.display = "";
@@ -3284,8 +3350,7 @@ function loadPdfReader(bookId, book) {
   document.getElementById("readerZoomGroup").style.display = "flex";
   _readerZoom = 100; _readerScrollMode = false;
   document.getElementById("readerZoomLevel").textContent = "100%";
-  document.getElementById("readerScrollBtn").style.background = "#475569";
-  document.getElementById("readerArea").style.overflowY = "hidden";
+  document.getElementById("readerArea").style.overflowY = "auto";  // BL-001: #readerArea is the single scroll container
   document.getElementById("annotationsSidebar").style.display = "block";
   applyCollapseState();
   setupReaderWheelZoom();
@@ -3333,7 +3398,7 @@ function loadDjvuReader(bookId, book) {
   fmt.textContent = (book.format || "").toUpperCase() + " (converting to PDF)";
   document.getElementById("readerPrev").style.display = "";
   document.getElementById("readerNext").style.display = "";
-  document.getElementById("readerProgressFill").style.width = "0%";
+  _applyReaderProgress(0);
   area.innerHTML = '<div style="color:#f59e0b;text-align:center;padding:40px"><div style="font-size:1rem;margin-bottom:8px">Converting DJVU to PDF\u2026</div><div style="font-size:0.8rem;color:#64748b">This may take a minute for large files</div></div>';
 
   // Kick off conversion, then poll djvu-status until the PDF is ready.
@@ -3359,12 +3424,12 @@ function loadDjvuReader(bookId, book) {
 
 function pdfRenderPage(bookId, pageNum) {
   if (!_pdfDoc || _pdfRendering) return;
+  if (_readerTwoPage) { pdfRenderSpread(bookId, pageNum); return; }
   _saveDrawing();
   _pdfRendering = true;
   readerPage = pageNum;
-  _lastProgress = Math.round(pageNum / _pdfDoc.numPages * 100);  // P8.1
   document.getElementById("readerLocation").textContent = pageNum + " / " + _pdfDoc.numPages;
-  document.getElementById("readerProgressFill").style.width = (pageNum / _pdfDoc.numPages * 100) + "%";
+  _applyReaderProgress(Math.round(pageNum / _pdfDoc.numPages * 100));
   var viewer = document.getElementById("pdfViewer");
   if (!viewer) return;
 
@@ -3395,6 +3460,57 @@ function pdfRenderPage(bookId, pageNum) {
       if (readerSaveTimer) clearTimeout(readerSaveTimer);
       readerSaveTimer = setTimeout(function() { saveReaderState(); }, 2000);
     });
+  }).catch(function() { _pdfRendering = false; });
+}
+
+// BL-003: two-page (opposite page) view — render pages left and left+1 side by side.
+function pdfRenderSpread(bookId, leftPage) {
+  if (!_pdfDoc || _pdfRendering) return;
+  _saveDrawing();
+  _pdfRendering = true;
+  readerPage = leftPage;
+  var rightPage = leftPage + 1;
+  if (rightPage > _pdfDoc.numPages) rightPage = leftPage;  // odd total: show the last page alone
+  _applyReaderProgress(Math.round(leftPage / _pdfDoc.numPages * 100));
+  document.getElementById("readerLocation").textContent = leftPage + " / " + _pdfDoc.numPages;
+  var viewer = document.getElementById("pdfViewer");
+  if (!viewer) return;
+
+  var pages = [leftPage];
+  if (rightPage !== leftPage) pages.push(rightPage);
+  var canvases = [];
+  var pending = pages.map(function(pn) {
+    return _pdfDoc.getPage(pn).then(function(page) {
+      var viewport = page.getViewport({ scale: 1.5 });
+      var wrap = document.createElement("div");
+      wrap.className = "pdf-canvas-wrap";
+      var canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      var ctx = canvas.getContext("2d");
+      wrap.appendChild(canvas);
+      return page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function() {
+        _pdfHighlights.forEach(function(h) {
+          if (h.page === pn) drawPdfHighlight(canvas, h.bbox, h.color || "#fef08a");
+        });
+        setupPdfSelection(canvas, bookId, pn);
+        canvases.push(canvas);
+        return wrap;
+      });
+    });
+  });
+
+  Promise.all(pending).then(function(wraps) {
+    var spread = document.createElement("div");
+    spread.className = "pdf-spread";
+    wraps.forEach(function(w) { spread.appendChild(w); });
+    viewer.innerHTML = "";
+    viewer.appendChild(spread);
+    _pdfRendering = false;
+    _onReaderSpreadLoaded(canvases);
+    // Auto-save
+    if (readerSaveTimer) clearTimeout(readerSaveTimer);
+    readerSaveTimer = setTimeout(function() { saveReaderState(); }, 2000);
   }).catch(function() { _pdfRendering = false; });
 }
 
@@ -3461,20 +3577,32 @@ function setupPdfSelection(canvas, bookId, pageNum) {
 
 function isEpubFormat(fmt) { return ["epub", "azw3", "mobi", "fb2"].indexOf(fmt) >= 0; }
 
-function pdfPrev() { if (_pdfDoc && readerPage > 1) pdfRenderPage(readerBookId, readerPage - 1); }
-function pdfNext() { if (_pdfDoc && readerPage < _pdfDoc.numPages) pdfRenderPage(readerBookId, readerPage + 1); }
+function pdfPrev() {
+  if (!_pdfDoc) return;
+  var step = _readerTwoPage ? 2 : 1;
+  if (readerPage > step) pdfRenderPage(readerBookId, readerPage - step);
+  else if (readerPage > 1) pdfRenderPage(readerBookId, 1);
+}
+function pdfNext() {
+  if (!_pdfDoc) return;
+  var step = _readerTwoPage ? 2 : 1;
+  if (readerPage + step <= _pdfDoc.numPages) pdfRenderPage(readerBookId, readerPage + step);
+  else if (readerPage < _pdfDoc.numPages) pdfRenderPage(readerBookId, _pdfDoc.numPages);
+}
 function readerPrev() {
   if (isEpubFormat(readerFormat) && readerRendition) { readerRendition.prev(); }
   else if ((readerFormat === "pdf" || readerFormat === "djvu") && _pdfDoc) { pdfPrev(); }
   else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPage > 0) {
-    showComicPage(readerBookId, readerPage - 1);
+    var step = _readerTwoPage ? 2 : 1;
+    showComicPage(readerBookId, Math.max(0, readerPage - step));
   }
 }
 function readerNext() {
   if (isEpubFormat(readerFormat) && readerRendition) { readerRendition.next(); }
   else if ((readerFormat === "pdf" || readerFormat === "djvu") && _pdfDoc) { pdfNext(); }
   else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPage < readerPages.length - 1) {
-    showComicPage(readerBookId, readerPage + 1);
+    var step2 = _readerTwoPage ? 2 : 1;
+    showComicPage(readerBookId, Math.min(readerPages.length - 1, readerPage + step2));
   }
 }
 
@@ -3498,7 +3626,6 @@ function loadComicReader(bookId, book) {
   document.getElementById("readerZoomGroup").style.display = "flex";
   _readerZoom = 100; _readerScrollMode = false;
   document.getElementById("readerZoomLevel").textContent = "100%";
-  document.getElementById("readerScrollBtn").style.background = "#475569";
   document.getElementById("readerArea").style.overflowY = "auto";  // BL-001: zoomed comic must scroll
   document.getElementById("annotationsSidebar").style.display = "block";
   applyCollapseState();
@@ -3552,13 +3679,13 @@ var _comicHighlights = [];
 
 function showComicPage(bookId, idx) {
   if (idx < 0 || idx >= readerPages.length) return;
+  if (_readerTwoPage) { showComicSpread(bookId, idx); return; }
   _saveDrawing();
   readerPage = idx;
   const area = document.getElementById("readerArea");
   var pct = readerPages.length > 0 ? Math.round((idx + 1) / readerPages.length * 100) : 0;
-  _lastProgress = pct;  // P8.1
   document.getElementById("readerLocation").textContent = (idx + 1) + " / " + readerPages.length;
-  document.getElementById("readerProgressFill").style.width = pct + "%";
+  _applyReaderProgress(pct);
 
   // Create canvas overlay with selection support
   area.innerHTML = '<div class="comic-canvas-wrap" id="comicWrap"><canvas id="comicCanvas"></canvas><div class="sel-overlay" id="selOverlay"></div></div>';
@@ -3584,6 +3711,52 @@ function showComicPage(bookId, idx) {
   // Auto-save
   if (readerSaveTimer) clearTimeout(readerSaveTimer);
   readerSaveTimer = setTimeout(function() { saveReaderState(); }, 2000);
+}
+
+// BL-003: two-page (opposite page) view for comics — show idx and idx+1 side by side.
+function showComicSpread(bookId, idx) {
+  if (idx < 0 || idx >= readerPages.length) return;
+  _saveDrawing();
+  readerPage = idx;
+  const area = document.getElementById("readerArea");
+  var pct = readerPages.length > 0 ? Math.round((idx + 1) / readerPages.length * 100) : 0;
+  document.getElementById("readerLocation").textContent = (idx + 1) + " / " + readerPages.length;
+  _applyReaderProgress(pct);
+
+  var rightIdx = idx + 1;
+  var showRight = rightIdx < readerPages.length;
+  area.innerHTML = '<div class="pdf-spread" id="comicWrap"></div>';
+  var spread = document.getElementById("comicWrap");
+  var canvases = [];
+
+  function loadInto(pi) {
+    var wrap = document.createElement("div");
+    wrap.className = "comic-canvas-wrap";
+    var c = document.createElement("canvas");
+    wrap.appendChild(c);
+    spread.appendChild(wrap);
+    var img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = function() {
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      c.getContext("2d").drawImage(img, 0, 0);
+      _comicHighlights.forEach(function(h) {
+        if (h.page === pi) drawComicHighlight(c, h.bbox, h.color || "#fef08a");
+      });
+      setupComicSelection(c, bookId, pi);
+      canvases.push(c);
+      if (canvases.length === (showRight ? 2 : 1)) {
+        _onReaderSpreadLoaded(canvases);
+        if (readerSaveTimer) clearTimeout(readerSaveTimer);
+        readerSaveTimer = setTimeout(function() { saveReaderState(); }, 2000);
+      }
+    };
+    img.src = API + "/api/book/" + bookId + "/read/page/" + pi;
+  }
+
+  loadInto(idx);
+  if (showRight) loadInto(rightIdx);
 }
 
 function drawComicHighlight(canvas, bbox, color) {
@@ -3780,20 +3953,45 @@ var _readerFitScale = 1;      // scale that fits current page in view
 var _readerPageW = 0;         // buffer width of current content canvas
 var _readerPageH = 0;         // buffer height of current content canvas
 var _readerWheelZoom = false; // true once a wheel handler is attached
+var _readerTwoPage = false;   // BL-003: opposite-page (spread) view
+
+// BL-003: toggle two-page view. Re-renders the current position as a spread.
+function readerToggleTwoPage() {
+  _readerTwoPage = !_readerTwoPage;
+  var btn = document.getElementById("readerTwoPageBtn");
+  if (btn) btn.style.background = _readerTwoPage ? "#0ea5e9" : "#475569";
+  var fbtn = document.getElementById("readerFsTwoPageBtn");
+  if (fbtn) fbtn.style.background = _readerTwoPage ? "#0ea5e9" : "#475569";
+  if (isEpubFormat(readerFormat) && readerRendition) {
+    // Always-scroll mode uses scrolled-doc flow, which can't render two-page
+    // spreads — the toggle is a no-op for EPUB.
+    _readerTwoPage = false;
+    var tp1 = document.getElementById("readerTwoPageBtn");
+    if (tp1) tp1.style.background = "#475569";
+    var tp2 = document.getElementById("readerFsTwoPageBtn");
+    if (tp2) tp2.style.background = "#475569";
+    return;
+  }
+  if (readerFormat === "pdf" || readerFormat === "djvu") {
+    if (_pdfDoc) pdfRenderPage(readerBookId, readerPage || 1);
+  } else if (readerFormat === "cbz" || readerFormat === "cbr") {
+    if (readerPages.length > 0) showComicPage(readerBookId, readerPage || 0);
+  }
+}
 
 // Force the reader's scroll container to recompute its scroll metrics after
 // the canvas is resized (BL-001). Without this the scrollbar range goes stale
 // and the page cannot be scrolled to the bottom after zooming in.
+// #readerArea is the single scroll container for both PDF and comic (BL-001).
 function _refreshReaderScroll() {
   var area = document.getElementById("readerArea");
   if (!area) return;
-  var scroller = document.getElementById("pdfViewer") || area;
-  var prevTop = scroller.scrollTop;
-  var prevOverflow = scroller.style.overflowY;
-  scroller.style.overflowY = "hidden";   // forces reflow + scrollbar recompute
-  void scroller.scrollHeight;            // read layout to flush the reflow
-  scroller.style.overflowY = prevOverflow || "auto";
-  scroller.scrollTop = prevTop;          // keep the current scroll position
+  var prevTop = area.scrollTop;
+  var prevOverflow = area.style.overflowY;
+  area.style.overflowY = "hidden";   // forces reflow + scrollbar recompute
+  void area.scrollHeight;            // read layout to flush the reflow
+  area.style.overflowY = prevOverflow || "auto";
+  area.scrollTop = prevTop;          // keep the current scroll position
 }
 
 function _applyReaderZoom() {
@@ -3808,10 +4006,16 @@ function _applyReaderZoom() {
   var area = document.getElementById("readerArea");
   if (!area) return;
   var z = (_readerZoom / 100) * (_readerScrollMode ? 1 : _readerFitScale);
-  var el = area.querySelector(".pdf-canvas-wrap canvas") || area.querySelector("#comicCanvas");
-  if (el && _readerPageW && _readerPageH) {
-    el.style.width = (_readerPageW * z) + "px";
-    el.style.height = (_readerPageH * z) + "px";
+  // BL-003: size each canvas by its own natural dimensions so a two-page
+  // spread (multiple canvases) scales correctly as a unit.
+  var canvases = area.querySelectorAll(".pdf-canvas-wrap canvas, .comic-canvas-wrap canvas");
+  for (var i = 0; i < canvases.length; i++) {
+    var el = canvases[i];
+    var nw = el.naturalWidth || el.width || _readerPageW;
+    var nh = el.naturalHeight || el.height || _readerPageH;
+    if (!nw || !nh) continue;
+    el.style.width = (nw * z) + "px";
+    el.style.height = (nh * z) + "px";
     el.style.maxWidth = "none";
     el.style.maxHeight = "none";
   }
@@ -3833,34 +4037,27 @@ function _onReaderPageLoaded(canvas) {
   _applyReaderZoom();
   _syncDrawOverlay();
   _loadDrawing();
+  _updateReaderProgress();
 }
 
-function readerToggleScroll() {
-  _readerScrollMode = !_readerScrollMode;
-  var btn = document.getElementById("readerScrollBtn");
-  if (btn) btn.style.background = _readerScrollMode ? "#0ea5e9" : "#475569";
-  if (readerFormat === "epub" && readerRendition && readerBookId != null) {
-    var cfi = null;
-    try {
-      var loc = readerRendition.currentLocation();
-      if (loc && loc.start) cfi = loc.start.cfi;
-    } catch(e) {}
-    try { readerBook.destroy(); } catch(e) {}
-    readerBook = null; readerRendition = null;
-    _readerZoom = 100;
-    if (_applyReaderZoom) {
-      var lblEl = document.getElementById("readerZoomLevel");
-      if (lblEl) lblEl.textContent = "100%";
-    }
-    _loadEpubReader(readerBookId, null, cfi);
-    return;
+// BL-003: two-page (opposite page) spread loaded — fit the combined width.
+function _onReaderSpreadLoaded(canvases) {
+  var list = Array.isArray(canvases) ? canvases : [canvases];
+  var w = 0, h = 0;
+  for (var i = 0; i < list.length; i++) {
+    if (!list[i]) continue;
+    w += (list[i].naturalWidth || list[i].width || 0);
+    h = Math.max(h, (list[i].naturalHeight || list[i].height || 0));
   }
-  if (_readerScrollMode) {
-    _readerZoom = 100;
-    var lbl = document.getElementById("readerZoomLevel");
-    if (lbl) lbl.textContent = "100%";
-  }
+  _readerPageW = w;
+  _readerPageH = h;
+  var area = document.getElementById("readerArea");
+  var maxW = (area.clientWidth || 800) - 24;
+  var maxH = (area.clientHeight || 600) - 24;
+  _readerFitScale = (w > 0 && h > 0) ? Math.max(0.1, Math.min(1, maxW / w, maxH / h)) : 1;
   _applyReaderZoom();
+  _syncDrawOverlay();
+  _updateReaderProgress();
 }
 
 function setupReaderWheelZoom() {
@@ -3956,7 +4153,7 @@ function _syncDrawOverlay() {
   var area = document.getElementById("readerArea");
   if (!area) return;
   var content = area.querySelector(".pdf-canvas-wrap canvas") || area.querySelector("#comicCanvas");
-  if (!content || !_readerPageW || !_readerPageH) { oc.style.display = "none"; return; }
+  if (!content) { oc.style.display = "none"; return; }
   var host = content.closest(".pdf-canvas-wrap") || content.closest(".comic-canvas-wrap") || area;
   var rect = content.getBoundingClientRect();
   var hrect = host.getBoundingClientRect();
@@ -3964,9 +4161,11 @@ function _syncDrawOverlay() {
   oc.style.top = (rect.top - hrect.top) + "px";
   oc.style.width = rect.width + "px";
   oc.style.height = rect.height + "px";
-  if (oc.width !== _readerPageW || oc.height !== _readerPageH) {
-    oc.width = _readerPageW;
-    oc.height = _readerPageH;
+  var natW = content.naturalWidth || content.width || _readerPageW;
+  var natH = content.naturalHeight || content.height || _readerPageH;
+  if (oc.width !== natW || oc.height !== natH) {
+    oc.width = natW;
+    oc.height = natH;
   }
   if (_drawMode) oc.classList.add("active"); else oc.classList.remove("active");
 }
@@ -4026,7 +4225,8 @@ function toggleDrawMode() {
   var btn = document.getElementById("drawBtn");
   if (btn) {
     btn.style.background = _drawMode ? "#0ea5e9" : "#475569";
-    btn.textContent = _drawMode ? "Draw: ON" : "Draw";
+    btn.textContent = "\u270E";
+    btn.title = _drawMode ? "Drawing mode ON (click to stop)" : "Toggle drawing mode";
   }
   var oc = _ensureDrawOverlay();
   if (oc) {
@@ -4083,7 +4283,7 @@ function hideReaderDrawGroup() {
   if (g) g.style.display = "none";
   _drawMode = false;
   var btn = document.getElementById("drawBtn");
-  if (btn) { btn.style.background = "#475569"; btn.textContent = "Draw"; }
+  if (btn) { btn.style.background = "#475569"; btn.textContent = "\u270E"; btn.title = "Toggle drawing mode"; }
   _pageStrokes = [];
   var oc = document.getElementById("drawOverlay");
   if (oc) { oc.classList.remove("active"); oc.style.display = "none"; }

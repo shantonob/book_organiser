@@ -18,6 +18,7 @@ import re
 import struct
 import xml.etree.ElementTree as ET
 import zipfile
+from html.parser import HTMLParser
 
 # ── shared EPUB builder ────────────────────────────────────────────────────
 
@@ -297,7 +298,125 @@ def _html_to_body(html):
     if m:
         html = m.group(1)
     html = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", html, flags=re.DOTALL)
-    return html
+    # Drop any XML prolog (it belongs at the very top of the XHTML doc).
+    html = re.sub(r"^\s*<\?xml[^>]*\?>", "", html, flags=re.IGNORECASE | re.DOTALL)
+    # Strip Mobipocket namespace tags (e.g. <mbp:pagebreak/>) — once the
+    # <html> wrapper is removed the xmlns:mbp declaration is gone, leaving
+    # undeclared prefixes that epub.js / XML parsers reject.
+    html = re.sub(r"</?mbp:[^>]*>", "", html, flags=re.IGNORECASE)
+    return _sanitize_body(html)
+
+
+# HTML void elements — serialised self-closing in XHTML.
+_VOID_TAGS = frozenset((
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+))
+
+# Block-level tags that may be left unclosed in sloppy HTML; when one opens we
+# auto-close any open instance of the same tag first (loose HTML5-style).
+_BLOCK_TAGS = frozenset((
+    "p", "li", "td", "th", "tr", "dt", "dd", "div", "blockquote",
+    "h1", "h2", "h3", "h4", "h5", "h6", "option", "caption",
+))
+
+
+_XML_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
+
+
+class _XhtmlBuilder(HTMLParser):
+    """Lenient HTML -> well-formed XHTML re-serialiser."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.out = []
+        self._stack = []
+
+    def _valid_tag(self, tag):
+        return bool(tag) and _XML_NAME_RE.match(tag)
+
+    def _attrs(self, attrs):
+        parts = []
+        seen = set()
+        for k, v in attrs:
+            if not k:
+                continue
+            k = k.lower()
+            if not _XML_NAME_RE.match(k) or k in seen:
+                continue  # PalmDOC junk can produce names like "$t" or duplicates
+            seen.add(k)
+            val = (v if v is not None else "") or ""
+            parts.append(f' {k}="{_xml_esc(val)}"')
+        return "".join(parts)
+
+    def _close_matching(self, tag):
+        # Close open instances of the same block tag (re-opened, not nested).
+        if tag in _BLOCK_TAGS and tag in self._stack:
+            while self._stack and self._stack[-1] != tag:
+                self.out.append(f"</{self._stack.pop()}>")
+            if self._stack:
+                self.out.append(f"</{self._stack.pop()}>")
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if not self._valid_tag(tag):
+            return
+        self._close_matching(tag)
+        if tag in _VOID_TAGS:
+            self.out.append(f"<{tag}{self._attrs(attrs)}/>")
+        else:
+            self.out.append(f"<{tag}{self._attrs(attrs)}>")
+            self._stack.append(tag)
+
+    def handle_startendtag(self, tag, attrs):
+        tag = tag.lower()
+        if not self._valid_tag(tag):
+            return
+        self.out.append(f"<{tag}{self._attrs(attrs)}/>")
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in _VOID_TAGS or not self._valid_tag(tag):
+            return
+        # Close back through the stack (tolerates mismatched nesting).
+        if tag in self._stack:
+            while self._stack and self._stack[-1] != tag:
+                self.out.append(f"</{self._stack.pop()}>")
+            self.out.append(f"</{self._stack.pop()}>")
+
+    def handle_data(self, data):
+        self.out.append(_xml_esc(data).replace("\xa0", "&#160;"))
+
+    def handle_comment(self, data):
+        if "--" not in data:
+            self.out.append(f"<!--{data}-->")
+
+    def close(self):
+        super().close()
+        while self._stack:
+            self.out.append(f"</{self._stack.pop()}>")
+
+
+def _sanitize_body(html):
+    """Repair legacy MOBI HTML so epub.js / XML parsers can read it.
+
+    MOBI stores the book as an old-school HTML stream whose markup is not
+    XHTML: attribute values are frequently unquoted (e.g. ``<a filepos=3323>``),
+    control bytes get embedded mid-tag by PalmDOC, and entities are HTML-only.
+    Without cleanup the generated chapter XHTML fails to parse ("AttValue: ' or
+    \" expected"). We re-serialise through the lenient stdlib HTML parser to
+    emit guaranteed well-formed XHTML.
+    """
+    # Strip XML-illegal C0 control characters (keep \t \n \r) so the lenient
+    # parser doesn't stall on them.
+    html = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", html)
+    builder = _XhtmlBuilder()
+    try:
+        builder.feed(html)
+        builder.close()
+    except Exception:
+        return None
+    return "".join(builder.out)
 
 
 def _mobi_to_epub(path, out_path):

@@ -359,29 +359,28 @@ on-demand duplicate finder, no user-defined custom columns.
 ## BL-009 — Cannot delete a book from the library
 
 - **Priority:** High
-- **Status:** open
+- **Status:** implemented + deployed 2026-08-15 — one optional enhancement open
 - **Reported:** 2026-08-13
+- **Fixed:** 2026-08-15
 
-### Symptom
+### Implemented
 
-There is no way to remove a book from the library or purge a quarantined file.
-Only reading-list entries, annotations, drawings, bookmarks, and the comic
-cache have DELETE endpoints.
+- `POST /api/book/<id>/delete` (app.py:2243) removes the physical source file,
+  cover, comic cache, and all DB entries; `POST /api/bulk/delete` (app.py:2277)
+  does the same for a list of IDs.
+- `bulk_delete_files()` (db.py:918) cascades books_fts, annotations, bookmarks,
+  reader_state, reading_list, quarantined, pipeline_log, tags, metadata,
+  files; drawings cascade via `ON DELETE CASCADE` FK (db.py:1008; FKs are ON,
+  db.py:12).
+- UI: `deleteBook()` with a `showConfirm` dialog (index.html:5016); bulk
+  delete in multi-select (index.html:2556).
+- Quarantine purge already exists (`/api/quarantine/bulk/delete`, app.py:1137).
 
-### Where
+### Remaining (optional)
 
-- No `DELETE /api/book/...` route (existing DELETE routes: app.py:1956, 1978,
-  2058, 2092, 2128 — none delete a book record).
-- Cascade tables: reader_state, annotations, drawings, bookmarks, tags,
-  pipeline_log, reading_list reference file/book ids (db.py).
-
-### Notes / acceptance criteria
-
-- Add delete with confirmation; cascade-remove book metadata + annotations +
-  drawings + bookmarks + tags + reading-list/state; keep the source file on
-  disk by default (option to also remove it).
-- Add a "purge" action for quarantined entries.
-- Expose in Library detail panel (and Quarantine) with an admin check.
+- Original criterion "keep the source file on disk by default (option to also
+  remove it)" is NOT met — delete always removes the file. Consider a modal
+  checkbox "also delete source file", default keep-on-disk, for single delete.
 
 ---
 
@@ -478,3 +477,180 @@ Lithium, etc.) can browse and download the library. This app has no such feed.
 - Add an OPDS/OPDS-PSE catalog feed (`/opds`, `/opds/shelf`, search) so
   e-reader apps can consume the library and push reading position back.
 - Flag as a decision; build only if wanted.
+
+---
+
+## BL-014 — Online metadata fetch (Calibre parity)
+
+- **Priority:** High
+- **Status:** open
+- **Reported:** 2026-08-15
+
+### Symptom
+
+Metadata comes only from local filename parsing; Calibre auto-fills
+title/author/cover/ISBN/description from online sources. Books with sparse
+filenames get blank covers and missing fields with no way to auto-fetch.
+
+### Where
+
+- `enrich` is local-only filename parsing: `/api/book/<id>/enrich`
+  (app.py:2180) → enrich_filename.py; no network lookup anywhere in the app.
+- Metadata fields available for fill: title/authors/publisher/isbn/pages/year/
+  description (db.py:35-53).
+- Covers: `metadata.cover_path` (db.py:47), `/api/covers` (app.py:819),
+  `/api/cover/<id>` (app.py:848) — a downloaded cover writes into the same
+  cover store (ties into BL-012).
+
+### Notes
+
+- Add a lookup module (Google Books and/or Open Library/ISBNdb, keyless) keyed
+  by ISBN → title/authors query; map API JSON onto the existing columns.
+- Manual "Fetch metadata" per book + bulk for a selection; never silently
+  overwrite a non-empty field (per-field merge).
+- Download the cover when the chosen record has one; skip cleanly on 404 /
+  rate-limit with a per-book log entry.
+
+---
+
+## BL-015 — Format conversion with output profiles
+
+- **Priority:** Medium
+- **Status:** open
+- **Reported:** 2026-08-15
+
+### Symptom
+
+ebook-convert is only used internally to produce a read-only EPUB
+(`_convert_to_epub`). A user cannot download a book in another format
+(azw3/mobi/pdf/fb2) or for a specific device profile.
+
+### Where
+
+- `_convert_to_epub(filepath)` (app.py:1753) shells out to
+  `shutil.which("ebook-convert")` with fixed EPUB output; conversion disk cache
+  at `cache/converted/` (app.py:1788+).
+- `/api/book/<id>/download` (app.py:1653) serves the original file only.
+- No conversion-request route exists.
+
+### Notes
+
+- `/api/book/<id>/convert` (POST, `format` + optional
+  `device=kindle|kobo`) reusing the existing ebook-convert invocation with
+  device output-profile args when requested.
+- Deliver as a normal download; a "Download as…" menu in the detail panel and
+  batch conversion for multi-select.
+- Reuse the disk conversion cache; support ebook-convert's own output set.
+
+---
+
+## BL-016 — Device sync (send to e-reader)
+
+- **Priority:** Low
+- **Status:** open (candidate — overlaps BL-013)
+- **Reported:** 2026-08-15
+
+### Symptom
+
+No way to get books onto an e-reader (Kobo/Kindle). Calibre hands this via a
+USB-connected device; a headless server's realistic path is network delivery,
+not USB mounting on the Pi.
+
+### Where
+
+- Only raw file download exists: `/api/book/<id>/download` (app.py:1653).
+- No device detection / mount / transfer code (app is a Docker container).
+
+### Notes
+
+- Primary path: OPDS/OPDS-PSE (BL-013) so e-reader apps push/pull over Wi-Fi,
+  plus a per-device transfer profile that picks compatible formats
+  (kindle → azw3/mobi via BL-015-style conversion).
+- USB/MTP only if the Pi is expected to host a connected device — note the
+  requirement (usb gadget drivers + container device passthrough) before
+  committing.
+- Decide the model and document it; build only if wanted (same flag as BL-013).
+
+---
+
+## BL-017 — Library catalog generation
+
+- **Priority:** Low
+- **Status:** open
+- **Reported:** 2026-08-15
+
+### Symptom
+
+The only catalog export is a spreadsheet (`/api/export/excel`). Calibre's
+"Generate catalog" produces readable HTML/EPUB catalogs of the whole library
+or a saved search.
+
+### Where
+
+- `/api/export/excel` (app.py:2432) is the sole catalog export; it already
+  collects the field set a readable catalog needs.
+
+### Notes
+
+- Catalog for a scope (all / current filter / saved search):
+  - HTML — printable, with cover, series list, tags;
+  - EPUB — a generated book whose TOC is the catalog; CSV optional.
+- Reuse the Excel export row-flattening to source data (one query path).
+
+---
+
+## BL-018 — Save-to-disk with folder/file templates
+
+- **Priority:** Medium
+- **Status:** open
+- **Reported:** 2026-08-15
+
+### Symptom
+
+Files land in the fixed UDC layout at copy time; there is no way to export a
+book (or selection) into a user-defined pattern like
+`Author/Series/Title.ext` the way Calibre's "Save to disk" does.
+
+### Where
+
+- Pipeline copy is UDC-bound (copy phase / `dir_archive_dir`).
+- `/api/book/<id>/download` (app.py:1653) serves single raw files only.
+
+### Notes
+
+- User-configurable template in Settings with tokens (`{title}`, `{authors}`,
+  `{series}`, `{series_num}`, `{year}`, `{isbn}`) and an optional folder
+  prefix; safe-path sanitisation (slashes in titles, etc.).
+- Never rewrite the canonical copy; deliver as a download (zip when more than
+  one book) or an on-disk export dir.
+
+---
+
+## BL-019 — Library integrity audit ("Check library")
+
+- **Priority:** Medium
+- **Status:** open
+- **Reported:** 2026-08-15
+
+### Symptom
+
+Calibre's "Check library" reports book-to-disk consistency. This app repairs
+DB/file paths manually (`sync-db`, `remap-paths`) and dedups only at ingest,
+but has no one-click audit of cover/file/DB consistency.
+
+### Where
+
+- `/api/admin/sync-db` (app.py:1299) and `/api/admin/remap-paths` (app.py:1337)
+  do partial fixes; `/api/status` (app.py:459), dedup runs at ingest only
+  (pipeline.py:482-626).
+
+### Notes
+
+- `/api/audit` runs a read-only sweep, grouped with counts and a first-N item
+  preview in the UI:
+  1. DB rows whose stored path/size is missing or differs on disk;
+  2. archive-dir files with no DB row (orphans);
+  3. metadata with pages=0 or missing cover_path where one should exist;
+  4. duplicate report by hash + fuzzy title over a chosen scope.
+- One-click "repair" reuses sync-db/remap-paths for 1–2 and bulk re-extract
+  for 3; the duplicate report feeds quarantine decisions.

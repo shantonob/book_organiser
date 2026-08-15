@@ -1262,6 +1262,10 @@ def export_annotations_markdown(conn, book_id):
             lines.append(f"> {item['text']}")
             if item.get("note"):
                 lines.append(f"  — {item['note']}")
+            if item.get("page") is not None:
+                lines.append(f"  Location: Page {int(item['page']) + 1}")
+            elif item.get("cfi_range"):
+                lines.append(f"  Location: {item['cfi_range']}")
             lines.append("")
         else:
             title_txt = item.get("title") or (item.get("text") or "untitled")

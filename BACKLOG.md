@@ -347,8 +347,30 @@ series metadata is parsed but never stored.
 ## BL-007 — Reader comfort (all formats)
 
 - **Priority:** Medium
-- **Status:** open
+- **Status:** implemented + deployed 2026-08-15 — awaiting user verification
 - **Reported:** 2026-08-13
+
+### Implemented (2026-08-15)
+
+- **C1 EPUB in-book search** — search box in the left sidebar; iterates
+  `book.spine.spineItems`, finds matches, jumps via `rendition.display` and
+  highlights the first hit with `annotations.highlight`.
+- **C2 PDF TOC** — `buildPdfToc()` uses `pdf.getOutline()` +
+  `getDestination`/`getPageIndex` to build a page-numbered TOC in the same
+  contents sidebar; `jumpToPdfToc` renders the page and marks the active entry.
+  Comics hide the block (no chapter markers available).
+- **C3 Themes** — toolbar select (Dark/Light/Sepia/Night), persisted to
+  localStorage. EPUB uses `rendition.themes.register/select`; PDF/comic use CSS
+  classes on `#readerArea` with a night `invert+hue-rotate` canvas filter.
+- **C4 EPUB typography** — A−/A+ font-size (`themes.fontSize`) + line-height
+  select (`themes.override`), persisted.
+- **C5 Thumbnails** — `#readerThumbs` strip below the toolbar for PDF/comic;
+  comic thumbs are lazy `<img>`s, PDF thumbs render lazily via
+  IntersectionObserver; click jumps, active page highlighted.
+- **C6 Manga/RTL** — `⇄` toggle for comics reverses prev/next direction and
+  swaps the two-page spread sides; thumbnail strip reverses.
+- **C7 Annotation export** — export button now visible for PDF/comic; backend
+  adds `Location: Page N` to page-based highlights (db.py export).
 
 ### Symptom
 

@@ -3525,7 +3525,10 @@ function loadPdfReader(bookId, book) {
   var loadingTask = pdfjsLib.getDocument(API + "/api/book/" + bookId + "/read");
   loadingTask.promise.then(function(pdf) {
     _pdfDoc = pdf;
-    readerPages = { total: pdf.numPages };
+    // BL-006 follow-up: keep readerPages an array (like the comic path) so
+    // `readerPages.length` is valid everywhere — an object form broke bookmark
+    // progress_pct (always 0 for PDF).
+    readerPages = Array.from({length: pdf.numPages}, function(_, i) { return i; });
     document.getElementById("readerLocation").textContent = "1 / " + pdf.numPages;
     pdfRenderPage(bookId, 1);
     // Restore saved position

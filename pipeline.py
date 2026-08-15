@@ -291,7 +291,7 @@ def run_phase_metadata(source=None, inbox_files=None):
         if "_error" in raw_meta:
             error = raw_meta["_error"]
             set_stage(conn, file_id, "extracted", error)
-            quarantine_file(conn, file_id, "EXTRACT_FAIL", error)
+            quarantine_file(conn, file_id, raw_meta.get("_error_code") or "EXTRACT_FAIL", error)
             conn.commit()
             state.update(log_msg=f"  ✗ extract failed — {error}")
             continue

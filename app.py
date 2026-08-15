@@ -1945,6 +1945,9 @@ def api_book_read(book_id):
             return jsonify({"error": "file not found on disk"}), 404
 
         ext = os.path.splitext(filepath)[1].lower()
+        if ext == ".cbr":
+            # BL-005: CBR is download-only (container has no RAR tool).
+            return jsonify({"error": "CBR is download-only (no RAR tool in the container)"}), 400
         if ext not in config.EBOOK_EXTS:
             return jsonify({"error": "unsupported format for in-browser reading"}), 400
 

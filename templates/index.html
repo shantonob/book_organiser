@@ -727,8 +727,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           </span>
         </div>
         <div id="readerFallback" style="display:none;text-align:center;padding:40px;color:#64748b">
-          <div style="font-size:1.1rem;margin-bottom:12px">Cannot preview this format in the browser</div>
-          <p style="font-size:0.85rem;margin-bottom:16px">Use the <strong>Download</strong> button on the detail page to open it in your ebook reader.</p>
+          <div class="rf-title" style="font-size:1.1rem;margin-bottom:12px">Cannot preview this format in the browser</div>
+          <p class="rf-msg" style="font-size:0.85rem;margin-bottom:16px">Use the <strong>Download</strong> button on the detail page to open it in your ebook reader.</p>
           <button onclick="switchTab('library')" style="padding:8px 20px;border:none;border-radius:6px;background:#0ea5e9;color:#0f172a;font-weight:600;cursor:pointer">Back to Library</button>
         </div>
         <div id="readerLoadStatus" style="display:none;padding:8px 14px;font-size:0.78rem;border:1px solid #475569;border-bottom:none;border-radius:6px 6px 0 0;background:#0f172a;color:#e2e8f0">
@@ -3019,21 +3019,37 @@ function openReader(bookId) {
       loadPdfReader(bookId, b);
     } else if (ext === "djvu") {
       loadDjvuReader(bookId, b);
-    } else if (ext === "cbz" || ext === "cbr") {
+    } else if (ext === "cbz") {
       loadComicReader(bookId, b);
+    } else if (ext === "cbr") {
+      // BL-005: CBR is download-only — no RAR tool in the container.
+      showReaderFallback("CBR is download-only",
+        "RAR extraction is not available in the container. Use the <strong>Download</strong> button to open it in your ebook reader.");
     } else {
-      document.getElementById("readerDrawGroup").style.display = "none";
-      document.getElementById("readerArea").style.display = "none";
-      document.getElementById("readerFallback").style.display = "block";
-      document.getElementById("readerPrev").style.display = "none";
-      document.getElementById("readerNext").style.display = "none";
-      document.getElementById("readerProgressWrap").style.display = "none";
+      showReaderFallback("Cannot preview this format in the browser",
+        "Use the <strong>Download</strong> button on the detail page to open it in your ebook reader.");
     }
     // Auto-add to reading list as "reading" (R1)
     addToReadingListAsReading(bookId);
     loadReadingList(); // refresh active highlight + book info
-    document.getElementById("readerDrawGroup").style.display = "flex";
+    if (document.getElementById("readerArea").style.display !== "none") {
+      document.getElementById("readerDrawGroup").style.display = "flex";
+    }
   }).catch(() => alert("Could not load book info"));
+}
+
+function showReaderFallback(title, msg) {
+  document.getElementById("readerDrawGroup").style.display = "none";
+  document.getElementById("readerArea").style.display = "none";
+  document.getElementById("readerPrev").style.display = "none";
+  document.getElementById("readerNext").style.display = "none";
+  document.getElementById("readerProgressWrap").style.display = "none";
+  var fb = document.getElementById("readerFallback");
+  var t = fb.querySelector(".rf-title");
+  var m = fb.querySelector(".rf-msg");
+  if (t) t.innerHTML = title;
+  if (m) m.innerHTML = msg;
+  fb.style.display = "block";
 }
 
 function addToReadingListAsReading(bid) {

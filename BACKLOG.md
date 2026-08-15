@@ -244,8 +244,9 @@ extraction succeeded — the reader is blank with prev/next hidden.
 ## BL-005 — CBR = download-only (no unrar in container)
 
 - **Priority:** High
-- **Status:** open
+- **Status:** implemented + deployed 2026-08-15 — awaiting user verification
 - **Reported:** 2026-08-13
+- **Fixed:** 2026-08-15
 
 ### Symptom
 
@@ -255,20 +256,35 @@ with 0 pages and no error, silently.
 
 ### Where
 
-- Dockerfile:5-8 installs only `build-essential`; `rarfile` (requirements.txt:7)
+- ~~Dockerfile:5-8 installs only `build-essential`; `rarfile` (requirements.txt:7)
   needs a system `unrar`/`unar`/`bsdtar`, which is absent → `_extract_comic`
-  returns `[]` (app.py:1694-1699).
-- `.cbr` is mapped to the ZIP extractor `extract_cbz` (extractors/__init__.py:11-12);
-  `zipfile.BadZipFile` is swallowed (extractors/cbz.py:16-17) → silent success.
-- `openReader` routes `.cbr` to `loadComicReader` (templates/index.html:3011-3012).
+  returns `[]`~~ — user decision: keep no-RAR.
+- ~~`.cbr` is mapped to the ZIP extractor `extract_cbz` (extractors/__init__.py)~~ —
+  replaced by a dedicated `extract_cbr` that fails loudly.
+- ~~`openReader` routes `.cbr` to `loadComicReader`~~ — now routed to the
+  download-only fallback panel.
 
-### Notes / decision
+### Decision (user, 2026-08-13)
 
-- **CBZ-only decision (user, 2026-08-13):** do NOT install unrar. Route `.cbr`
-  to the download/fallback panel instead of attempting extraction.
-- Update the extractor mapping so CBR metadata extraction fails loudly
-  (quarantine with an explicit error code, e.g. `NO_RAR_TOOL`) instead of
-  silently cataloguing with zero pages.
+- Do NOT install unrar; `.cbr` is download-only.
+- Metadata extraction must fail loudly rather than cataloguing silently.
+
+### Implemented (2026-08-15)
+
+- `extractors/extract_cbr()` raises `ExtractError` with code `NO_RAR_TOOL`
+  (extractors/cbr.py); `extract_metadata` now carries `_error_code`, and the
+  pipeline quarantines with that code instead of a generic `EXTRACT_FAIL`
+  (pipeline.py:291-297).
+- `/api/book/<id>/read` rejects `.cbr` with 400 "download-only" (app.py).
+- `openReader` routes `.cbr` to a tailored `showReaderFallback("CBR is
+  download-only", …)` (templates/index.html) — no extraction attempt/polling;
+  a generic fallback helper also cleans up the draw group.
+
+### Verified (2026-08-15)
+
+- `extract_metadata("/tmp/x.cbr")` → `_error_code = "NO_RAR_TOOL"`.
+- Real CBR book 6464: `/api/book/6464/read` → HTTP 400 (download-only guard).
+- Served page includes the new routing branch.
 
 ---
 

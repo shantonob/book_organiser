@@ -3657,7 +3657,15 @@ function loadComicReader(bookId, book) {
     }
     return r.json();
   }).then(function(data) {
-    readerPages = data.pages || [];
+    // BL-004: backend /read returns {format,total} (no page list) — build the
+    // page index array from total so the comic reader actually mounts.
+    if (data.pages && data.pages.length) {
+      readerPages = data.pages;
+    } else if (data.total) {
+      readerPages = Array.from({length: data.total}, function(_, i) { return i; });
+    } else {
+      readerPages = [];
+    }
     if (readerPages.length === 0) {
       area.innerHTML = '<div style="color:#f59e0b;text-align:center;padding:40px"><div style="font-size:1.1rem;margin-bottom:12px">Could not extract this comic archive</div><p style="font-size:0.85rem;color:#64748b">This format needs external tools to extract. Use the <strong>Download</strong> button instead.</p></div>';
       document.getElementById("readerLocation").textContent = "Unavailable";
@@ -3892,9 +3900,8 @@ function closeReader() {
   readerBookId = null;
   if (document.fullscreenElement) { document.exitFullscreen().catch(function(){}); }
   var sbBtn = document.getElementById("sidebarToggleBtn"); if (sbBtn) sbBtn.style.display = "none";
-  if (bid && (fmt === "cbz" || fmt === "cbr")) {
-    fetch(API + "/api/book/" + bid + "/read/cache", {method: "DELETE"}).catch(function(){});
-  }
+  // BL-004: keep the comic extraction cache between opens (TTL sweep handles
+  // cleanup server-side); DELETE /api/book/<id>/read/cache remains for manual clears.
   document.getElementById("bookmarkBtn").style.display = "none";
   document.getElementById("annToggleBtn").style.display = "none";
   document.getElementById("pageNoteBtn").style.display = "none";

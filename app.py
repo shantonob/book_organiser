@@ -4,7 +4,9 @@ import io
 import json
 import logging
 import os
+import re
 import shutil
+import time
 import subprocess
 import sys
 import tempfile
@@ -1672,11 +1674,64 @@ def api_book_download(book_id):
     finally:
         conn.close()
 
-
 COMIC_CACHE = os.path.join(config.BASE_DIR, "data", "cache", "comic")
 _comic_extract_cache = {}
 _comic_extract_lock = threading.Lock()
 _comic_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+COMIC_CACHE_TTL = 14 * 86400  # seconds — BL-004: cache survives between opens
+_comic_cache_last_sweep = 0.0
+
+
+def _natural_order_key(name):
+    """Numeric-aware key so page 10 sorts after page 2 (BL-004)."""
+    return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", name)]
+
+
+def _comic_pages(cache_dir):
+    """Flatten the extracted tree to images in stable numeric order."""
+    img_exts = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+    pages = []
+    for root, dirs, files in os.walk(cache_dir):
+        dirs.sort(key=_natural_order_key)
+        for f in sorted(files, key=_natural_order_key):
+            if os.path.splitext(f)[1].lower() in img_exts:
+                pages.append(os.path.join(root, f))
+    return pages
+
+
+def _prune_comic_cache(force=False):
+    """Sweep extraction dirs untouched for COMIC_CACHE_TTL (BL-004)."""
+    global _comic_cache_last_sweep
+    if not force and time.time() - _comic_cache_last_sweep < 3600:
+        return
+    _comic_cache_last_sweep = time.time()
+    if not os.path.isdir(COMIC_CACHE):
+        return
+    cutoff = time.time() - COMIC_CACHE_TTL
+    for entry in os.listdir(COMIC_CACHE):
+        d = os.path.join(COMIC_CACHE, entry)
+        if not os.path.isdir(d):
+            continue
+        try:
+            if os.path.getmtime(d) < cutoff:
+                shutil.rmtree(d, ignore_errors=True)
+        except OSError:
+            pass
+
+
+def _touch_comic(book_id):
+    """Refresh an extraction dir's mtime so the TTL sweep keeps it."""
+    d = os.path.join(COMIC_CACHE, str(book_id))
+    if os.path.isdir(d):
+        try:
+            os.utime(d, None)
+        except OSError:
+            pass
+
+
+_prune_comic_cache(force=True)
+
 
 def _extract_comic(book_id, filepath):
     """Extract a comic archive (CBZ/CBR) to cache and return sorted image list."""
@@ -1697,16 +1752,12 @@ def _extract_comic(book_id, filepath):
                     rf.extractall(cache_dir)
         except Exception:
             return []
-    img_exts = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
-    pages = []
-    for root, dirs, files in os.walk(cache_dir):
-        for f in sorted(files):
-            if os.path.splitext(f)[1].lower() in img_exts:
-                pages.append(os.path.join(root, f))
-    return pages
+    return _comic_pages(cache_dir)
+
 
 def _extract_comic_async(book_id, filepath):
     """Run _extract_comic in background and cache result (D7.20)."""
+    _prune_comic_cache()
     cache_dir = os.path.join(COMIC_CACHE, str(book_id))
     if os.path.isdir(cache_dir) and os.listdir(cache_dir):
         # Already cached
@@ -1721,6 +1772,7 @@ def _extract_comic_async(book_id, filepath):
 
 @app.route("/api/comic-status/<int:book_id>")
 def api_comic_status(book_id):
+    _touch_comic(book_id)
     with _comic_extract_lock:
         entry = _comic_extract_cache.get(book_id)
     if not entry:
@@ -1989,6 +2041,7 @@ def api_book_read_page(book_id, page_num):
     pages = _extract_comic(book_id, None)
     if not pages or page_num < 0 or page_num >= len(pages):
         return jsonify({"error": "page not found"}), 404
+    _touch_comic(book_id)
     import mimetypes
     mt, _ = mimetypes.guess_type(pages[page_num])
     return _safe_send_path(pages[page_num], [COMIC_CACHE], mimetype=mt or "image/jpeg")

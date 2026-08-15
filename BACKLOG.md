@@ -188,8 +188,9 @@ and CBZ/CBR.
 ## BL-004 — Comic reader broken for all CBZ/CBR
 
 - **Priority:** High
-- **Status:** open
+- **Status:** implemented + deployed 2026-08-15 — awaiting user verification
 - **Reported:** 2026-08-13
+- **Fixed:** 2026-08-15
 
 ### Symptom
 
@@ -219,6 +220,24 @@ extraction succeeded — the reader is blank with prev/next hidden.
   delete-on-close.
 - Verify: opening a multi-page CBZ renders page 1, prev/next/progress/zoom/draw/
   highlights work, page order is correct (`1,2,…,10`).
+
+### Implemented (2026-08-15)
+
+- Frontend builds the page-array from `data.total` in both the direct and poll
+  paths — `/read` returns `{format,total,book_id}` and has no `pages` field
+  (index.html:3660-3672, `loadComicReader`).
+- Numeric-aware natural sort in `_comic_pages()` (app.py:1691,316) — dirs walked
+  in the same order; replaces plain `sorted(files)` which misordered `1,10,2`.
+- Extraction cache now persists between opens: delete-on-close removed from
+  `closeReader()`, server TTL sweep `_prune_comic_cache()` (14 days, app.py) with
+  mtime touch on access (status + page serve); manual
+  `/api/book/<id>/read/cache` DELETE still available for forced clears.
+
+### Verified (2026-08-15, book 1670)
+
+- `/read` → `{status:extracting}`; poll → `{status:done,total:14}`;
+  `/read/page/0` serves real image bytes (WEBP, 140 KB); ordering numeric
+  (`001…014`, trailing watermark image last). Acceptance criteria met for CBZ.
 
 ---
 

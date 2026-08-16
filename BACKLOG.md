@@ -611,7 +611,7 @@ Lithium, etc.) can browse and download the library. This app has no such feed.
 ## BL-014 — Online metadata fetch (Calibre parity)
 
 - **Priority:** High
-- **Status:** open
+- **Status:** ✅ Done
 - **Reported:** 2026-08-15
 
 ### Symptom
@@ -638,6 +638,28 @@ filenames get blank covers and missing fields with no way to auto-fetch.
   overwrite a non-empty field (per-field merge).
 - Download the cover when the chosen record has one; skip cleanly on 404 /
   rate-limit with a per-book log entry.
+
+### Resolution
+
+- Online lookup already existed (`enricher.py`: Open Library keyless search +
+  Google Books fallback via `GOOGLE_BOOKS_API_KEY`, rate-limit, disk cache);
+  the gaps were merge semantics, per-book logging, and bulk-for-selection.
+- `enricher.py`: `_ol_work_description()` now fetches the work record so the
+  keyless OL path returns real descriptions (search.json has none); stub
+  descriptions ("1 online resource :") filtered out; cache key bumped to v2
+  so stale pre-description results are ignored.
+- `/api/book/<id>/enrich` (app.py:2489): per-field merge — only fills fields
+  that are currently empty (title/authors/publisher/year/isbn/pages/language/
+  description/cover), never overwrites a non-empty one; downloads a missing
+  cover; writes one `pipeline_log` entry per book with filled-field counts.
+- `/api/bulk/enrich` (app.py:2959): POST `{book_ids}` (cap 200 default,
+  max 1000) — same merge/logging, returns per-book results summary.
+- Frontend: "Fetch Metadata" bulk-toolbar button (index.html) using
+  `getSelectedIds()`.
+- Verified live on the Pi: description filled from Open Library work record
+  (book 53548, 561 chars) and 9 fields + 1 cover across 2 books from Google
+  Books; re-enrich of an already-filled book changed nothing (merge holds);
+  per-book logs present for success/no-data cases.
 
 ---
 

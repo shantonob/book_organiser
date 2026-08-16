@@ -664,6 +664,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
             <button onclick="bulkTagAdd()" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">+ Add Tag</button>
             <button onclick="bulkTagRemove()" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">- Remove Tag</button>
             <button onclick="bulkClassify()" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">Re-classify UDC</button>
+            <button onclick="bulkEnrich()" title="Fetch missing metadata from Open Library / Google Books (never overwrites filled fields)" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">Fetch Metadata</button>
             <button onclick="bulkDelete()" style="padding:4px 10px;font-size:0.75rem;background:#701a22;border:none;border-radius:3px;color:#fca5a5;cursor:pointer">&#x1F5D1; Delete</button>
           </div>
         </div>
@@ -2897,6 +2898,22 @@ function bulkClassify() {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({book_ids: ids, udc_code: udc})
     }).then(r => r.json()).then(d => { alert(d.status + " — " + d.reclassified + " book(s)"); loadLibrary(); }).catch(() => {});
+  });
+}
+
+function bulkEnrich() {
+  const ids = getSelectedIds();
+  if (!ids.length) return alert("No books selected");
+  showConfirm("Fetch missing metadata for " + ids.length + " book(s) from Open Library / Google Books? Already-filled fields are kept, and missing covers are downloaded. This runs synchronously (capped at 200 per request).").then(function(ok) {
+    if (!ok) return;
+    fetch(API + "/api/bulk/enrich", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({book_ids: ids})
+    }).then(r => r.json()).then(d => {
+      if (d.error) { alert("Fetch failed: " + d.error); return; }
+      alert("Fetched " + d.processed + " book(s) — filled " + d.filled_fields + " field(s), downloaded " + d.covers + " cover(s), " + d.no_data + " had no online record.");
+      loadLibrary();
+    }).catch(() => { alert("Fetch request failed"); });
   });
 }
 

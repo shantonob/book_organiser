@@ -2487,7 +2487,11 @@ def api_bookmark_delete(book_id, bm_id):
 
 @app.route("/api/book/<int:book_id>/enrich", methods=["POST"])
 def api_book_enrich(book_id):
-    """Re-run enrichment (Open Library + Google Books) for a single book."""
+    """Re-run enrichment (Open Library + Google Books) for a single book.
+
+    Per-field merge: only fills fields that are currently empty — never
+    overwrites a non-empty field (BL-014). Writes a pipeline_log entry.
+    """
     conn = get_connection(DB_PATH)
     try:
         book_row = get_book_by_id(conn, book_id)
@@ -2499,29 +2503,52 @@ def api_book_enrich(book_id):
         author = book.get("authors")
         result = enrich_book(isbn=isbn, title=title, author=author)
         if not result:
+            conn.execute(
+                "INSERT INTO pipeline_log (file_id, stage, status, message) "
+                "VALUES (?,?,?,?)",
+                (book_id, "enrich", "done", "online enrich: no data returned"))
+            conn.commit()
             return jsonify({"error": "enrichment returned no data"}), 404
         from datetime import datetime
 
         from db import upsert_metadata
+        # Per-field merge — build kwargs only for fields currently empty.
+        def _fill(field):
+            cur = book.get(field)
+            cur = str(cur).strip() if cur is not None else ""
+            val = result.get(field)
+            return val if val and not cur else None
+
+        merged = {
+            "title": _fill("title"),
+            "authors": _fill("authors"),
+            "publisher": _fill("publisher"),
+            "year": _fill("year"),
+            "isbn": _fill("isbn"),
+            "pages": _fill("pages"),
+            "language": _fill("language"),
+            "description": _fill("description"),
+        }
+        # Cover: only download when the book has none.
         cover_path = None
-        if result.get("cover_url"):
+        if not book.get("cover_path") and result.get("cover_url"):
             os.makedirs(config.COVER_DIR, exist_ok=True)
             cover_path = _download_cover(result["cover_url"], config.COVER_DIR)
         upsert_metadata(conn, book_id,
-                        title=result.get("title"),
-                        authors=result.get("authors"),
-                        publisher=result.get("publisher"),
-                        year=result.get("year"),
-                        isbn=result.get("isbn"),
-                        pages=result.get("pages"),
-                        language=result.get("language"),
-                        description=result.get("description"),
+                        **{k: v for k, v in merged.items() if v is not None},
                         cover_path=cover_path,
                         enrich_source=result.get("source", "enrich"),
                         enriched_at=datetime.utcnow().isoformat())
+        conn.execute(
+            "INSERT INTO pipeline_log (file_id, stage, status, message) "
+            "VALUES (?,?,?,?)",
+            (book_id, "enrich", "done",
+             f"online enrich ({result.get('source', 'api')}): filled {sum(1 for v in merged.values() if v)} field(s)" +
+             (", cover" if cover_path else "")))
         conn.commit()
         updated = get_book_by_id(conn, book_id)
-        return jsonify({"status": "ok", "book": dict(updated), "enriched": result})
+        return jsonify({"status": "ok", "book": dict(updated), "enriched": result,
+                        "merged": {k: v for k, v in merged.items() if v is not None}})
     finally:
         conn.close()
 
@@ -2925,6 +2952,85 @@ def api_bulk_classify():
             set_tags(conn, bid, [{"tag": udc_code, "tag_label": udc_label}], tag_type="udc")
         conn.commit()
         return jsonify({"status": "ok", "reclassified": len(book_ids), "udc_code": udc_code})
+    finally:
+        conn.close()
+
+
+@app.route("/api/bulk/enrich", methods=["POST"])
+def api_bulk_enrich():
+    """Re-run online enrichment for a selection of books (BL-014).
+
+    Per-field merge (never overwrites non-empty fields), downloads missing
+    covers, logs one pipeline_log entry per book. Capped so one request
+    doesn't hammer external APIs for thousands of books.
+    """
+    from datetime import datetime
+
+    from db import upsert_metadata
+    data = request.json or {}
+    book_ids = data.get("book_ids", [])
+    cap = max(1, min(int(data.get("cap") or 200), 1000))
+    book_ids = book_ids[:cap]
+    if not book_ids:
+        return jsonify({"error": "book_ids required"}), 400
+    conn = get_connection(DB_PATH)
+    try:
+        filled = 0
+        covers = 0
+        no_data = 0
+        results = []
+        for bid in book_ids:
+            book_row = get_book_by_id(conn, bid)
+            if not book_row:
+                continue
+            book = dict(book_row)
+            result = enrich_book(
+                isbn=book.get("isbn"),
+                title=book.get("title") or book.get("filename", ""),
+                author=book.get("authors"))
+            if not result:
+                no_data += 1
+                conn.execute(
+                    "INSERT INTO pipeline_log (file_id, stage, status, message) "
+                    "VALUES (?,?,?,?)",
+                    (bid, "enrich", "done", "online enrich: no data returned"))
+                conn.commit()
+                continue
+            def _fill(field):
+                cur = book.get(field)
+                cur = str(cur).strip() if cur is not None else ""
+                val = result.get(field)
+                return val if val and not cur else None
+            merged = {
+                "title": _fill("title"), "authors": _fill("authors"),
+                "publisher": _fill("publisher"), "year": _fill("year"),
+                "isbn": _fill("isbn"), "pages": _fill("pages"),
+                "language": _fill("language"), "description": _fill("description"),
+            }
+            cover_path = None
+            if not book.get("cover_path") and result.get("cover_url"):
+                os.makedirs(config.COVER_DIR, exist_ok=True)
+                cover_path = _download_cover(result["cover_url"], config.COVER_DIR)
+                if cover_path:
+                    covers += 1
+            upsert_metadata(conn, bid,
+                            **{k: v for k, v in merged.items() if v is not None},
+                            cover_path=cover_path,
+                            enrich_source=result.get("source", "enrich"),
+                            enriched_at=datetime.utcnow().isoformat())
+            n = sum(1 for v in merged.values() if v)
+            filled += n
+            conn.execute(
+                "INSERT INTO pipeline_log (file_id, stage, status, message) "
+                "VALUES (?,?,?,?)",
+                (bid, "enrich", "done",
+                 f"online enrich ({result.get('source', 'api')}): filled {n} field(s)" +
+                 (", cover" if cover_path else "")))
+            conn.commit()
+            results.append({"id": bid, "filled": n, "source": result.get("source", "api")})
+        return jsonify({"status": "ok", "processed": len(book_ids),
+                        "filled_fields": filled, "covers": covers, "no_data": no_data,
+                        "results": results})
     finally:
         conn.close()
 

@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import threading
 import time
 import urllib.error
@@ -24,7 +25,8 @@ def _rate_limit():
 
 
 def _cache_key(isbn=None, title=None, author=None):
-    raw = isbn or f"{title or ''}|{author or ''}"
+    # Version 2: added work-record descriptions + stub filtering (BL-014).
+    raw = "v2|" + (isbn or (title or "") + "|" + (author or ""))
     return hashlib.md5(raw.encode()).hexdigest()
 
 
@@ -54,6 +56,31 @@ def _fetch_json(url):
 
 # ── Open Library ─────────────────────────────────────────────
 
+def _ol_work_description(work_key):
+    """Fetch a work record's description (search.json docs don't include it).
+
+    Rejects catalog stubs like "1 online resource :" or "3 v. : ill.".
+    """
+    if not work_key:
+        return None
+    url = f"https://openlibrary.org{work_key}.json"
+    data = _fetch_json(url)
+    if not data:
+        return None
+    desc = data.get("description")
+    if isinstance(desc, dict):
+        desc = desc.get("value")
+    if not isinstance(desc, str):
+        return None
+    desc = desc.strip()
+    if len(desc) < 40:
+        return None
+    stub = r"^[\s\d]+(online resource|v\.|vol\.|volumes|p\.|p\. cm|cm\.)"
+    if re.search(stub, desc, re.IGNORECASE):
+        return None
+    return desc
+
+
 def _ol_search(isbn=None, title=None, author=None):
     query = ""
     if isbn:
@@ -68,7 +95,7 @@ def _ol_search(isbn=None, title=None, author=None):
         return None
     doc = data["docs"][0]
     ol_cover_isbn = (doc.get("isbn", []) or [None])[0]
-    return {
+    result = {
         "title": doc.get("title"),
         "authors": ", ".join(doc.get("author_name", [])),
         "publisher": ", ".join(doc.get("publisher", [])) if doc.get("publisher") else None,
@@ -79,6 +106,11 @@ def _ol_search(isbn=None, title=None, author=None):
         "cover_url": f"https://covers.openlibrary.org/b/isbn/{ol_cover_isbn}-L.jpg" if ol_cover_isbn else None,
         "source": "openlibrary_search",
     }
+    # search.json has no description; pull it from the work record when cheap
+    desc = _ol_work_description(doc.get("key"))
+    if desc:
+        result["description"] = desc
+    return result
 
 
 # ── Google Books ─────────────────────────────────────────────

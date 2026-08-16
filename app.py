@@ -501,6 +501,229 @@ def api_recon():
     return jsonify(result)
 
 
+# ── BL-019: library integrity audit ─────────────────────────────
+
+def _audit_scan():
+    """Read-only sweep: grouped counts + first-N previews (no DB writes)."""
+    import re as _re
+    from filename_cleaner import normalize_title, title_similarity
+    conn = get_connection(DB_PATH)
+    try:
+        archive = getattr(config, "ARCHIVE_DIR", "") or (
+            os.path.join(config.FLAT_DIR, "archive") if config.FLAT_DIR else None)
+
+        result = {"summary": {}, "missing_or_mismatched": [], "orphans": [], "metadata_issues": [], "duplicates": []}
+
+        # 1. DB rows whose stored path/size is missing or differs on disk
+        rows = conn.execute("SELECT f.id, f.filename, f.source_path, f.file_size FROM files f").fetchall()
+        missing = []
+        size_mismatch = []
+        for r in rows:
+            sp = r["source_path"]
+            if not sp:
+                continue
+            if not os.path.isfile(sp):
+                missing.append({"id": r["id"], "filename": r["filename"], "path": sp})
+                continue
+            try:
+                disk_size = os.path.getsize(sp)
+            except OSError:
+                disk_size = None
+            if disk_size is not None and r["file_size"] is not None and disk_size != r["file_size"]:
+                size_mismatch.append({"id": r["id"], "filename": r["filename"], "db_size": r["file_size"], "disk_size": disk_size, "path": sp})
+        result["missing_or_mismatched"] = {
+            "missing": missing[:20],
+            "missing_count": len(missing),
+            "size_mismatch": size_mismatch[:20],
+            "size_mismatch_count": len(size_mismatch),
+        }
+
+        # 2. archive-dir files with no DB row (orphans)
+        orphans = []
+        if archive and os.path.isdir(archive):
+            db_paths = set()
+            for r in conn.execute("SELECT source_path FROM files WHERE source_path IS NOT NULL").fetchall():
+                db_paths.add(os.path.normpath(r["source_path"]))
+            for dirpath, _, filenames in os.walk(archive):
+                for f in filenames:
+                    ext = os.path.splitext(f)[1].lower()
+                    if ext not in EBOOK_EXTS:
+                        continue
+                    fp = os.path.normpath(os.path.join(dirpath, f))
+                    if fp not in db_paths:
+                        orphans.append({"path": fp})
+        result["orphans"] = {"items": orphans[:20], "count": len(orphans)}
+
+        # 3. metadata with pages=0 or missing cover_path where one should exist
+        meta_issues = []
+        for r in conn.execute(
+            "SELECT m.file_id, m.title, m.pages, m.cover_path, f.source_path, f.format "
+            "FROM metadata m JOIN files f ON f.id = m.file_id"
+        ).fetchall():
+            reasons = []
+            if r["pages"] is None or r["pages"] == 0:
+                reasons.append("pages=0")
+            if not r["cover_path"]:
+                reasons.append("no cover")
+            if reasons and r["source_path"] and os.path.isfile(r["source_path"]):
+                meta_issues.append({"id": r["file_id"], "title": r["title"], "format": r["format"], "reasons": reasons})
+        result["metadata_issues"] = {"items": meta_issues[:20], "count": len(meta_issues)}
+
+        # 4. duplicates by hash + fuzzy title over the library.
+        #    Hash groups are exact; fuzzy uses a token-Jaccard pre-gate so the
+        #    expensive SequenceMatcher only runs on a small candidate set.
+        def _jaccard(a, b):
+            if not a or not b:
+                return 0.0
+            inter = len(a & b)
+            if inter == 0:
+                return 0.0
+            return inter / len(a | b)
+
+        def _tokens(t):
+            return frozenset(w for w in _re.findall(r"[a-z0-9]+", t) if len(w) >= 3)
+
+        dup_groups = []
+        by_hash = {}
+        for r in conn.execute(
+            "SELECT f.id, f.filename, f.file_hash, m.title, m.authors, f.stage, f.is_master "
+            "FROM files f LEFT JOIN metadata m ON m.file_id = f.id"
+        ).fetchall():
+            if not r["file_hash"]:
+                continue
+            by_hash.setdefault(r["file_hash"], []).append(r)
+        for h, group in by_hash.items():
+            if len(group) > 1:
+                dup_groups.append({"kind": "hash", "key": h[:12], "books": [dict(g) for g in group]})
+
+        # Fuzzy title dupes: bucket by a normalized prefix so similarity checks
+        # stay O(bucket²) instead of O(n²) across the whole library.
+        buckets = {}
+        for r in conn.execute(
+            "SELECT f.id, f.filename, m.title, m.authors, f.stage, f.is_master "
+            "FROM files f LEFT JOIN metadata m ON m.file_id = f.id"
+        ).fetchall():
+            t = normalize_title(r["title"] or r["filename"])
+            if not t:
+                continue
+            buckets.setdefault(t[:8], []).append((t, r, _tokens(t)))
+        seen = set()
+        for bkey, group in buckets.items():
+            for i in range(len(group)):
+                for j in range(i + 1, len(group)):
+                    if _jaccard(group[i][2], group[j][2]) < 0.8:
+                        continue
+                    if title_similarity(group[i][0], group[j][0]) >= 0.95:
+                        key = tuple(sorted([group[i][1]["id"], group[j][1]["id"]]))
+                        if key not in seen:
+                            seen.add(key)
+                            dup_groups.append({"kind": "title", "key": group[i][0][:40], "books": [dict(group[i][1]), dict(group[j][1])]})
+        result["duplicates"] = {"groups": dup_groups[:20], "count": len(dup_groups)}
+
+        result["summary"] = {
+            "missing": len(missing),
+            "size_mismatch": len(size_mismatch),
+            "orphans": len(orphans),
+            "metadata_issues": len(meta_issues),
+            "duplicate_groups": len(dup_groups),
+        }
+        return result
+    finally:
+        conn.close()
+
+
+@app.route("/api/audit")
+def api_audit():
+    """Run a read-only library integrity sweep (BL-019)."""
+    try:
+        return jsonify(_audit_scan())
+    except Exception as e:
+        logger.error("audit failed: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/audit/repair", methods=["POST"])
+def api_audit_repair():
+    """One-click repair for the audit findings.
+
+    - size mismatches: update stored file_size to match disk (safe).
+    - metadata issues (pages=0 / missing cover): re-extract metadata for the
+      affected books whose source file exists.
+    - missing source files / orphans / duplicate groups: reported only (need
+      human decision, e.g. remap-paths, re-import, or quarantine).
+    """
+    data = request.json or {}
+    fix_size = bool(data.get("fix_size", True))
+    fix_metadata = bool(data.get("fix_metadata", True))
+    max_metadata = max(0, int(data.get("max_metadata", 100)))
+    conn = get_connection(DB_PATH)
+    try:
+        from db import upsert_metadata
+        from extractors import extract_metadata
+        fixed = {"size": 0, "metadata": 0, "skipped_missing": [], "remaining": 0}
+
+        if fix_size:
+            for r in conn.execute("SELECT id, source_path, file_size FROM files").fetchall():
+                if not r["source_path"] or not os.path.isfile(r["source_path"]):
+                    continue
+                try:
+                    disk_size = os.path.getsize(r["source_path"])
+                except OSError:
+                    continue
+                if r["file_size"] is None or disk_size != r["file_size"]:
+                    conn.execute("UPDATE files SET file_size=? WHERE id=?", (disk_size, r["id"]))
+                    fixed["size"] += 1
+            conn.commit()
+
+        if fix_metadata:
+            rows = conn.execute(
+                "SELECT m.file_id, m.title, m.pages, m.cover_path, f.source_path, f.format "
+                "FROM metadata m JOIN files f ON f.id = m.file_id"
+            ).fetchall()
+            processed = 0
+            pending = 0
+            for r in rows:
+                reasons = []
+                if r["pages"] is None or r["pages"] == 0:
+                    reasons.append("pages")
+                if not r["cover_path"]:
+                    reasons.append("cover")
+                if not reasons:
+                    continue
+                sp = r["source_path"]
+                if not sp or not os.path.isfile(sp):
+                    fixed["skipped_missing"].append(r["file_id"])
+                    continue
+                if processed >= max_metadata:
+                    pending += 1
+                    continue
+                processed += 1
+                try:
+                    raw_meta = extract_metadata(sp)
+                    if "_error" in raw_meta:
+                        continue
+                    kw = {}
+                    if "pages" in reasons and raw_meta.get("pages"):
+                        kw["pages"] = raw_meta["pages"]
+                    if "cover" in reasons and raw_meta.get("cover_data"):
+                        os.makedirs(config.COVER_DIR, exist_ok=True)
+                        cp = os.path.join(config.COVER_DIR, f"{r['file_id']}.jpg")
+                        with open(cp, "wb") as cf:
+                            cf.write(raw_meta["cover_data"])
+                        kw["cover_path"] = cp
+                    if kw:
+                        upsert_metadata(conn, r["file_id"], **kw)
+                        fixed["metadata"] += 1
+                except Exception:
+                    continue
+            fixed["remaining"] = pending
+            conn.commit()
+
+        return jsonify({"status": "ok", "fixed": fixed, "audit": _audit_scan()})
+    finally:
+        conn.close()
+
+
 @app.route("/api/book/<int:book_id>")
 def api_book(book_id):
     conn = get_connection(DB_PATH)
@@ -2292,6 +2515,68 @@ def api_book_enrich(book_id):
         conn.commit()
         updated = get_book_by_id(conn, book_id)
         return jsonify({"status": "ok", "book": dict(updated), "enriched": result})
+    finally:
+        conn.close()
+
+
+@app.route("/api/book/<int:book_id>/cover", methods=["POST"])
+def api_book_cover_upload(book_id):
+    """Upload/replace the cover image for a book.
+
+    Accepts multipart form field "cover" (or raw image body). Deletes the old
+    cover file and stores the new one in COVER_DIR.
+    """
+    import werkzeug
+    conn = get_connection(DB_PATH)
+    try:
+        row = conn.execute("SELECT cover_path FROM metadata WHERE file_id=?", (book_id,)).fetchone()
+        if row is None:
+            return jsonify({"error": "not found"}), 404
+
+        data = None
+        if "cover" in request.files:
+            f = request.files["cover"]
+            data = f.read()
+        else:
+            data = request.get_data()
+
+        if not data:
+            return jsonify({"error": "no image provided"}), 400
+        if len(data) > 20 * 1024 * 1024:
+            return jsonify({"error": "image too large (>20MB)"}), 400
+
+        # Sniff a safe extension from magic bytes.
+        ext = ".jpg"
+        if data[:3] == b"\x89PNG":
+            ext = ".png"
+        elif data[:3] == b"GIF":
+            ext = ".gif"
+        elif data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            ext = ".webp"
+
+        os.makedirs(config.COVER_DIR, exist_ok=True)
+        new_path = os.path.join(config.COVER_DIR, f"{book_id}{ext}")
+        tmp = new_path + ".tmp"
+        with open(tmp, "wb") as cf:
+            cf.write(data)
+        # Only replace after a successful write.
+        if os.path.exists(new_path):
+            try:
+                os.remove(new_path)
+            except OSError:
+                pass
+        os.replace(tmp, new_path)
+
+        old_path = row["cover_path"]
+        if old_path and old_path != new_path and os.path.isfile(old_path):
+            try:
+                os.remove(old_path)
+            except OSError:
+                pass
+
+        conn.execute("UPDATE metadata SET cover_path=? WHERE file_id=?", (new_path, book_id))
+        conn.commit()
+        return jsonify({"status": "ok", "cover_path": new_path})
     finally:
         conn.close()
 

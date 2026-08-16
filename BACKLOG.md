@@ -533,8 +533,9 @@ Authentication protects only the admin tabs; Library, Reader, and Gallery
 ## BL-012 — Cover management (upload/replace + comic covers)
 
 - **Priority:** Medium
-- **Status:** open
+- **Status:** implemented + deployed 2026-08-16
 - **Reported:** 2026-08-13
+- **Fixed:** 2026-08-16
 
 ### Symptom
 
@@ -542,17 +543,20 @@ No way to upload or replace a cover in the UI; comics get no cover at all
 (extractors/cbz.py returns title/format_hint/pages only) so they show
 placeholders in the gallery.
 
-### Where
+### Implemented
 
-- `extractors/cbz.py:5-19` — no cover extraction (first page image).
-- `metadata.cover_path` exists (db.py:47) but no replace/upload endpoint or UI.
-
-### Notes
-
-- Delete current cover + upload a new one (or repick from file) in the detail
-  panel.
-- For comics: extract the first page image as the cover during metadata
-  extraction.
+- `extractors/cbz.py` now extracts the first page image (natural-sorted first
+  image entry) as `cover_data`; the pipeline writes it to `COVER_DIR`
+  (`<file_id>.jpg`) so comics get a cover at metadata/re-extract time.
+- `POST /api/book/<id>/cover` accepts a multipart `cover` field (or raw body),
+  sniffs PNG/GIF/WebP/JPEG by magic bytes, writes a temp file then
+  `os.replace` into `COVER_DIR`, deletes the old cover, and updates
+  `metadata.cover_path`.
+- Detail panel: "Replace Cover" button + hidden file input → `uploadCover()`
+  posts the image and refreshes the detail view.
+- Verified on the Pi: cover upload on book 67116 stored `/data/covers/67116.jpg`
+  and served as PNG; cbz extractor produced WebP first-page covers
+  (RIFF/WEBP magic, ~170 KB) for three Asterix CBZs.
 
 ---
 
@@ -724,8 +728,9 @@ book (or selection) into a user-defined pattern like
 ## BL-019 — Library integrity audit ("Check library")
 
 - **Priority:** Medium
-- **Status:** open
+- **Status:** implemented + deployed 2026-08-16
 - **Reported:** 2026-08-15
+- **Fixed:** 2026-08-16
 
 ### Symptom
 
@@ -733,19 +738,29 @@ Calibre's "Check library" reports book-to-disk consistency. This app repairs
 DB/file paths manually (`sync-db`, `remap-paths`) and dedups only at ingest,
 but has no one-click audit of cover/file/DB consistency.
 
-### Where
+### Implemented
 
-- `/api/admin/sync-db` (app.py:1299) and `/api/admin/remap-paths` (app.py:1337)
-  do partial fixes; `/api/status` (app.py:459), dedup runs at ingest only
-  (pipeline.py:482-626).
-
-### Notes
-
-- `/api/audit` runs a read-only sweep, grouped with counts and a first-N item
-  preview in the UI:
-  1. DB rows whose stored path/size is missing or differs on disk;
+- `GET /api/audit` runs a read-only sweep (grouped counts + first-20 previews):
+  1. DB rows whose stored path/size is missing or differs on disk
+     (`missing_or_mismatched` — missing files + size mismatches);
   2. archive-dir files with no DB row (orphans);
-  3. metadata with pages=0 or missing cover_path where one should exist;
-  4. duplicate report by hash + fuzzy title over a chosen scope.
-- One-click "repair" reuses sync-db/remap-paths for 1–2 and bulk re-extract
-  for 3; the duplicate report feeds quarantine decisions.
+  3. metadata with pages=0 or missing cover_path where the source exists
+     (`metadata_issues` with per-item reasons);
+  4. duplicate report by hash (exact) + fuzzy title (token-Jaccard pre-gate
+     then `title_similarity` ≥ 0.95, bucketed by normalized 8-char prefix so
+     it stays O(bucket²) instead of O(n²)).
+- Performance: on 26k rows the fuzzy check needed a Jaccard pre-gate
+  (0.8 threshold) to avoid ~274k `SequenceMatcher` calls — audit runs in ~6 s
+  on the Pi (was 122 s naive).
+- `POST /api/audit/repair`:
+  - fixes size mismatches (updates stored `file_size` from disk);
+  - re-extracts covers/pages for affected books, batched with a
+    `max_metadata` cap (default 100, `remaining` reports how many are left so
+    the user can run it again);
+  - missing source files, orphans and duplicate groups are reported only
+    (need manual remap/re-import/quarantine).
+- Settings tab "Library Integrity Audit" card: Run Audit + Repair buttons with
+  inline summary line (missing / size mismatch / orphans / metadata issues /
+  duplicate groups) and expandable preview lists.
+
+---

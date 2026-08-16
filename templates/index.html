@@ -887,6 +887,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       </div>
       <div id="diagnosticsResult" style="font-size:0.75rem;color:#64748b;max-height:400px;overflow-y:auto">Click "Run Diagnostics" to check system health.</div>
     </div>
+
+    <!-- Library Integrity Audit (BL-019) -->
+    <div style="margin-top:16px;padding:12px;background:#0f172a;border:1px solid #334155;border-radius:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h3 style="color:#94a3b8;font-size:0.82rem;margin:0">Library Integrity Audit</h3>
+        <div style="display:flex;gap:6px">
+          <button onclick="runAudit()" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#6366f1;color:#f8fafc">Run Audit</button>
+          <button onclick="runAuditRepair()" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a;font-weight:600">Repair (size + covers)</button>
+        </div>
+      </div>
+      <div id="auditResult" style="font-size:0.75rem;color:#64748b;max-height:400px;overflow-y:auto">Click "Run Audit" to sweep the library for missing files, orphans, metadata issues and duplicates.</div>
+      <div style="font-size:0.65rem;color:#475569;margin-top:6px">"Repair" fixes size mismatches and re-extracts covers/pages; missing files, orphans and duplicate groups are reported only (need manual remap/re-import).</div>
+    </div>
   </div>
 
   <!-- Login modal (P3.2) -->
@@ -2402,6 +2415,75 @@ function watcherStop() {
   }).catch(function(_e) { console.warn("fetch:", _e); });
 }
 
+// ── Library integrity audit (BL-019) ──
+function auditSummaryLine(s) {
+  const ok = s => '<span style="color:#22c55e">' + s + '</span>';
+  const warn = s => '<span style="color:#f59e0b">' + s + '</span>';
+  const bad = s => '<span style="color:#ef4444">' + s + '</span>';
+  return '<div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #1a2332">' +
+    'Missing files: ' + (s.missing ? bad(s.missing) : ok(s.missing)) +
+    '&nbsp;&middot; Size mismatch: ' + (s.size_mismatch ? warn(s.size_mismatch) : ok(s.size_mismatch)) +
+    '&nbsp;&middot; Orphans: ' + (s.orphans ? warn(s.orphans) : ok(s.orphans)) +
+    '&nbsp;&middot; Metadata issues: ' + (s.metadata_issues ? warn(s.metadata_issues) : ok(s.metadata_issues)) +
+    '&nbsp;&middot; Duplicate groups: ' + (s.duplicate_groups ? warn(s.duplicate_groups) : ok(s.duplicate_groups)) +
+    '</div>';
+}
+
+function runAudit() {
+  const el = document.getElementById("auditResult");
+  el.innerHTML = '<span style="color:#94a3b8">Running audit...</span>';
+  fetch(API + "/api/audit").then(r => r.json()).then(d => {
+    if (d.error) { el.innerHTML = '<div style="color:#ef4444">Audit failed: ' + esc(d.error) + '</div>'; return; }
+    let html = auditSummaryLine(d.summary);
+
+    function listBlock(title, color, items) {
+      if (!items || !items.length) return '<div style="margin-bottom:8px"><strong style="color:#94a3b8">' + title + '</strong>: <span style="color:#22c55e">none</span></div>';
+      const rows = items.map(it => {
+        if (it.path) return '<div style="word-break:break-all">' + esc(it.path) + '</div>';
+        if (it.id) {
+          let extra = it.db_size && it.disk_size ? ' (db ' + it.db_size + ' / disk ' + it.disk_size + ')' : '';
+          return '<div>#' + it.id + ' ' + esc(it.title || it.filename || "") + (it.reasons ? ' <span style="color:' + color + '">[' + it.reasons.join(", ") + ']</span>' : '') + extra + '</div>';
+        }
+        return '<div>' + esc(JSON.stringify(it)) + '</div>';
+      }).join("");
+      return '<div style="margin-bottom:10px"><strong style="color:#94a3b8">' + title + '</strong> (' + (items.length === 1 ? "1 item" : items.length + " items") + ')<div style="max-height:130px;overflow-y:auto;background:#0f172a;border:1px solid #1a2332;border-radius:4px;padding:6px 8px">' + rows + '</div></div>';
+    }
+
+    const mm = d.missing_or_mismatched || {};
+    html += listBlock("Missing source files", "#ef4444", mm.missing);
+    html += listBlock("Size mismatches", "#f59e0b", mm.size_mismatch);
+    html += listBlock("Orphan files on disk", "#f59e0b", (d.orphans || {}).items);
+    html += listBlock("Metadata issues", "#f59e0b", (d.metadata_issues || {}).items);
+
+    // Duplicate groups
+    const dups = d.duplicates || {};
+    if (dups.groups && dups.groups.length) {
+      const rows = dups.groups.map(g => {
+        const books = g.books.map(b => '#' + b.id + ' ' + esc(b.title || b.filename) + (b.is_master === 1 ? ' <span style="color:#22c55e">master</span>' : ' <span style="color:#64748b">dup</span>')).join("  &middot;  ");
+        return '<div style="margin-bottom:4px"><span style="color:#f59e0b">[' + g.kind + ']</span> ' + esc(g.key) + ' &rarr; ' + books + '</div>';
+      }).join("");
+      html += '<div style="margin-bottom:10px"><strong style="color:#94a3b8">Duplicate groups</strong> (' + dups.count + ')<div style="max-height:130px;overflow-y:auto;background:#0f172a;border:1px solid #1a2332;border-radius:4px;padding:6px 8px">' + rows + '</div></div>';
+    } else {
+      html += '<div style="margin-bottom:8px"><strong style="color:#94a3b8">Duplicate groups</strong>: <span style="color:#22c55e">none</span></div>';
+    }
+
+    el.innerHTML = html;
+  }).catch(() => { el.innerHTML = '<div style="color:#ef4444">Audit request failed</div>'; });
+}
+
+function runAuditRepair() {
+  const el = document.getElementById("auditResult");
+  showConfirm("Run repair? It will update stored file sizes to match disk and re-extract covers/pages for up to 100 books that lack them (run again to continue). Missing files, orphans and duplicate groups are NOT touched.").then(function(ok) {
+    if (!ok) return;
+    el.innerHTML = '<span style="color:#94a3b8">Repairing...</span>';
+    fetch(API + "/api/audit/repair", {method: "POST"}).then(r => r.json()).then(d => {
+      if (d.error) { el.innerHTML = '<div style="color:#ef4444">Repair failed: ' + esc(d.error) + '</div>'; return; }
+      let html = '<div style="color:#22c55e;margin-bottom:8px">Repair done — sizes fixed: ' + d.fixed.size + ', metadata re-extracted: ' + d.fixed.metadata + (d.fixed.skipped_missing && d.fixed.skipped_missing.length ? ', skipped (missing source): ' + d.fixed.skipped_missing.length : '') + (d.fixed.remaining ? ', still pending: ' + d.fixed.remaining + ' (run repair again)' : '') + '</div>';
+      el.innerHTML = html + auditSummaryLine(d.audit.summary);
+    }).catch(() => { el.innerHTML = '<div style="color:#ef4444">Repair request failed</div>'; });
+  });
+}
+
 function renderAmbiguousPairs(pairs, ambigIds) {
   const el = document.getElementById("ambigPairs");
   if (!pairs || !pairs.length) {
@@ -2890,6 +2972,8 @@ function showDetail(bookId) {
       html += '<button onclick="window.location.href=API+\'/api/book/' + bookId + '/download\'" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#6366f1;color:#f8fafc;font-weight:600">Download</button>';
       html += '<button onclick="openReader(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f97316;color:#0f172a;font-weight:600">Read Online</button>';
       html += '<button onclick="enrichBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f59e0b;color:#0f172a;font-weight:600">Enrich</button>';
+      html += '<button onclick="document.getElementById(\'coverUploadInput\').click()" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#64748b;color:#0f172a;font-weight:600">Replace Cover</button>';
+      html += '<input type="file" id="coverUploadInput" accept="image/*" style="display:none" onchange="uploadCover(' + bookId + ', this)">';
       html += '<button onclick="mergeBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#e11d48;color:#f8fafc;font-weight:600">Merge...</button>';
       html += '<button onclick="deleteBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#701a22;color:#fca5a5;font-weight:600">Delete</button>';
       html += '<button id="detailRlBtn" onclick="addDetailToReadingList(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#0ea5e9;color:#0f172a;font-weight:600">+ Reading List</button>';
@@ -5672,6 +5756,19 @@ function enrichBook(bookId) {
       showDetail(bookId);
     }).catch(() => { alert("Enrich request failed"); })
     .finally(function() { if (btn) { btn.disabled = false; btn.textContent = "Enrich"; } });
+}
+
+function uploadCover(bookId, input) {
+  if (!input.files || !input.files.length) return;
+  const file = input.files[0];
+  const fd = new FormData();
+  fd.append("cover", file);
+  fetch(API + "/api/book/" + bookId + "/cover", {method:"POST", body: fd})
+    .then(r => r.json()).then(d => {
+      if (d.error) { alert("Cover upload failed: " + d.error); return; }
+      showDetail(bookId);
+    }).catch(() => { alert("Cover upload request failed"); })
+    .finally(function() { input.value = ""; });
 }
 
 function mergeBook(bookId) {

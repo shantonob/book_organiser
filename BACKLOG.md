@@ -509,8 +509,9 @@ and manual `--export-pi`.
 ## BL-011 — Auth scope decision (public exposure)
 
 - **Priority:** High
-- **Status:** open
+- **Status:** implemented + deployed 2026-08-16
 - **Reported:** 2026-08-13
+- **Fixed:** 2026-08-16 (decided: **whole app behind login**)
 
 ### Symptom
 
@@ -519,14 +520,22 @@ Authentication protects only the admin tabs; Library, Reader, and Gallery
 (containing all book contents + annotations) are public by design
 (README.md:57-58). Anyone with the URL can read the whole library and notes.
 
-### Notes
+### Decision
 
-- Decide the intended model and implement it:
-  a. gate the whole app behind login, or
-  b. explicit read-only public mode, or
-  c. shared-link token access.
-- Update README/DEPLOY docs accordingly. `.env` currently has
-  `BOOK_AUTH_PASSWORD` set (admin-only gate).
+Model (a): **gate the whole app behind login**. The P8.7 whole-app gate was
+already implemented and deployed (app.py `_auth_gate`, frontend blocks the
+whole UI + re-locks on any 401); this item confirms the decision and brings
+the docs in line.
+
+### Implemented (documentation)
+
+- README.md: tabs are "Login required", Authentication section rewritten to
+  describe the whole-app gate (only `/`, `/static/*`, `/api/health`,
+  `/api/auth/*`, `/api/csrf-token` reachable without a session).
+- INSTALLING.md: `BOOK_AUTH_PASSWORD` now described as "whole-app login
+  password".
+- casaos/cloudflare-tunnel.md: verify step notes the whole app is gated.
+- BUILDPLAN.md: P8.7 marked ✅ Done.
 
 ---
 

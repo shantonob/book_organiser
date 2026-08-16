@@ -46,23 +46,24 @@ python app.py --source "path/to/books"
 
 | Tab | Access | Description |
 |-----|--------|-------------|
-| **Library** | Public | Browse/search books, detail panel, filters, UDC Tag Tree sidebar |
-| **Reader** | Public | In-browser reading with reading list, bookmarks, annotations, progress bar |
-| **Gallery** | Public | Cover grid view with UDC/stage filters |
+| **Library** | Login required | Browse/search books, detail panel, filters, UDC Tag Tree sidebar |
+| **Reader** | Login required | In-browser reading with reading list, bookmarks, annotations, progress bar |
+| **Gallery** | Login required | Cover grid view with UDC/stage filters |
 | **Pipeline** | Admin | Funnel view, phase controls, **Refresh Missing Metadata**, live log, progress, summary tiles |
 | **Quarantine** | Admin | Error buckets, smart filters, bulk actions, dedup ambiguity comparison |
 | **Settings** | Admin | In-app config editor, export/import, restart-required banner |
 
 ## Authentication
 
-Authentication is **disabled by default** (no password set). When enabled, it only protects the admin tabs (Pipeline, Quarantine, Settings); the Library, Reader, and Gallery tabs remain public.
+Authentication is **disabled by default** (no password set). When enabled, it gates the **whole app** behind a login — including the Library, Reader, and Gallery tabs, since those expose the full book contents and annotations. Only the login screen, `static/` assets, and the health/auth endpoints are reachable without a session.
 
 ### How it works
 
 1. **Server-side**: Flask sessions with a 30-day cookie lifetime
 2. **Login modal**: Password input in the browser, authenticates via `POST /api/auth/login`
 3. **Session check**: Every page load calls `GET /api/auth/check` which returns `{authenticated, enabled}`
-4. **Conditional UI**: Admin tabs are hidden from the tab bar until authenticated. If a non-authenticated user navigates to an admin tab (e.g. via URL), they're redirected to Library
+4. **Whole-app gate**: An unauthenticated request to any other route (page or API) returns `401`; the frontend shows the login modal
+5. **Conditional UI**: Admin tabs are hidden from the tab bar until authenticated
 
 ### Enabling auth
 
@@ -110,7 +111,7 @@ All settings can be overridden via environment variables:
 | `BOOK_FLAT_DIR` | `/data/processed/flat` | `data/processed/flat` | Flat output for Phase C |
 | `BOOK_DB_PATH` | `/data/catalog.db` | `data/catalog.db` | SQLite database path |
 | `BOOK_LOG_DIR` | `/config/logs` | `logs/` | Log file directory |
-| `BOOK_AUTH_PASSWORD` | — | — | Admin password (empty = no auth) |
+| `BOOK_AUTH_PASSWORD` | — | — | Login password; gates the whole app when set (empty = no auth) |
 | `BOOK_SECRET_KEY` | — | — | Flask session key |
 | `GOOGLE_BOOKS_API_KEY` | — | — | Google Books API key for enrichment |
 | `BOOK_ENRICH_RATE_LIMIT` | `1.0` | `1.0` | Min seconds between external enrichment API calls |

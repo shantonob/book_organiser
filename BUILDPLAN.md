@@ -1646,7 +1646,7 @@ DJVU is in `EBOOK_EXTS` but shows "Cannot preview". Make every catalogued format
 - Ensure **calibre** is enabled in the Docker build (`WITH_CALIBRE=1`, already supported in Dockerfile) as a conversion fallback (djvu→pdf and others).
 - Polish: replace native `prompt()` in `addBookmark()`/`addPageNote()` with the styled modal (consistent with D7.32); consistent "Page X · Y%" location label across formats.
 
-### P8.7 — Whole-App Authentication Gate
+### P8.7 — Whole-App Authentication Gate — ✅ Done
 
 Today only admin tabs (Pipeline / Quarantine / Settings) require login; Library, Gallery, the Reader, and all `/api/book/*`, `/covers`, `/download`, `/api/books` endpoints are open. Put the entire app behind the existing shared-password login (scaffold for P7.1 real per-user auth).
 

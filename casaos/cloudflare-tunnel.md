@@ -78,4 +78,4 @@ curl https://books.yourdomain.com/api/auth/check
 # Should return {"authenticated":false,"enabled":true} if auth is on
 ```
 
-Then set `BOOK_AUTH_PASSWORD` in the CasaOS app config to protect admin pages.
+Then set `BOOK_AUTH_PASSWORD` in the CasaOS app config to gate the **whole app** behind login (Library, Reader, Gallery included — all book contents and annotations). Without a session every route except `/api/health`, `/api/auth/*`, `/api/csrf-token`, `/static/*` and the login screen returns `401`.

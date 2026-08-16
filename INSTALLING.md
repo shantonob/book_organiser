@@ -77,7 +77,7 @@ CasaOS is the easiest way to manage a Pi Docker stack.
    `BOOK_SECRET_KEY`, `GOOGLE_BOOKS_API_KEY`, `WITH_CALIBRE`, plus the three
    host volumes (`/data`, `/config`, `/books:ro`).
 2. In the CasaOS **Settings → App volumes** tab set the real host paths.
-3. Set `BOOK_AUTH_PASSWORD` to protect the admin pages.
+3. Set `BOOK_AUTH_PASSWORD` to gate the whole app behind login.
 4. Open the app on `http://<pi-ip>:5000`.
 
 Remote access guide → `casaos/cloudflare-tunnel.md` (cloudflared Docker
@@ -108,7 +108,7 @@ repo root (`data/`, `inbox/`, etc.).
 | `BOOK_PORT` | host port → 5000 | `5000` |
 | `WITH_CALIBRE` | build arg (0/1) | `0` |
 | `DATA_HOST_PATH` / `CONFIG_HOST_PATH` / `BOOKS_HOST_PATH` | bind mounts | see above |
-| `BOOK_AUTH_PASSWORD` | admin password (empty = no auth) | `s3cret` |
+| `BOOK_AUTH_PASSWORD` | whole-app login password (empty = no auth) | `s3cret` |
 | `BOOK_SECRET_KEY` | session signing key | change me |
 | `GOOGLE_BOOKS_API_KEY` | enrichment lookups (optional) | `AIza…` |
 | `TZ` | timezone | `Europe/London` |

@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import shutil
+import sqlite3
 import time
 import subprocess
 import sys
@@ -2319,7 +2320,13 @@ def api_book_merge(book_id):
 
 @app.route("/api/book/<int:book_id>/delete", methods=["POST"])
 def api_book_delete(book_id):
-    """Delete a book: remove physical file(s) and DB entries."""
+    """Delete a book: remove physical file(s) and DB entries.
+
+    POST body may include keep_source:true to leave the source file on disk
+    (only the DB entry, cover cache and comic cache are removed).
+    """
+    data = request.json or {}
+    keep_source = bool(data.get("keep_source", False))
     conn = get_connection(DB_PATH)
     try:
         row = get_book_by_id(conn, book_id)
@@ -2327,7 +2334,7 @@ def api_book_delete(book_id):
             return jsonify({"error": "not found"}), 404
         book = dict(row)
         removed = []
-        if book.get("source_path") and os.path.isfile(book["source_path"]):
+        if not keep_source and book.get("source_path") and os.path.isfile(book["source_path"]):
             try:
                 os.remove(book["source_path"])
                 removed.append("source")
@@ -2346,7 +2353,7 @@ def api_book_delete(book_id):
             removed.append("comic_cache")
         bulk_delete_files(conn, [book_id])
         conn.commit()
-        return jsonify({"status": "ok", "deleted": book_id, "files_removed": removed})
+        return jsonify({"status": "ok", "deleted": book_id, "files_removed": removed, "kept_source": keep_source})
     finally:
         conn.close()
 
@@ -2486,6 +2493,91 @@ def api_saved_searches_delete(search_id):
         return jsonify({"status": "ok", "deleted": search_id})
     finally:
         conn.close()
+
+
+# ---- BL-010: database backup ---------------------------------------------
+BACKUP_DIR = os.path.join(getattr(config, "DATA_DIR", os.path.join(config.BASE_DIR, "data")), "backups")
+BACKUP_RETENTION = int(os.environ.get("BOOK_BACKUP_RETENTION", "14") or "14")
+
+
+def _list_backups():
+    try:
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        out = []
+        for fn in os.listdir(BACKUP_DIR):
+            if not fn.startswith("catalog-") or not fn.endswith(".db"):
+                continue
+            p = os.path.join(BACKUP_DIR, fn)
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            out.append({"name": fn, "size": st.st_size, "mtime": st.st_mtime})
+        return sorted(out, key=lambda x: x["mtime"], reverse=True)
+    except OSError:
+        return []
+
+
+def _create_db_backup():
+    """Online SQLite backup (safe while the app is running) into BACKUP_DIR."""
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    dest = os.path.join(BACKUP_DIR, "catalog-%s.db" % time.strftime("%Y%m%d-%H%M%S"))
+    src = sqlite3.connect(DB_PATH)
+    try:
+        dst = sqlite3.connect(dest)
+        try:
+            with dst:
+                src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+    backups = _list_backups()
+    for old in backups[BACKUP_RETENTION:]:
+        try:
+            os.remove(os.path.join(BACKUP_DIR, old["name"]))
+        except OSError:
+            pass
+    return dest
+
+
+@app.route("/api/backup", methods=["POST"])
+def api_backup_now():
+    try:
+        dest = _create_db_backup()
+        return jsonify({"status": "ok", "file": os.path.basename(dest), "backups": _list_backups()})
+    except Exception as e:
+        logger.error("backup failed: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/backups")
+def api_backups():
+    return jsonify({"backups": _list_backups(), "retention": BACKUP_RETENTION, "dir": BACKUP_DIR})
+
+
+@app.route("/api/backups/<name>/download")
+def api_backup_download(name):
+    if not name.startswith("catalog-") or not name.endswith(".db"):
+        return jsonify({"error": "bad name"}), 400
+    if "/" in name or "\\" in name or ".." in name:
+        return jsonify({"error": "bad name"}), 400
+    p = os.path.join(BACKUP_DIR, name)
+    if not os.path.isfile(p):
+        return jsonify({"error": "not found"}), 404
+    return send_file(p, as_attachment=True, download_name=name, mimetype="application/octet-stream")
+
+
+def _backup_loop():
+    while True:
+        try:
+            backups = _list_backups()
+            last = backups[0]["mtime"] if backups else 0
+            if time.time() - last >= 24 * 3600:
+                _create_db_backup()
+        except Exception:
+            pass
+        time.sleep(6 * 3600)
 
 
 # â”€â”€ Bulk operations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -2842,6 +2934,7 @@ if __name__ == '__main__':
     else:
         init_db(config.DB_PATH)
         if config.FLAT_DIR: os.makedirs(config.FLAT_DIR, exist_ok=True)
+        threading.Thread(target=_backup_loop, daemon=True).start()
         if args.watch:
             from watcher import start_watcher
             watch_dir = getattr(config, "WATCH_DIR", config.INBOX_DIR)

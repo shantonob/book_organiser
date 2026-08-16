@@ -434,14 +434,14 @@ on-demand duplicate finder, no user-defined custom columns.
 ## BL-009 — Cannot delete a book from the library
 
 - **Priority:** High
-- **Status:** implemented + deployed 2026-08-15 — one optional enhancement open
+- **Status:** implemented + deployed 2026-08-15; optional keep-source enhancement done 2026-08-16
 - **Reported:** 2026-08-13
 - **Fixed:** 2026-08-15
 
 ### Implemented
 
-- `POST /api/book/<id>/delete` (app.py:2243) removes the physical source file,
-  cover, comic cache, and all DB entries; `POST /api/bulk/delete` (app.py:2277)
+- `POST /api/book/<id>/delete` (app.py:2321) removes the physical source file,
+  cover, comic cache, and all DB entries; `POST /api/bulk/delete` (app.py:2356)
   does the same for a list of IDs.
 - `bulk_delete_files()` (db.py:918) cascades books_fts, annotations, bookmarks,
   reader_state, reading_list, quarantined, pipeline_log, tags, metadata,
@@ -451,19 +451,22 @@ on-demand duplicate finder, no user-defined custom columns.
   delete in multi-select (index.html:2556).
 - Quarantine purge already exists (`/api/quarantine/bulk/delete`, app.py:1137).
 
-### Remaining (optional)
+### Optional enhancement (done 2026-08-16)
 
-- Original criterion "keep the source file on disk by default (option to also
-  remove it)" is NOT met — delete always removes the file. Consider a modal
-  checkbox "also delete source file", default keep-on-disk, for single delete.
+- `POST /api/book/<id>/delete` now accepts `{"keep_source": true}` to leave the
+  source file on disk (DB entry, cover and comic cache are still removed).
+- `deleteBook()` uses a new `showConfirmCheckbox` dialog with a "Also delete the
+  source file from disk" checkbox (unchecked = keep source by default); sends
+  `keep_source` accordingly. Bulk delete still always removes files.
 
 ---
 
 ## BL-010 — No routine database backup
 
 - **Priority:** High
-- **Status:** open
+- **Status:** implemented + deployed 2026-08-16
 - **Reported:** 2026-08-13
+- **Fixed:** 2026-08-16
 
 ### Symptom
 
@@ -472,17 +475,34 @@ config overrides) but the app has no backup mechanism. The only backup today is
 the `tools/cleanup_processed.py` script (tools/cleanup_processed.py:250-252)
 and manual `--export-pi`.
 
+### Implemented
+
+- `_create_db_backup()` (app.py) makes an online SQLite backup via
+  `src.backup(dst)` into `<DATA_DIR>/backups/catalog-<timestamp>.db` — safe
+  while the app is running.
+- Endpoints: `POST /api/backup` (manual trigger), `GET /api/backups` (list with
+  size/mtime + retention + dir), `GET /api/backups/<name>/download`.
+- Nightly self-healing loop: `_backup_loop` thread starts with the web process,
+  checks every 6h and writes a snapshot if the newest is older than 24h.
+- Retention: keeps the newest `BOOK_BACKUP_RETENTION` backups (default 14,
+  env-overridable), pruned on each backup.
+- Settings tab "Database Backup" section: Backup now button, list of snapshots
+  with Download links, retention/dir labels.
+
+### Restore procedure
+
+1. Stop the app: `docker compose stop book-organiser`.
+2. Copy a snapshot over the live DB (keep a copy of the live one first):
+   `cp /data/backups/catalog-<timestamp>.db /data/catalog.db`
+3. Start the app: `docker compose start book-organiser`. The pipeline metadata
+   enrichment will not re-run automatically; annotations, reading state, tags
+   and saved searches are restored as-is from the snapshot.
+
 ### Where
 
 - `BOOK_DB_PATH=/data/catalog.db` (docker-compose.yml; DEPLOY_PI.md).
-- No `VACUUM INTO` / sqlite backup anywhere in app.py/db.py.
-
-### Notes / acceptance criteria
-
-- Scheduled/snapshot backup of catalog.db (e.g. `VACUUM INTO` or sqlite3
-  offline backup) with retention; a manual trigger in Settings; optionally a
-  nightly cron job in compose.
-- Restore procedure documented.
+- Backups land in `/data/backups` (same SSD volume, not off-box) — download a
+  copy periodically to keep an off-box snapshot.
 
 ---
 

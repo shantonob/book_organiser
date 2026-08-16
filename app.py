@@ -379,7 +379,14 @@ def api_diagnostics():
 def is_authenticated():
     if not config.AUTH_ENABLED:
         return True
-    return session.get("authenticated", False)
+    if session.get("authenticated", False):
+        return True
+    # HTTP Basic auth — used by OPDS e-reader clients (KoReader, Lithium) that
+    # cannot carry a cookie session. Same shared password as the web login.
+    auth = request.authorization
+    if auth is not None and auth.password and auth.password == config.AUTH_PASSWORD:
+        return True
+    return False
 
 
 @app.route("/api/auth/check")
@@ -3063,6 +3070,222 @@ def _migrate_cover_paths():
             conn.close()
     except Exception as e:
         logger.warning("P8.1 cover migration skipped: %s", e)
+
+# ── OPDS catalog (BL-013) ────────────────────────────────────────────────
+
+OPDS_STAGE_SQL = "f.stage IN ('cataloged','copied','survivor')"
+
+
+def _opds_base_url():
+    return request.url_root.rstrip("/")
+
+
+def _opds_now():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@app.route("/opds")
+def opds_root():
+    from opds_feed import OPDS_ACQ, nav_entry, nav_feed, _udc_entry
+    base = _opds_base_url()
+    now = _opds_now()
+    conn = get_connection(DB_PATH)
+    try:
+        total = conn.execute(
+            "SELECT COUNT(DISTINCT f.id) AS n FROM files f "
+            "JOIN metadata m ON m.file_id=f.id WHERE " + OPDS_STAGE_SQL
+        ).fetchone()["n"]
+        udc_rows = conn.execute(
+            "SELECT m.udc_code, m.udc_label, COUNT(*) AS n FROM files f "
+            "JOIN metadata m ON m.file_id=f.id WHERE " + OPDS_STAGE_SQL + " "
+            "AND m.udc_code IS NOT NULL AND m.udc_code != '' "
+            "GROUP BY m.udc_code, m.udc_label ORDER BY n DESC LIMIT 30"
+        ).fetchall()
+        shelf_rows = conn.execute(
+            "SELECT COUNT(*) AS n FROM reading_list rl "
+            "JOIN files f ON f.id=rl.book_id WHERE " + OPDS_STAGE_SQL
+        ).fetchone()["n"]
+    finally:
+        conn.close()
+    entries = [
+        nav_entry("Catalog", base + "/opds/catalog", now, "All cataloged books", total),
+        nav_entry("Recently added", base + "/opds/recent", now, "Recently updated books"),
+        nav_entry("Reading list", base + "/opds/shelf", now, "Books on your reading list", shelf_rows),
+        nav_entry("Browse by UDC", base + "/opds/udc", now, "Dewey/UDC classification"),
+    ]
+    if udc_rows:
+        entries.append("<entry><title>Popular UDC classes</title>"
+                       f"<id>tag:book-organiser:nav:popular-udc</id><updated>{now}</updated>"
+                       f'<content type="text">Top {len(udc_rows)} UDC classes in the catalog</content></entry>')
+        for r in udc_rows:
+            entries.append(_udc_entry(r["udc_code"], r["udc_label"], r["n"], base, now))
+    body = nav_feed("Book Organiser", entries, base, "/opds", now)
+    return Response(body, mimetype="application/atom+xml;profile=opds-catalog;kind=navigation")
+
+
+@app.route("/opds/catalog")
+def opds_catalog():
+    from opds_feed import _entry, _feed
+    base = _opds_base_url()
+    offset = request.args.get("startIndex", default=0, type=int)
+    limit = min(request.args.get("count", default=50, type=int), 200)
+    conn = get_connection(DB_PATH)
+    try:
+        rows = conn.execute(
+            "SELECT f.id, f.filename, f.format, f.file_size, f.stage, f.source_path, "
+            "f.created_at, f.updated_at, m.title, m.authors, m.year, m.isbn, "
+            "m.publisher, m.language, m.pages, m.description, m.udc_code, m.udc_label, "
+            "m.cover_path FROM files f JOIN metadata m ON m.file_id=f.id "
+            "WHERE " + OPDS_STAGE_SQL + " ORDER BY m.title COLLATE NOCASE LIMIT ? OFFSET ?",
+            (limit + 1, offset),
+        ).fetchall()
+        total = conn.execute(
+            "SELECT COUNT(*) AS n FROM files f JOIN metadata m ON m.file_id=f.id "
+            "WHERE " + OPDS_STAGE_SQL
+        ).fetchone()["n"]
+    finally:
+        conn.close()
+    has_next = len(rows) > limit
+    page_rows = list(rows[:limit])
+    entries = [_entry(dict(r), base) for r in page_rows]
+    next_path = None
+    if has_next:
+        next_path = f"/opds/catalog?startIndex={offset + limit}&count={limit}"
+    body = _feed("Catalog", entries, base, request.path, _opds_now(), "/opds",
+                 next_path=next_path)
+    return Response(body, mimetype="application/atom+xml;profile=opds-catalog;kind=acquisition")
+
+
+@app.route("/opds/recent")
+def opds_recent():
+    from opds_feed import _entry, _feed
+    base = _opds_base_url()
+    limit = min(request.args.get("count", default=50, type=int), 200)
+    conn = get_connection(DB_PATH)
+    try:
+        rows = conn.execute(
+            "SELECT f.id, f.filename, f.format, f.file_size, f.stage, f.source_path, "
+            "f.created_at, f.updated_at, m.title, m.authors, m.year, m.isbn, "
+            "m.publisher, m.language, m.pages, m.description, m.udc_code, m.udc_label, "
+            "m.cover_path FROM files f JOIN metadata m ON m.file_id=f.id "
+            "WHERE " + OPDS_STAGE_SQL + " ORDER BY f.updated_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    finally:
+        conn.close()
+    entries = [_entry(dict(r), base) for r in rows]
+    body = _feed("Recently added", entries, base, request.path, _opds_now(), "/opds")
+    return Response(body, mimetype="application/atom+xml;profile=opds-catalog;kind=acquisition")
+
+
+@app.route("/opds/shelf")
+def opds_shelf():
+    from opds_feed import _entry, _feed
+    base = _opds_base_url()
+    conn = get_connection(DB_PATH)
+    try:
+        rows = conn.execute(
+            "SELECT f.id, f.filename, f.format, f.file_size, f.stage, f.source_path, "
+            "f.created_at, f.updated_at, m.title, m.authors, m.year, m.isbn, "
+            "m.publisher, m.language, m.pages, m.description, m.udc_code, m.udc_label, "
+            "m.cover_path FROM reading_list rl JOIN files f ON f.id=rl.book_id "
+            "JOIN metadata m ON m.file_id=f.id WHERE " + OPDS_STAGE_SQL + " "
+            "ORDER BY rl.added_at DESC"
+        ).fetchall()
+    finally:
+        conn.close()
+    entries = [_entry(dict(r), base) for r in rows]
+    body = _feed("Reading list", entries, base, request.path, _opds_now(), "/opds")
+    return Response(body, mimetype="application/atom+xml;profile=opds-catalog;kind=acquisition")
+
+
+@app.route("/opds/udc")
+def opds_udc_index():
+    from opds_feed import nav_entry, nav_feed, _udc_entry
+    base = _opds_base_url()
+    now = _opds_now()
+    conn = get_connection(DB_PATH)
+    try:
+        rows = conn.execute(
+            "SELECT m.udc_code, m.udc_label, COUNT(*) AS n FROM files f "
+            "JOIN metadata m ON m.file_id=f.id WHERE " + OPDS_STAGE_SQL + " "
+            "AND m.udc_code IS NOT NULL AND m.udc_code != '' "
+            "GROUP BY m.udc_code, m.udc_label ORDER BY m.udc_label COLLATE NOCASE"
+        ).fetchall()
+    finally:
+        conn.close()
+    entries = [
+        nav_entry("All books", base + "/opds/catalog", now, "Whole catalog"),
+    ]
+    for r in rows:
+        entries.append(_udc_entry(r["udc_code"], r["udc_label"], r["n"], base, now))
+    body = nav_feed("Browse by UDC", entries, base, "/opds/udc", now)
+    return Response(body, mimetype="application/atom+xml;profile=opds-catalog;kind=navigation")
+
+
+@app.route("/opds/udc/<code>")
+def opds_udc(code):
+    from opds_feed import _entry, _feed
+    base = _opds_base_url()
+    conn = get_connection(DB_PATH)
+    try:
+        rows = conn.execute(
+            "SELECT f.id, f.filename, f.format, f.file_size, f.stage, f.source_path, "
+            "f.created_at, f.updated_at, m.title, m.authors, m.year, m.isbn, "
+            "m.publisher, m.language, m.pages, m.description, m.udc_code, m.udc_label, "
+            "m.cover_path FROM files f JOIN metadata m ON m.file_id=f.id "
+            "WHERE " + OPDS_STAGE_SQL + " AND m.udc_code=? "
+            "ORDER BY m.title COLLATE NOCASE",
+            (code,),
+        ).fetchall()
+    finally:
+        conn.close()
+    entries = [_entry(dict(r), base) for r in rows]
+    body = _feed(f"UDC {code}", entries, base, request.path, _opds_now(), "/opds")
+    return Response(body, mimetype="application/atom+xml;profile=opds-catalog;kind=acquisition")
+
+
+@app.route("/opds/search")
+def opds_search():
+    from opds_feed import _entry, _feed
+    base = _opds_base_url()
+    q = request.args.get("q", "").strip()
+    offset = request.args.get("startIndex", default=0, type=int)
+    limit = min(request.args.get("count", default=50, type=int), 200)
+    if not q:
+        body = _feed("Search", [], base, request.path, _opds_now(), "/opds",
+                     opensearch_url="/opds/opensearch.xml")
+        return Response(body, mimetype="application/atom+xml;profile=opds-catalog;kind=acquisition")
+    conn = get_connection(DB_PATH)
+    try:
+        from db import search_books
+        results, total = search_books(
+            conn, q, limit=limit + 1, offset=offset
+        )
+        allowed = ("cataloged", "copied", "survivor")
+        results = [r for r in results if r.get("stage") in allowed]
+    finally:
+        conn.close()
+    has_next = len(results) > limit
+    page_rows = list(results[:limit])
+    entries = [_entry(dict(r), base) for r in page_rows]
+    next_path = None
+    if has_next:
+        from urllib.parse import quote
+        next_path = f"/opds/search?q={quote(q)}&startIndex={offset + limit}&count={limit}"
+    body = _feed(f"Search results for \"{q}\"", entries, base, request.path,
+                 _opds_now(), "/opds", next_path=next_path,
+                 opensearch_url="/opds/opensearch.xml")
+    return Response(body, mimetype="application/atom+xml;profile=opds-catalog;kind=acquisition")
+
+
+@app.route("/opds/opensearch.xml")
+def opds_opensearch():
+    from opds_feed import opensearch_xml
+    return Response(opensearch_xml(_opds_base_url()),
+                    mimetype="application/opensearchdescription+xml")
+
 
 def _handle_export_pi(zip_path):
     import json

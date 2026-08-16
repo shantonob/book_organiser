@@ -572,19 +572,39 @@ placeholders in the gallery.
 ## BL-013 — OPDS feed (e-reader app parity)
 
 - **Priority:** Low
-- **Status:** open (candidate — not committed)
+- **Status:** implemented + deployed 2026-08-16
 - **Reported:** 2026-08-13
+- **Fixed:** 2026-08-16
 
 ### Symptom
 
 Calibre's content server exposes OPDS/OPDS-PSE so e-reader apps (KoReader,
 Lithium, etc.) can browse and download the library. This app has no such feed.
 
-### Notes
+### Implemented
 
-- Add an OPDS/OPDS-PSE catalog feed (`/opds`, `/opds/shelf`, search) so
-  e-reader apps can consume the library and push reading position back.
-- Flag as a decision; build only if wanted.
+- New `opds_feed.py` (Atom/OPDS 1.2 builders) + routes in `app.py`:
+  - `/opds` — root navigation feed (Catalog, Recent, Reading list, UDC browse,
+    top-30 popular UDC classes with counts).
+  - `/opds/catalog?startIndex=&count=` — paginated acquisition feed with
+    `<link rel="next">`, sorted by title.
+  - `/opds/recent`, `/opds/shelf` (reading list), `/opds/udc` + `/opds/udc/<code>`.
+  - `/opds/search?q=` — search feed using the existing `search_books` FTS.
+  - `/opds/opensearch.xml` — OpenSearch description (search template).
+- Entries carry author(s), description, UDC category, cover link
+  (`http://opds-spec.org/image`, MIME from actual file ext) and acquisition
+  link (`http://opds-spec.org/acquisition` → `/api/book/<id>/download`, correct
+  per-format MIME).
+- Auth: OPDS routes sit behind the same whole-app gate. `is_authenticated()`
+  now also accepts **HTTP Basic auth** (same shared password) so e-reader
+  clients that can't do cookie sessions (KoReader, Lithium) can log in.
+- Feed scope: books at `cataloged`/`copied`/`survivor` stages (skipped
+  duplicates and quarantined excluded).
+- XML hygiene: C0/C1 control chars stripped, `& < > " '` escaped, so
+  corrupt/binary titles in the DB can't break the feed (seen live).
+- Verified on the Pi: all feeds well-formed, pagination `next` link present,
+  UDC feeds (630/006/600), search (asterix), Basic-auth download of a CBZ
+  (served `application/octet-stream`, zip magic) and cover (image/jpeg).
 
 ---
 

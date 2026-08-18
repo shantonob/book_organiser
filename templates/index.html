@@ -255,6 +255,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .reader-layout:fullscreen #readerArea { width: 100%; height: calc(100vh - 60px); }
   .reader-layout:-webkit-full-screen .reader-main { max-width: 100%; }
   .reader-layout:-webkit-full-screen #readerArea { width: 100%; height: calc(100vh - 60px); }
+  /* Hide page thumbnails in fullscreen */
+  .reader-layout:fullscreen #readerThumbs,
+  .reader-layout:-webkit-full-screen #readerThumbs { display: none !important; }
+  /* Thumbnails stay hidden even when chrome is revealed */
+  .reader-layout:fullscreen.fs-reveal #readerThumbs,
+  .reader-layout:-webkit-full-screen.fs-reveal #readerThumbs { display: none !important; }
   /* Auto-hidden side panes in fullscreen: slide in from the edges on hover */
   .reader-layout.fs-auto-panes:fullscreen .reading-list-sidebar,
   .reader-layout.fs-auto-panes:-webkit-full-screen .reading-list-sidebar { position: fixed; left: 0; top: 48px; bottom: 0; z-index: 500; margin: 0; border-radius: 0 8px 8px 0; transform: translateX(-100%); transition: transform 0.18s ease; max-height: none; width: 240px; background: rgba(15, 23, 42, 0.97); }
@@ -665,6 +671,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
             <button onclick="bulkTagRemove()" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">- Remove Tag</button>
             <button onclick="bulkClassify()" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">Re-classify UDC</button>
             <button onclick="bulkEnrich()" title="Fetch missing metadata from Open Library / Google Books (never overwrites filled fields)" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">Fetch Metadata</button>
+            <button onclick="bulkConvert()" title="Convert selected books to another format via calibre" style="padding:4px 10px;font-size:0.75rem;background:#334155;border:none;border-radius:3px;color:#e2e8f0;cursor:pointer">Convert as…</button>
             <button onclick="bulkDelete()" style="padding:4px 10px;font-size:0.75rem;background:#701a22;border:none;border-radius:3px;color:#fca5a5;cursor:pointer">&#x1F5D1; Delete</button>
           </div>
         </div>
@@ -2917,6 +2924,86 @@ function bulkEnrich() {
   });
 }
 
+var _convertFormats = ["epub", "azw3", "mobi", "pdf", "fb2", "txt", "docx", "rtf", "htmlz"];
+var _convertDevices = ["", "kindle", "kindle_pw", "kindle_oasis", "kobo", "tablet", "ipad"];
+
+function _convertPrompt(ids, label) {
+  return showPromptModal("Convert to…", label, "epub").then(function(fmt) {
+    if (!fmt) return Promise.resolve(null);
+    fmt = fmt.trim().toLowerCase().replace(/^\./, "");
+    if (_convertFormats.indexOf(fmt) === -1) {
+      alert("Unsupported format. Choose from: " + _convertFormats.join(", "));
+      return Promise.resolve(null);
+    }
+    return showPromptModal("Output profile (optional)", "Device profile (e.g. kindle, kobo) — blank for generic", "").then(function(dev) {
+      dev = (dev || "").trim().toLowerCase();
+      if (dev && _convertDevices.indexOf(dev) === -1) {
+        alert("Unsupported device. Choose from: " + _convertDevices.slice(1).join(", "));
+        return Promise.resolve(null);
+      }
+      return {fmt: fmt, device: dev};
+    });
+  });
+}
+
+function _pollConvert(bookId, fmt, device) {
+  return new Promise(function(resolve) {
+    var tries = 0;
+    (function poll() {
+      fetch(API + "/api/book/" + bookId + "/convert/status?format=" + fmt + "&device=" + device, {method: "GET"})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.status === "ready") return resolve({status: "ready", url: d.url});
+          if (d.status === "error") return resolve({status: "error", error: d.error});
+          tries++;
+          if (tries > 600) return resolve({status: "timeout"});
+          setTimeout(poll, 1000);
+        })
+        .catch(function() {
+          tries++;
+          if (tries > 600) return resolve({status: "timeout"});
+          setTimeout(poll, 1000);
+        });
+    })();
+  });
+}
+
+function convertBook(bookId) {
+  _convertPrompt([bookId], "Output format").then(function(sel) {
+    if (!sel) return;
+    fetch(API + "/api/book/" + bookId + "/convert", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({format: sel.fmt, device: sel.device})
+    }).then(function(r) { return r.json(); }).then(function(d) {
+      if (d.error) { alert("Convert failed: " + d.error); return; }
+      if (d.status === "ready") { window.location.href = API + d.url; return; }
+      _pollConvert(bookId, sel.fmt, sel.device).then(function(res) {
+        if (res.status === "ready") window.location.href = API + res.url;
+        else if (res.status === "error") alert("Conversion failed: " + (res.error || "unknown"));
+        else alert("Conversion timed out — check later via Download as…");
+      });
+    }).catch(function() { alert("Convert request failed"); });
+  });
+}
+
+function bulkConvert() {
+  const ids = getSelectedIds();
+  if (!ids.length) return alert("No books selected");
+  _convertPrompt(ids, "Output format").then(function(sel) {
+    if (!sel) return;
+    showConfirm("Convert " + ids.length + " book(s) to " + sel.fmt + (sel.device ? " (" + sel.device + ")" : "") + "? Conversions run in the background; download each from its detail panel when done.").then(function(ok) {
+      if (!ok) return;
+      fetch(API + "/api/bulk/convert", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({book_ids: ids, format: sel.fmt, device: sel.device})
+      }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.error) { alert("Convert failed: " + d.error); return; }
+        alert("Started conversion for " + d.started + " book(s). " + (d.already ? d.already + " were already available." : ""));
+      }).catch(function() { alert("Convert request failed"); });
+    });
+  });
+}
+
 function bulkDelete() {
   const ids = getSelectedIds();
   if (!ids.length) return alert("No books selected");
@@ -2987,6 +3074,7 @@ function showDetail(bookId) {
       }
       html += '<button onclick="reCopyBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a">Re-copy</button>';
       html += '<button onclick="window.location.href=API+\'/api/book/' + bookId + '/download\'" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#6366f1;color:#f8fafc;font-weight:600">Download</button>';
+      html += '<button onclick="convertBook(' + bookId + ')" title="Convert to another format (calibre ebook-convert)" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#6366f1;color:#f8fafc;font-weight:600">Download as…</button>';
       html += '<button onclick="openReader(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f97316;color:#0f172a;font-weight:600">Read Online</button>';
       html += '<button onclick="enrichBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f59e0b;color:#0f172a;font-weight:600">Enrich</button>';
       html += '<button onclick="document.getElementById(\'coverUploadInput\').click()" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#64748b;color:#0f172a;font-weight:600">Replace Cover</button>';

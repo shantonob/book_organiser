@@ -27,6 +27,23 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
 
+  /* Manual tab content */
+  #manualContent h1 { font-size: 1.5rem; color: #38bdf8; border-bottom: 2px solid #1e3a5f; padding-bottom: 6px; margin: 28px 0 12px; }
+  #manualContent h2 { font-size: 1.15rem; color: #38bdf8; border-bottom: 1px solid #1e293b; padding-bottom: 4px; margin: 24px 0 10px; }
+  #manualContent h3 { font-size: 0.95rem; color: #94a3b8; margin: 20px 0 8px; }
+  #manualContent table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.82rem; }
+  #manualContent th { text-align: left; padding: 6px 10px; background: #1e293b; color: #94a3b8; border: 1px solid #334155; font-weight: 600; }
+  #manualContent td { padding: 6px 10px; border: 1px solid #1e293b; color: #cbd5e1; }
+  #manualContent tr:nth-child(even) td { background: rgba(30,41,59,0.3); }
+  #manualContent code { background: #1a2332; padding: 1px 5px; border-radius: 3px; font-size: 0.8rem; color: #e2e8f0; }
+  #manualContent pre { background: #0f172a; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; overflow-x: auto; margin: 12px 0; }
+  #manualContent pre code { background: none; padding: 0; }
+  #manualContent ul, #manualContent ol { padding-left: 24px; margin: 8px 0; }
+  #manualContent li { margin: 4px 0; }
+  #manualContent hr { border: none; border-top: 1px solid #1e293b; margin: 24px 0; }
+  #manualContent blockquote { border-left: 3px solid #334155; padding-left: 12px; color: #94a3b8; margin: 12px 0; }
+  #manualContent p { margin: 8px 0; }
+
   h1 { font-size: 1.5rem; margin-bottom: 16px; color: #38bdf8; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   h1 small { font-size: 0.75rem; color: #94a3b8; font-weight: normal; }
   h2 { font-size: 0.85rem; margin-bottom: 10px; color: #94a3b8; }
@@ -390,6 +407,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <button class="tab-btn admin-tab" onclick="switchTab('pipeline')" style="display:none">Pipeline</button>
     <button class="tab-btn admin-tab" onclick="switchTab('quarantine')" id="quarantineTabBtn" style="display:none">Quarantine <span id="quarantineBadge" style="display:none;background:#701a22;color:#fca5a5;padding:1px 6px;border-radius:8px;font-size:0.65rem;margin-left:4px"></span></button>
     <button class="tab-btn admin-tab" onclick="switchTab('settings')" style="display:none">Settings</button>
+    <button class="tab-btn" onclick="switchTab('manual')">Manual</button>
     <span style="flex:1"></span>
   </div>
 
@@ -910,6 +928,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     </div>
   </div>
 
+  <!-- ════ MANUAL TAB ════ -->
+  <div class="tab-panel" id="tab-manual">
+    <div style="max-width:900px;margin:0 auto;padding:20px 0">
+      <div id="manualContent" style="font-size:0.85rem;color:#cbd5e1;line-height:1.7"></div>
+    </div>
+  </div>
+
   <!-- Login modal (P3.2) -->
   <div id="loginModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:2000;align-items:center;justify-content:center">
     <div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:24px;max-width:340px;width:90%">
@@ -1089,6 +1114,80 @@ function switchTab(name, filters) {
   if (name === "reader") { loadReadingList(); }
   if (name === "quarantine") { loadQuarantine(); }
   if (name === "settings") { loadConfig(); refreshWatcherStatus(); loadBackups(); }
+  if (name === "manual") { loadManual(); }
+}
+
+// ── Manual tab (markdown renderer + loader) ──
+function _mdEscape(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+function _mdInline(text) {
+  return text
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/~~(.+?)~~/g, '<del>$1</del>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color:#38bdf8;text-decoration:underline">$1</a>');
+}
+function _renderMarkdown(md) {
+  var lines = md.split("\n"), out = [], i = 0;
+  while (i < lines.length) {
+    var ln = lines[i];
+    // Code block
+    if (ln.match(/^```/)) {
+      var lang = ln.slice(3).trim(), code = [];
+      i++; while (i < lines.length && !lines[i].match(/^```/)) { code.push(_mdEscape(lines[i])); i++; }
+      i++; out.push('<pre><code>' + code.join("\n") + '</code></pre>'); continue;
+    }
+    // Headings
+    var hm = ln.match(/^(#{1,3})\s+(.+)/);
+    if (hm) { i++; out.push('<h' + hm[1].length + '>' + _mdInline(hm[2]) + '</h' + hm[1].length + '>'); continue; }
+    // HR
+    if (ln.match(/^-{3,}$/) || ln.match(/^\*{3,}$/)) { i++; out.push('<hr>'); continue; }
+    // Table
+    if (ln.includes("|") && i + 1 < lines.length && lines[i+1].match(/^\|[\s-:|]+\|/)) {
+      var hdr = ln.split("|").map(function(c){return c.trim()}).filter(Boolean);
+      out.push("<table><thead><tr>" + hdr.map(function(h){return "<th>" + _mdInline(h) + "</th>"}).join("") + "</tr></thead><tbody>");
+      i += 2;
+      while (i < lines.length && lines[i].includes("|")) {
+        var cells = lines[i].split("|").map(function(c){return c.trim()}).filter(Boolean);
+        out.push("<tr>" + cells.map(function(c){return "<td>" + _mdInline(c) + "</td>"}).join("") + "</tr>");
+        i++;
+      }
+      out.push("</tbody></table>"); continue;
+    }
+    // Ul
+    if (ln.match(/^[-*]\s/)) {
+      out.push("<ul>"); while (i < lines.length && lines[i].match(/^[-*]\s/)) {
+        out.push("<li>" + _mdInline(lines[i].replace(/^[-*]\s+/, "")) + "</li>"); i++;
+      } out.push("</ul>"); continue;
+    }
+    // Ol
+    if (ln.match(/^\d+\.\s/)) {
+      out.push("<ol>"); while (i < lines.length && lines[i].match(/^\d+\.\s/)) {
+        out.push("<li>" + _mdInline(lines[i].replace(/^\d+\.\s+/, "")) + "</li>"); i++;
+      } out.push("</ol>"); continue;
+    }
+    // Blockquote
+    if (ln.match(/^>\s/)) { out.push("<blockquote>" + _mdInline(ln.replace(/^>\s*/, "")) + "</blockquote>"); i++; continue; }
+    // Paragraph
+    if (ln.trim()) { var p = []; while (i < lines.length && lines[i].trim() && !lines[i].match(/^(#{1,3}\s|```|[-*]\s|\d+\.\s|>\s|---|\*\*\*|[\s]*\|)/)) { p.push(lines[i]); i++; } out.push("<p>" + _mdInline(p.join(" ")) + "</p>"); continue; }
+    i++;
+  }
+  return out.join("\n");
+}
+var _manualLoaded = false;
+function loadManual() {
+  if (_manualLoaded) return;
+  var el = document.getElementById("manualContent");
+  if (!el) return;
+  el.innerHTML = '<div style="color:#64748b;text-align:center;padding:40px">Loading manual...</div>';
+  fetch(API + "/api/manual").then(function(r){return r.json()}).then(function(d){
+    el.innerHTML = _renderMarkdown(d.markdown || "");
+    _manualLoaded = true;
+  }).catch(function(){
+    el.innerHTML = '<div style="color:#ef4444;padding:20px">Failed to load manual.</div>';
+  });
 }
 
 // ── Auth (P3.2) ──

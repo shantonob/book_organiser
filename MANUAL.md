@@ -289,87 +289,244 @@ Quarantined books can be:
 
 ## 3. Reader
 
+Open any book via **Read Online** in the detail panel. The reader opens in a dedicated tab (not an overlay) with a toolbar at the top, the reading area in the center, and optional sidebars for the reading list (left) and annotations/notes (right).
+
 ### 3.1 Supported Formats
 
-| Format | Reader Engine | Notes |
-|--------|---------------|-------|
-| EPUB | epub.js (scrolled-doc) | Full support: TOC, search, highlights, bookmarks, annotations |
-| AZW3 | Auto-converted to EPUB | One-time conversion; cached result |
-| MOBI | Auto-converted to EPUB | One-time conversion; cached result |
-| FB2 | Auto-converted to EPUB | One-time conversion; cached result |
-| PDF | PDF.js | Full support: TOC, page navigation, highlights, bookmarks |
-| DJVU | Converted to PDF (ddjvu/calibre) | Then uses PDF.js reader |
-| CBZ | Image page extraction | Page navigation, thumbnails, drawing overlay, RTL/manga mode |
-| CBR | Download only | RAR extraction not available in the container |
+| Format | Reader Engine | Conversion | Key Features |
+|--------|---------------|------------|-------------|
+| EPUB | epub.js (scrolled-doc) | None | Full support: TOC, search, highlights, bookmarks, notes, themes, zoom, two-page mode |
+| AZW3 | Auto-converted to EPUB | One-time (calibre or pure-stdlib fallback); cached to `cache/converted/` | Then full EPUB features |
+| MOBI | Auto-converted to EPUB | One-time; cached | Then full EPUB features |
+| FB2 | Auto-converted to EPUB | One-time; cached | Then full EPUB features |
+| PDF | PDF.js | None (native) | Page navigation, zoom, highlights, bookmarks, TOC (if embedded), two-page mode |
+| DJVU | Converted to PDF (ddjvu or calibre fallback) | Then uses PDF.js | Full PDF features |
+| CBZ | Image page extraction | None | Page navigation, thumbnails, zoom, drawing overlay, RTL/manga mode |
+| CBR | Download only | No RAR tool in container | Use Download instead |
 
-### 3.2 Navigation
+**Format auto-detection:** The reader detects the file extension and dispatches to the appropriate engine. AZW3/MOBI/FB2 are silently converted to EPUB on first open; the conversion is cached on disk so subsequent opens are instant.
 
-- **Previous/Next buttons** in the toolbar
-- **Keyboard**: Arrow Left/Right for previous/next page; Arrow Up/Page Up and Arrow Down/Page Down/Space for scrolling (EPUB) or paging (PDF/comic)
-- **Touch**: Horizontal swipe to turn pages; pinch to zoom
-- **Mouse wheel**: Ctrl/Shift + scroll to zoom (PDF/comic)
-- **Page thumbnails**: Scrollable strip at bottom of reader; click to jump to a page
+### 3.2 Reader Toolbar
 
-### 3.3 Themes & Typography
+The toolbar sits at the top of the reader and provides these controls (left to right):
 
-**Themes:**
-- Dark (default): `#1e293b` background
-- Light: `#ffffff` background
-- Sepia: `#f4ecd8` background
-- Night: `#111318` background
+| Button | Action |
+|--------|--------|
+| **✕** | Close reader (saves position, returns to Library tab) |
+| **📖** | Toggle reading list sidebar (left panel) |
+| **🔍** | Toggle in-book search bar (EPUB only) |
+| **🗂** | Toggle table of contents sidebar (EPUB/PDF) |
+| **🎨** | Toggle drawing overlay mode (PDF/CBZ) |
+| **📝** | Toggle annotations/notes sidebar (right panel) |
+| **◀ / ▶** | Previous / next page |
+| **Cc** | Toggle two-page spread view |
+| **RTL** | Toggle right-to-left reading direction (manga mode) |
+| **A− / A+** | Decrease / increase font size (EPUB) or zoom (PDF/comic) |
+| **🔍+ / 🔍−** | Zoom in / out (PDF/comic) |
+| **⛶** | Enter fullscreen |
+| **🌙 / ☀ / 📜 / 🌑** | Theme selector: Dark, Light, Sepia, Night |
 
-Theme selection is persisted in localStorage across sessions.
+### 3.3 Navigation
 
-**Typography (EPUB):**
-- Font size: 50%–300% via zoom controls
+**Keyboard shortcuts (all formats):**
+
+| Key | Action |
+|-----|--------|
+| Arrow Left | Previous page |
+| Arrow Right | Next page |
+| Arrow Up / Page Up | Previous page (paginated) or scroll up (EPUB) |
+| Arrow Down / Page Down / Space | Next page (paginated) or scroll down (EPUB) |
+
+**Mouse:**
+- Click **◀** / **▶** buttons for previous/next
+- Ctrl/Shift + mouse wheel to zoom (PDF/comic)
+- Scroll wheel to scroll within EPUB (scrolled-doc mode)
+
+**Touch:**
+- Horizontal swipe to turn pages
+- Two-finger pinch to zoom in/out
+- Tap center of screen to toggle toolbar (in fullscreen)
+
+**Page thumbnails:**
+A scrollable strip of page thumbnails appears below the toolbar (PDF/CBZ). Click any thumbnail to jump directly to that page. Thumbnails are lazy-loaded as you scroll. Hidden in fullscreen mode.
+
+### 3.4 Themes & Typography
+
+**Four reading themes:**
+
+| Theme | Background | Text | Best for |
+|-------|-----------|------|----------|
+| Dark (default) | `#1e293b` | Light gray | General reading |
+| Light | `#ffffff` | Dark | Bright environments |
+| Sepia | `#f4ecd8` | Warm brown | Extended reading sessions |
+| Night | `#111318` | Dim gray | Late-night reading |
+
+Theme selection persists in localStorage across sessions.
+
+**Typography controls (EPUB):**
+- Font size: 50%–300% via **A−** / **A+** buttons or keyboard
 - Line height: Configurable (default 1.6)
+- Font family: Inherits from epub.js defaults (serif/sans-serif)
 
-**Zoom (PDF/Comic):**
-- 30%–300% via +/- buttons, reset button, or Ctrl/Shift + mouse wheel
-- Fit-to-view scaling available
+**Zoom controls (PDF/Comic):**
+- 30%–300% via **🔍+** / **🔍−** buttons
+- Reset to fit-to-view with the reset button
+- Ctrl/Shift + mouse wheel for fine-grained zoom
+- Zoom level displayed in toolbar
 
-### 3.4 Two-Page / Spread View
+### 3.5 Two-Page / Spread View
 
-Toggle the two-page mode to display two pages side by side:
-- **PDF/DJVU**: Renders left and right pages adjacent
+Toggle the two-page mode via the **Cc** button in the toolbar:
+
+- **PDF/DJVU**: Renders left and right pages side by side (like an open book)
 - **CBZ**: Renders two consecutive pages adjacent
-- **RTL/Manga mode**: Reverses the page order for right-to-left reading
-- Not available for EPUB (uses scrolled-doc mode)
+- **RTL/Manga mode**: Reverses the page order for right-to-left reading (right page first)
+- **EPUB**: Not available (uses scrolled-doc mode instead)
 
-### 3.5 In-Book Search (EPUB only)
+### 3.6 In-Book Search (EPUB only)
 
-Type a search term in the search bar within the reader. The search scans all spine items in the EPUB and returns results with context snippets (capped at 400 matches). Click any result to jump to that location in the book.
+Click the **🔍** button to reveal the search bar. Type a search term and press Enter:
 
-### 3.6 Fullscreen Mode
+- Searches through all spine items in the EPUB
+- Results appear with context snippets (max 400 matches)
+- Click any result to jump to that location in the book
+- The search highlights the matched text briefly
 
-Click the fullscreen button (⛶) in the reader toolbar to enter fullscreen mode. In fullscreen:
+### 3.7 Table of Contents
 
-- **Everything hidden by default** — zero chrome, just the reading content
-- **Reveal toolbar**: Move the mouse or tap the screen to show the floating toolbar (centered pill with close, title, prev/next, zoom controls)
-- **Auto-hide**: The toolbar fades after 3 seconds of inactivity
-- **Sidebars**: Reading list (left) and annotations (right) slide in from the screen edges on hover or swipe-from-edge
-- **Page thumbnails**: Hidden in fullscreen
-- **ESC key**: Exits fullscreen (standard browser behavior); reader stays open
-- **Close**: Click the ✕ button in the floating toolbar to close the reader and exit fullscreen
+**EPUB:** The TOC is loaded from the EPUB's navigation document (nav.xhtml or toc.ncx). It displays as a hierarchical tree in the left sidebar. Click any entry to jump to that chapter. The currently active chapter is highlighted.
 
-### 3.7 Drawing Overlay
+**PDF:** The TOC is built from the PDF's internal outline (if present). Destination page numbers are resolved and displayed. Click any entry to jump to that page.
 
-For comics (CBZ) and PDFs, toggle drawing mode via the pencil button in the toolbar:
+**CBZ/CBR:** No TOC support (comics are page-based).
 
-- **Freehand drawing**: Draw directly on the page with pointer/touch
-- **Color and size**: Configurable via the drawing toolbar
-- **Per-page**: Drawings are stored per page and persist across sessions
-- **Clear**: Remove all drawings from the current page
-- **Overlay sync**: Drawing canvas repositions automatically with zoom and page changes
+### 3.8 Fullscreen Mode
 
-### 3.8 Progress Tracking
+Click the **⛶** button in the toolbar to enter fullscreen mode. This provides a completely immersive reading experience:
 
-The reader tracks your position in each book:
-- **EPUB**: Spine index + epub.js location percentage
-- **PDF/DJVU**: Page number / total pages
-- **CBZ/CBR**: Current page / total pages
+**Default state (zero chrome):**
+- Only the reading content is visible
+- No toolbar, no buttons, no sidebars
+- Page thumbnails are hidden
 
-Progress is displayed as a bar at the bottom of the reader and saved to the server 2 seconds after a page change. On reader close, an auto-bookmark is created if reading progress exceeds 5% and no nearby bookmark exists.
+**Revealing controls:**
+- **Desktop:** Move the mouse to reveal a centered floating toolbar (close, title, prev/next, zoom, exit fullscreen)
+- **Mobile:** Tap the center of the screen to reveal the floating toolbar
+- The toolbar auto-hides after 3 seconds of inactivity
+
+**Sidebar access:**
+- **Desktop:** Hover over the left/right screen edge to slide in the reading list or annotations sidebar
+- **Mobile:** Swipe from the left/right edge to reveal sidebars
+
+**Exiting fullscreen:**
+- **ESC key**: Exits browser fullscreen (standard behavior); reader stays open
+- **✕ button**: In the floating toolbar; closes the reader and exits fullscreen
+
+### 3.9 Annotations & Highlights
+
+**Creating highlights:**
+- **EPUB:** Select text with the mouse → a popup appears with color choices and an optional note field
+- **PDF:** Click and drag to select a rectangular region → the same popup appears
+- **CBZ:** Click and drag to select a region (for marking panels or details)
+
+**Colors (7 choices):**
+Yellow, Green, Blue, Red, Purple, Orange, White
+
+**Anchoring:**
+- EPUB highlights are anchored by CFI (Canonical Fragment Identifier) — they survive text reflow
+- PDF/CBZ highlights are anchored by page number + bounding box coordinates
+
+**Managing highlights:**
+- View all highlights in the **Timeline** panel (right sidebar, Highlights tab)
+- Click any highlight in the timeline to jump to its location
+- Delete individual highlights via the X button
+- Export all highlights to Markdown via the export button
+
+### 3.10 Notes (Zettelkasten System)
+
+The notes system implements a lightweight Zettelkasten (slip-box) workflow:
+
+**Creating a note:**
+1. Navigate to the desired location in the book
+2. Click **+ Note** in the annotations sidebar
+3. Enter a title and body text
+4. Add comma-separated tags
+5. The note is anchored to the current reader position
+
+**Each note receives:**
+- A unique ZID (e.g., `abc123-def456`) for linking
+- Timestamps (created, updated)
+- Page/location anchor (EPUB: CFI; PDF/CBZ: page number)
+
+**Wiki-style links:**
+- In any note's body, type `[[zid]]` to link to another note
+- An autocomplete dropdown suggests existing notes as you type `[[`
+- Backlinks are automatically displayed on notes that are referenced by others
+
+**Managing notes:**
+- View all notes in the **Timeline** panel (Notes tab)
+- Filter notes by text search
+- Click any note to jump to its anchored location
+- Edit notes inline
+- Delete individual notes
+
+### 3.11 Bookmarks
+
+**Creating bookmarks:**
+- Click the **🔖** button in the toolbar to save the current position
+- Optionally add a label (e.g., "Chapter 3 intro")
+
+**Auto-bookmarks:**
+- When you close the reader, if reading progress exceeds 5% and no bookmark exists near the current position (within 2%), an automatic bookmark is created
+
+**Navigating bookmarks:**
+- View all bookmarks in the **Timeline** panel (Bookmarks tab)
+- Click any bookmark to jump to that position
+- Delete individual bookmarks
+
+### 3.12 Drawing Overlay
+
+For comics (CBZ) and PDFs, toggle drawing mode via the **🎨** button:
+
+**Drawing tools:**
+- **Freehand drawing**: Draw directly on the page with pointer or touch
+- **Color picker**: Choose from available colors
+- **Brush size**: Adjustable line width
+- **Eraser**: Remove strokes
+
+**Storage:**
+- Drawings are stored per page as normalized coordinate strokes (JSON)
+- Persist across sessions (saved to server on page change)
+- Each page's drawings load automatically when you navigate to it
+
+**Overlay behavior:**
+- The drawing canvas repositions automatically with zoom and page changes
+- Drawings are visible in both normal and two-page modes
+- Clear all drawings for the current page via the clear button
+
+### 3.13 Progress Tracking
+
+The reader automatically tracks your position in each book:
+
+| Format | Progress method |
+|--------|----------------|
+| EPUB | Spine index + epub.js locations percentage |
+| PDF/DJVU | Page number / total pages |
+| CBZ | Current page / total pages |
+
+**Progress display:**
+- A progress bar at the bottom of the reader shows percentage complete
+- Current page / total pages displayed alongside
+
+**State persistence:**
+- Reading position is saved to the server 2 seconds after a page change
+- On reader close, the final position is saved immediately
+- Reopening a book resumes from the last saved position
+- Zoom level, theme, and two-page mode are also saved
+
+**Reader state endpoint:**
+- `GET /api/book/<id>/reader-state` — retrieves saved position
+- `POST /api/book/<id>/reader-state` — saves current position
 
 ---
 

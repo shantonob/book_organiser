@@ -242,6 +242,17 @@ def api_health():
     return jsonify({"status": "ok" if all_ok else "degraded", "checks": checks})
 
 
+@app.route("/api/manual")
+def api_manual():
+    """Return the user manual markdown content (BL-020)."""
+    manual_path = os.path.join(config.BASE_DIR, "MANUAL.md")
+    try:
+        with open(manual_path, encoding="utf-8") as f:
+            return jsonify({"markdown": f.read()})
+    except FileNotFoundError:
+        return jsonify({"markdown": "# Manual\n\nMANUAL.md not found in the project root."})
+
+
 @app.route("/api/diagnostics")
 def api_diagnostics():
     result = {"status": "ok", "checks": {}}
@@ -2100,6 +2111,145 @@ os.makedirs(CONVERTED_CACHE_DIR, exist_ok=True)
 def _converted_disk_path(book_id):
     return os.path.join(CONVERTED_CACHE_DIR, f"{book_id}.epub")
 
+# ── BL-015: on-demand format conversion with output profiles ──
+CONVERT_OUTPUTS = {
+    "epub": "application/epub+zip",
+    "azw3": "application/x-mobipocket-ebook",
+    "mobi": "application/x-mobipocket-ebook",
+    "pdf": "application/pdf",
+    "fb2": "application/x-fictionbook+xml",
+    "txt": "text/plain",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "rtf": "application/rtf",
+    "htmlz": "application/zip",
+}
+DEVICE_PROFILES = {
+    "kindle": "kindle",
+    "kindle_pw": "kindle_pw",
+    "kindle_oasis": "kindle_oasis",
+    "kobo": "kobo",
+    "tablet": "tablet",
+    "ipad": "ipad",
+}
+_convert_jobs = {}
+_convert_jobs_lock = threading.Lock()
+_convert_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+
+def _converted_disk_path_fmt(book_id, out_fmt, device=None):
+    if device:
+        return os.path.join(CONVERTED_CACHE_DIR, f"{book_id}.{out_fmt}.{device}")
+    return os.path.join(CONVERTED_CACHE_DIR, f"{book_id}.{out_fmt}")
+
+
+def _convert_file(filepath, out_fmt, device=None):
+    """Convert a book to out_fmt via calibre, optionally with a device
+    output profile. Returns (path, error) tuple."""
+    exe = shutil.which("ebook-convert")
+    if not exe:
+        return None, "ebook-convert is not installed in the container"
+    fd, outpath = tempfile.mkstemp(suffix="." + out_fmt)
+    os.close(fd)
+    cmd = [exe, filepath, outpath]
+    if device:
+        profile = DEVICE_PROFILES.get(device)
+        if profile:
+            cmd += ["--output-profile", profile]
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=600, check=True)
+        if os.path.isfile(outpath) and os.path.getsize(outpath) > 0:
+            return outpath, None
+    except subprocess.CalledProcessError as e:
+        return None, (e.stderr or b"").decode(errors="replace")[-300:]
+    except Exception as e:
+        return None, str(e)
+    try:
+        os.unlink(outpath)
+    except Exception:
+        pass
+    return None, "conversion produced no output"
+
+
+@app.route("/api/book/<int:book_id>/convert", methods=["POST"])
+def api_book_convert(book_id):
+    data = request.json or {}
+    out_fmt = (data.get("format") or "").strip().lower()
+    device = (data.get("device") or "").strip().lower() or None
+    if out_fmt not in CONVERT_OUTPUTS:
+        return jsonify({"error": "unsupported format; choose from " + ", ".join(sorted(CONVERT_OUTPUTS))}), 400
+    if device and device not in DEVICE_PROFILES:
+        return jsonify({"error": "unsupported device; choose from " + ", ".join(sorted(DEVICE_PROFILES))}), 400
+    conn = get_connection(DB_PATH)
+    try:
+        book = get_book_by_id(conn, book_id)
+        if not book:
+            return jsonify({"error": "not found"}), 404
+        filepath = resolve_book_path(book)
+    finally:
+        conn.close()
+    if not filepath or not os.path.isfile(filepath):
+        return jsonify({"error": "file not found on disk"}), 404
+
+    disk = _converted_disk_path_fmt(book_id, out_fmt, device)
+    if os.path.isfile(disk):
+        return jsonify({"status": "ready", "url": f"/api/book/{book_id}/convert/download?format={out_fmt}&device={device or ''}"})
+
+    key = (book_id, out_fmt, device)
+    with _convert_jobs_lock:
+        job = _convert_jobs.get(key)
+        if job and not job.get("done"):
+            return jsonify({"status": "converting"})
+        _convert_jobs[key] = {"done": False, "path": None, "error": None}
+
+    def _run():
+        path, err = _convert_file(filepath, out_fmt, device)
+        with _convert_jobs_lock:
+            _convert_jobs[key] = {"done": True, "path": path, "error": err}
+        if path:
+            try:
+                shutil.copyfile(path, disk)
+            except Exception:
+                pass
+
+    _convert_executor.submit(_run)
+    return jsonify({"status": "converting", "url": f"/api/book/{book_id}/convert/download?format={out_fmt}&device={device or ''}"})
+
+
+@app.route("/api/book/<int:book_id>/convert/status")
+def api_book_convert_status(book_id):
+    out_fmt = (request.args.get("format") or "").strip().lower()
+    device = (request.args.get("device") or "").strip().lower() or None
+    disk = _converted_disk_path_fmt(book_id, out_fmt, device)
+    if os.path.isfile(disk):
+        return jsonify({"status": "ready", "url": f"/api/book/{book_id}/convert/download?format={out_fmt}&device={device or ''}"})
+    key = (book_id, out_fmt, device)
+    with _convert_jobs_lock:
+        job = _convert_jobs.get(key)
+    if not job:
+        return jsonify({"status": "not_found"}), 404
+    if job.get("done"):
+        if job.get("path") and os.path.isfile(job["path"]):
+            return jsonify({"status": "ready", "url": f"/api/book/{book_id}/convert/download?format={out_fmt}&device={device or ''}"})
+        return jsonify({"status": "error", "error": job.get("error") or "conversion failed"}), 500
+    return jsonify({"status": "converting"})
+
+
+@app.route("/api/book/<int:book_id>/convert/download")
+def api_book_convert_download(book_id):
+    out_fmt = (request.args.get("format") or "").strip().lower()
+    device = (request.args.get("device") or "").strip().lower() or None
+    disk = _converted_disk_path_fmt(book_id, out_fmt, device)
+    if not os.path.isfile(disk):
+        with _convert_jobs_lock:
+            job = _convert_jobs.get((book_id, out_fmt, device))
+        if not job or not job.get("path") or not os.path.isfile(job["path"]):
+            return jsonify({"error": "conversion not ready"}), 404
+        disk = job["path"]
+    mt = CONVERT_OUTPUTS.get(out_fmt, "application/octet-stream")
+    return _safe_send_path(disk, _readable_dirs(), as_attachment=True,
+                           download_name=f"book_{book_id}.{out_fmt}", mimetype=mt)
+
+
 # ── DJVU → PDF conversion (P8.6) ──
 DJVU_EXTS = {".djvu"}
 _djvu_cache = {}
@@ -3033,6 +3183,60 @@ def api_bulk_enrich():
                         "results": results})
     finally:
         conn.close()
+
+
+@app.route("/api/bulk/convert", methods=["POST"])
+def api_bulk_convert():
+    """Queue on-demand format conversion for a selection (BL-015).
+
+    Returns counts of started/already-available books; results are served by
+    /api/book/<id>/convert/download once ready.
+    """
+    data = request.json or {}
+    book_ids = data.get("book_ids", [])
+    out_fmt = (data.get("format") or "").strip().lower()
+    device = (data.get("device") or "").strip().lower() or None
+    if out_fmt not in CONVERT_OUTPUTS:
+        return jsonify({"error": "unsupported format; choose from " + ", ".join(sorted(CONVERT_OUTPUTS))}), 400
+    if device and device not in DEVICE_PROFILES:
+        return jsonify({"error": "unsupported device; choose from " + ", ".join(sorted(DEVICE_PROFILES))}), 400
+    started = 0
+    already = 0
+    failed = 0
+    for book_id in book_ids[:500]:
+        conn = get_connection(DB_PATH)
+        try:
+            book = get_book_by_id(conn, book_id)
+            filepath = resolve_book_path(book) if book else None
+        finally:
+            conn.close()
+        if not filepath or not os.path.isfile(filepath):
+            failed += 1
+            continue
+        disk = _converted_disk_path_fmt(book_id, out_fmt, device)
+        if os.path.isfile(disk):
+            already += 1
+            continue
+        key = (book_id, out_fmt, device)
+        with _convert_jobs_lock:
+            job = _convert_jobs.get(key)
+            if job and not job.get("done"):
+                already += 1
+                continue
+            _convert_jobs[key] = {"done": False, "path": None, "error": None}
+        def _run(bid=book_id, fp=filepath):
+            path, err = _convert_file(fp, out_fmt, device)
+            with _convert_jobs_lock:
+                _convert_jobs[(bid, out_fmt, device)] = {"done": True, "path": path, "error": err}
+            if path:
+                try:
+                    shutil.copyfile(path, _converted_disk_path_fmt(bid, out_fmt, device))
+                except Exception:
+                    pass
+        _convert_executor.submit(_run)
+        started += 1
+    return jsonify({"status": "ok", "started": started, "already": already,
+                    "failed": failed, "format": out_fmt, "device": device})
 
 
 # â”€â”€ Excel export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

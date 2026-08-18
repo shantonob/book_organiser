@@ -1,5 +1,8 @@
 FROM python:3.12-slim
 
+ARG WITH_CALIBRE=0
+ENV WITH_CALIBRE=$WITH_CALIBRE
+
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

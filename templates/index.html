@@ -240,10 +240,44 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .reading-list-sidebar .toc-item:hover { background: #334155; color: #e2e8f0; }
   .reading-list-sidebar .toc-empty { font-size: 0.7rem; color: #64748b; padding: 6px 4px; }
   .reading-list-sidebar .toc-item.active { background: #0ea5e9; color: #0f172a; font-weight: 600; }
-  .reader-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .reader-main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
   /* Progress bar in toolbar */
   .reader-progress-wrap { flex: 1; min-width: 80px; max-width: 160px; height: 4px; background: #334155; border-radius: 2px; overflow: hidden; }
   .reader-progress-fill { height: 100%; background: #0ea5e9; border-radius: 2px; transition: width 0.3s; }
+  /* BL-022: Glass footer scrubber */
+  .reader-glass-footer { position: absolute; bottom: 0; left: 0; right: 0; z-index: 50; display: none; align-items: center; gap: 8px; padding: 8px 14px; background: rgba(15,23,42,0.82); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-top: 1px solid rgba(71,85,105,0.5); }
+  .reader-glass-footer .gf-chapter-nav { display: flex; gap: 4px; flex-shrink: 0; }
+  .reader-glass-footer .gf-chapter-nav button { padding: 2px 6px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8rem; background: rgba(51,65,85,0.7); color: #94a3b8; }
+  .reader-glass-footer .gf-chapter-nav button:hover { background: rgba(71,85,105,0.9); color: #e2e8f0; }
+  .reader-glass-footer .gf-chapter-nav button:disabled { opacity: 0.3; cursor: default; }
+  .reader-glass-footer .gf-scrubber { flex: 1; display: flex; flex-direction: column; gap: 2px; position: relative; min-width: 0; }
+  .reader-glass-footer .gf-scrubber input[type="range"] { width: 100%; height: 6px; -webkit-appearance: none; appearance: none; background: rgba(51,65,85,0.7); border-radius: 3px; outline: none; cursor: pointer; }
+  .reader-glass-footer .gf-scrubber input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #0ea5e9; cursor: pointer; box-shadow: 0 0 6px rgba(14,165,233,0.5); }
+  .reader-glass-footer .gf-scrubber input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #0ea5e9; border: none; cursor: pointer; box-shadow: 0 0 6px rgba(14,165,233,0.5); }
+  .reader-glass-footer .gf-ticks { position: absolute; top: 0; left: 0; right: 0; height: 6px; pointer-events: none; }
+  .reader-glass-footer .gf-tick { position: absolute; top: -1px; width: 1px; height: 8px; background: rgba(148,163,184,0.35); }
+  .reader-glass-footer .gf-chip { flex-shrink: 0; min-width: 42px; text-align: center; font-size: 0.72rem; color: #94a3b8; cursor: pointer; padding: 2px 6px; border-radius: 4px; border: 1px solid transparent; }
+  .reader-glass-footer .gf-chip:hover { border-color: #475569; color: #e2e8f0; }
+  .reader-glass-footer .gf-chip-input { width: 42px; text-align: center; font-size: 0.72rem; color: #e2e8f0; padding: 2px 4px; border-radius: 4px; border: 1px solid #0ea5e9; background: #0f172a; display: none; }
+  .reader-glass-footer .gf-location { font-size: 0.7rem; color: #64748b; flex-shrink: 0; white-space: nowrap; }
+  .reader-glass-footer .gf-time { font-size: 0.7rem; color: #64748b; flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .reader-layout:fullscreen .reader-glass-footer { display: none !important; }
+  .fs-glass-footer { position: fixed; bottom: 0; left: 0; right: 0; z-index: 650; display: none; align-items: center; gap: 8px; padding: 8px 14px; background: rgba(15,23,42,0.82); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-top: 1px solid rgba(71,85,105,0.5); }
+  .fs-glass-footer .gf-chapter-nav { display: flex; gap: 4px; flex-shrink: 0; }
+  .fs-glass-footer .gf-chapter-nav button { padding: 2px 6px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8rem; background: rgba(51,65,85,0.7); color: #94a3b8; }
+  .fs-glass-footer .gf-chapter-nav button:hover { background: rgba(71,85,105,0.9); color: #e2e8f0; }
+  .fs-glass-footer .gf-scrubber { flex: 1; display: flex; flex-direction: column; gap: 2px; position: relative; min-width: 0; }
+  .fs-glass-footer .gf-scrubber input[type="range"] { width: 100%; height: 6px; -webkit-appearance: none; appearance: none; background: rgba(51,65,85,0.7); border-radius: 3px; outline: none; cursor: pointer; }
+  .fs-glass-footer .gf-scrubber input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #0ea5e9; cursor: pointer; box-shadow: 0 0 6px rgba(14,165,233,0.5); }
+  .fs-glass-footer .gf-scrubber input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #0ea5e9; border: none; cursor: pointer; box-shadow: 0 0 6px rgba(14,165,233,0.5); }
+  .fs-glass-footer .gf-ticks { position: absolute; top: 0; left: 0; right: 0; height: 6px; pointer-events: none; }
+  .fs-glass-footer .gf-tick { position: absolute; top: -1px; width: 1px; height: 8px; background: rgba(148,163,184,0.35); }
+  .fs-glass-footer .gf-chip { flex-shrink: 0; min-width: 42px; text-align: center; font-size: 0.72rem; color: #94a3b8; cursor: pointer; padding: 2px 6px; border-radius: 4px; border: 1px solid transparent; }
+  .fs-glass-footer .gf-chip:hover { border-color: #475569; color: #e2e8f0; }
+  .fs-glass-footer .gf-chip-input { width: 42px; text-align: center; font-size: 0.72rem; color: #e2e8f0; padding: 2px 4px; border-radius: 4px; border: 1px solid #0ea5e9; background: #0f172a; display: none; }
+  .fs-glass-footer .gf-location { font-size: 0.7rem; color: #64748b; flex-shrink: 0; white-space: nowrap; }
+  .fs-glass-footer .gf-time { font-size: 0.7rem; color: #64748b; flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .reader-layout:fullscreen .fs-glass-footer { display: flex; }
   /* Reading list dropdown */
   .rl-status-select { font-size: 0.68rem; padding: 2px 4px; border-radius: 3px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; }
   /* Annotations sidebar (right side) */
@@ -287,20 +321,32 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .reader-layout.fs-auto-panes:-webkit-full-screen .annotations-sidebar { position: fixed; right: 0; top: 48px; bottom: 0; z-index: 500; margin: 0; border-radius: 8px 0 0 8px; transform: translateX(100%); transition: transform 0.18s ease; max-width: none; background: rgba(15, 23, 42, 0.97); }
   .reader-layout.fs-auto-panes:fullscreen .annotations-sidebar.fs-show,
   .reader-layout.fs-auto-panes:-webkit-full-screen .annotations-sidebar.fs-show { transform: translateX(0); }
-  /* Edge hover strips (invisible) that reveal panes */
+  /* Edge hover strips (invisible) that reveal side panes — wider for easier targeting */
   .reader-layout.fs-auto-panes:fullscreen .fs-hotzone,
   .reader-layout.fs-auto-panes:-webkit-full-screen .fs-hotzone { display: block; }
-  .fs-hotzone { position: fixed; top: 48px; bottom: 0; width: 12px; z-index: 499; display: none; }
+  .fs-hotzone { position: fixed; top: 48px; bottom: 0; width: 24px; z-index: 499; display: none; }
   .fs-hotzone.fs-left { left: 0; }
   .fs-hotzone.fs-right { right: 0; }
-  /* Minimal fullscreen toolbar (P8.4): centered pill, auto-hides when idle */
-  .fs-toolbar { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 600; display: none; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.92); border: 1px solid #475569; border-radius: 999px; padding: 6px 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.5); transition: opacity 0.25s ease, transform 0.25s ease; }
+  /* Top/bottom edge trigger zones for toolbar reveal (24px strips) */
+  .fs-edge-trigger { position: fixed; left: 0; right: 0; height: 24px; z-index: 599; display: none; pointer-events: auto; }
+  .reader-layout:fullscreen .fs-edge-trigger,
+  .reader-layout:-webkit-full-screen .fs-edge-trigger { display: block; }
+  .fs-edge-trigger.fs-top { top: 0; }
+  .fs-edge-trigger.fs-bottom { bottom: 0; }
+  /* Center tap zone — invisible, detects taps to toggle toolbar pin */
+  .fs-center-tap { position: fixed; top: 24px; bottom: 24px; left: 24px; right: 24px; z-index: 498; display: none; cursor: default; }
+  .reader-layout:fullscreen .fs-center-tap,
+  .reader-layout:-webkit-full-screen .fs-center-tap { display: block; }
+  /* Minimal fullscreen toolbar: centered pill, auto-hides when idle, transitions */
+  .fs-toolbar { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 600; display: none; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.92); border: 1px solid #475569; border-radius: 999px; padding: 6px 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.5); transition: opacity 0.3s ease, transform 0.3s ease; }
   .reader-layout:fullscreen .fs-toolbar,
   .reader-layout:-webkit-full-screen .fs-toolbar { display: flex; }
   .reader-layout:fullscreen .fs-toolbar.fs-hidden,
   .reader-layout:-webkit-full-screen .fs-toolbar.fs-hidden { opacity: 0; transform: translateX(-50%) translateY(-16px); pointer-events: none; }
   .fs-toolbar button { padding: 4px 10px; border: none; border-radius: 999px; cursor: pointer; font-size: 0.78rem; background: #334155; color: #e2e8f0; }
   .fs-toolbar button:hover { background: #475569; }
+  /* Pin indicator — small dot shows when toolbar is pinned */
+  .fs-toolbar.fs-pinned::after { content: ''; position: absolute; top: -4px; left: 50%; transform: translateX(-50%); width: 6px; height: 6px; background: #38bdf8; border-radius: 50%; }
   .reader-fs-zoom { display: flex; align-items: center; gap: 3px; background: #1a2332; border-radius: 999px; padding: 2px 4px; }
   .reader-fs-zoom button { background: transparent; padding: 2px 8px; }
   .reader-fs-zoom button:hover { background: #334155; }
@@ -354,7 +400,50 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   #readerArea.rt-sepia .pdf-canvas-wrap canvas, #readerArea.rt-sepia .comic-canvas-wrap canvas { box-shadow: 0 1px 6px rgba(90,70,50,0.25); }
   #readerArea.rt-night { background:#111318 !important; }
   #readerArea.rt-night .pdf-canvas-wrap canvas, #readerArea.rt-night .comic-canvas-wrap canvas { filter: invert(1) hue-rotate(180deg); box-shadow: 0 1px 6px rgba(0,0,0,0.5); }
+  #readerArea.rt-gray { background:#2d2d2d !important; }
+  #readerArea.rt-gray .pdf-canvas-wrap canvas, #readerArea.rt-gray .comic-canvas-wrap canvas { box-shadow: 0 1px 6px rgba(0,0,0,0.3); }
+  #readerArea.rt-rosewood { background:#3b1e2e !important; }
+  #readerArea.rt-rosewood .pdf-canvas-wrap canvas, #readerArea.rt-rosewood .comic-canvas-wrap canvas { box-shadow: 0 1px 6px rgba(59,30,46,0.4); }
+  #readerArea.rt-azure { background:#1a2744 !important; }
+  #readerArea.rt-azure .pdf-canvas-wrap canvas, #readerArea.rt-azure .comic-canvas-wrap canvas { box-shadow: 0 1px 6px rgba(26,39,68,0.4); }
+  #readerArea.rt-ocean { background:#0f2027 !important; }
+  #readerArea.rt-ocean .pdf-canvas-wrap canvas, #readerArea.rt-ocean .comic-canvas-wrap canvas { box-shadow: 0 1px 6px rgba(15,32,39,0.4); }
   /* BL-007: page thumbnail strip */
+  /* BL-025: Resume toast */
+  .reader-resume-toast { position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%); z-index: 700; display: none; align-items: center; gap: 10px; padding: 10px 16px; background: rgba(15,23,42,0.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid #475569; border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.5); font-size: 0.8rem; color: #e2e8f0; animation: toastSlideUp 0.3s ease; }
+  .reader-resume-toast button { padding: 4px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.78rem; font-weight: 600; }
+  .reader-resume-toast .rt-resume { background: #0ea5e9; color: #0f172a; }
+  .reader-resume-toast .rt-dismiss { background: #334155; color: #94a3b8; }
+  @keyframes toastSlideUp { from { opacity: 0; transform: translateX(-50%) translateY(12px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+  /* BL-026: Settings dropdown panel */
+  .reader-settings-dropdown { position: absolute; top: 40px; right: 10px; z-index: 55; display: none; min-width: 220px; background: rgba(15,23,42,0.95); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid #475569; border-radius: 8px; padding: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+  .reader-settings-dropdown h4 { margin: 0 0 8px; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+  .reader-settings-dropdown .rs-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .reader-settings-dropdown .rs-label { font-size: 0.72rem; color: #64748b; min-width: 60px; }
+  .reader-settings-dropdown select, .reader-settings-dropdown input[type="range"] { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; padding: 2px 4px; font-size: 0.72rem; }
+  .reader-settings-dropdown select { flex: 1; }
+  .reader-settings-dropdown input[type="range"] { flex: 1; }
+  .reader-settings-dropdown .rs-toggle { padding: 3px 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.7rem; font-weight: 600; }
+  .rs-toggle-on { background: #0ea5e9; color: #0f172a; }
+  .rs-toggle-off { background: #334155; color: #94a3b8; }
+  /* BL-028: Keyboard shortcuts modal */
+  .shortcuts-modal { position: fixed; inset: 0; z-index: 2000; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); }
+  .shortcuts-modal .sm-content { background: #1e293b; border: 1px solid #475569; border-radius: 10px; padding: 20px 24px; max-width: 480px; width: 90vw; max-height: 80vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
+  .shortcuts-modal h3 { margin: 0 0 12px; color: #e2e8f0; font-size: 0.95rem; }
+  .shortcuts-modal table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+  .shortcuts-modal td { padding: 4px 8px; border-bottom: 1px solid #334155; }
+  .shortcuts-modal td:first-child { color: #0ea5e9; font-family: monospace; font-weight: 600; white-space: nowrap; }
+  .shortcuts-modal td:last-child { color: #94a3b8; }
+  .shortcuts-modal .sm-close { display: block; margin: 12px auto 0; padding: 6px 16px; border: none; border-radius: 6px; cursor: pointer; background: #334155; color: #e2e8f0; font-size: 0.8rem; }
+  /* BL-029: Bookmark ribbon */
+  .bookmark-ribbon { position: fixed; top: 12px; right: 12px; z-index: 1500; padding: 6px 16px; border-radius: 0 0 8px 8px; background: #eab308; color: #0f172a; font-size: 0.8rem; font-weight: 600; box-shadow: 0 4px 12px rgba(234,179,8,0.4); pointer-events: none; opacity: 0; transform: translateY(-100%); }
+  .bookmark-ribbon.br-show { animation: ribbonDrop 1.8s ease forwards; }
+  @keyframes ribbonDrop {
+    0% { opacity: 0; transform: translateY(-100%); }
+    15% { opacity: 1; transform: translateY(0); }
+    75% { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-100%); }
+  }
   #readerThumbs { display:none; margin:0 0 8px; padding:4px; border:1px solid #334155; border-radius:6px; background:#0f172a; overflow-x:auto; overflow-y:hidden; white-space:nowrap; max-height:112px; }
   #readerThumbs.rt-thumbs-on { display:block; }
   #readerThumbs .rt-thumb { display:inline-block; vertical-align:top; margin-right:4px; cursor:pointer; border:2px solid #334155; border-radius:4px; overflow:hidden; width:64px; height:96px; background:#1e293b; position:relative; flex:none; }
@@ -387,7 +476,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     .sb-collapse-btn { display: none; }
     .reading-list-sidebar, .annotations-sidebar { width: 100% !important; flex-shrink: 1; max-height: 240px; }
     .reader-main #readerArea { width: 100%; }
-    #readerToolbar { flex-wrap: wrap; }
+    #readerToolbar { flex-wrap: wrap; gap: 4px; }
+    #readerToolbar button { padding: 6px 10px; font-size: 0.82rem; min-height: 36px; }
+    .reader-glass-footer { padding: 10px 12px; gap: 6px; }
+    .reader-glass-footer .gf-scrubber input[type="range"] { height: 8px; }
+    .reader-glass-footer .gf-scrubber input[type="range"]::-webkit-slider-thumb { width: 20px; height: 20px; }
+    .reader-glass-footer .gf-scrubber input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; }
+    .reader-glass-footer .gf-chapter-nav button { padding: 4px 10px; font-size: 1rem; min-height: 36px; }
+    .reader-settings-dropdown { right: 0; left: 0; border-radius: 8px 8px 0 0; }
+    .reader-resume-toast { width: 90vw; max-width: 360px; justify-content: center; }
+    .reader-font-group, .reader-font-family-group, .reader-content-width-group { display: none !important; }
   }
 </style>
 <script src="/static/epub.polyfill.js"></script>
@@ -728,8 +826,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div class="reader-layout" id="readerLayout">
       <div class="fs-hotzone fs-left" id="fsLeftZone" title="Show contents &amp; reading list"></div>
       <div class="fs-hotzone fs-right" id="fsRightZone" title="Show notes &amp; annotations"></div>
+      <div class="fs-edge-trigger fs-top" id="fsTopZone" title=""></div>
+      <div class="fs-edge-trigger fs-bottom" id="fsBottomZone" title=""></div>
+      <div class="fs-center-tap" id="fsCenterTap" title=""></div>
       <!-- Minimal fullscreen toolbar (P8.4): floats top-center, auto-hides when idle -->
-      <div id="readerFsToolbar" class="fs-toolbar" onmousemove="showFsToolbar()">
+      <div id="readerFsToolbar" class="fs-toolbar">
         <button onclick="closeReader()" title="Close reader (bookmarks saved)">&#x2715;</button>
         <span id="readerFsTitle" style="color:#e2e8f0;font-weight:600;font-size:0.8rem;max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
         <button onclick="readerPrev()" title="Previous page">&#x2190;</button>
@@ -742,6 +843,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <button onclick="readerToggleTwoPage()" id="readerFsTwoPageBtn" title="Toggle two-page (opposite page) view">&#x2621;</button>
         </span>
         <button onclick="toggleFullscreen()" title="Exit fullscreen">&#x26F6;</button>
+      </div>
+      <!-- BL-022: Fullscreen glass footer scrubber -->
+      <div class="fs-glass-footer" id="readerFsGlassFooter">
+        <div class="gf-chapter-nav">
+          <button onclick="readerPrev()" title="Previous chapter/page">&#x2039;</button>
+          <button onclick="readerNext()" title="Next chapter/page">&#x203A;</button>
+        </div>
+        <div class="gf-scrubber">
+          <div class="gf-ticks" id="gfFsTicks"></div>
+          <input type="range" id="gfFsRange" min="0" max="100" value="0" step="0.1" oninput="onFooterScrub(this.value)">
+        </div>
+        <span class="gf-chip" id="gfFsChip" onclick="toggleFooterPageJump()">0%</span>
+        <input class="gf-chip-input" id="gfFsChipInput" type="number" min="1" step="1" onkeydown="onFooterPageJump(event)" onblur="onFooterPageJumpBlur()">
+        <span class="gf-location" id="gfFsLocation"></span>
+        <span class="gf-time" id="gfFsTime"></span>
       </div>
       <!-- Reading List Sidebar (R1) -->
       <div class="reading-list-sidebar" id="readingListPanel">
@@ -800,13 +916,34 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
               <option value="2.2">Loose</option>
             </select>
           </span>
+          <span class="reader-font-family-group" id="readerFontFamilyGroup" style="display:none;gap:4px;align-items:center">
+            <select id="readerFontFamily" onchange="epubFontFamily(this.value)" style="padding:3px 4px;font-size:0.7rem;background:#1a2332;color:#e2e8f0;border:1px solid #334155;border-radius:3px" title="Font family">
+              <option value="serif">Serif</option>
+              <option value="sans-serif">Sans-serif</option>
+              <option value="monospace">Monospace</option>
+              <option value="Georgia">Georgia</option>
+              <option value="Palatino">Palatino</option>
+            </select>
+            <button id="readerJustifyBtn" onclick="epubToggleJustify()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0" title="Toggle text justification">J</button>
+            <button id="readerHyphenBtn" onclick="epubToggleHyphenation()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.72rem;background:#475569;color:#e2e8f0" title="Toggle hyphenation">Hy</button>
+          </span>
+          <span class="reader-content-width-group" id="readerContentWidthGroup" style="display:none;gap:4px;align-items:center">
+            <span style="font-size:0.65rem;color:#64748b">&#x21F5;</span>
+            <input type="range" id="readerContentWidth" min="400" max="1600" value="1000" step="50" oninput="epubContentWidth(this.value)" style="width:60px" title="Content width">
+            <span id="readerContentWidthLabel" style="font-size:0.65rem;color:#64748b;min-width:28px">1000</span>
+          </span>
           <button id="readerRtlBtn" onclick="toggleReaderRtl()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#475569;color:#e2e8f0;font-weight:600;display:none" title="Manga / right-to-left reading order">&#x21C4;</button>
           <select id="readerThemeSelect" onchange="setReaderTheme(this.value)" style="padding:3px 4px;font-size:0.7rem;background:#1a2332;color:#e2e8f0;border:1px solid #334155;border-radius:3px" title="Reader theme">
             <option value="dark">Dark</option>
             <option value="light">Light</option>
             <option value="sepia">Sepia</option>
             <option value="night">Night</option>
+            <option value="gray">Gray</option>
+            <option value="rosewood">Rosewood</option>
+            <option value="azure">Azure</option>
+            <option value="ocean">Ocean</option>
           </select>
+          <button id="readerSettingsBtn" onclick="toggleReaderSettings()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#475569;color:#e2e8f0;font-weight:600" title="Reader settings">&#x2699;</button>
           <span class="reader-draw-group" id="readerDrawGroup" style="display:none;gap:4px;align-items:center">
             <button onclick="toggleDrawMode()" id="drawBtn" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#ef4444;color:#fff;font-weight:600" title="Toggle drawing mode">&#x270E;</button>
             <button onclick="clearDrawing()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#334155;color:#e2e8f0" title="Clear drawing on this page">&#x1F9F9;</button>
@@ -830,6 +967,64 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <span id="readerLoadDetail" style="color:#94a3b8;margin-left:8px"></span>
         </div>
         <div id="readerArea" style="width:100%;flex:1;border:1px solid #334155;border-radius:6px;background:#f8fafc;overflow-y:auto"></div>
+        <!-- BL-026: Settings dropdown panel -->
+        <div class="reader-settings-dropdown" id="readerSettingsDropdown">
+          <h4>Reader Settings</h4>
+          <div class="rs-row">
+            <span class="rs-label">Theme</span>
+            <select id="rsTheme" onchange="setReaderTheme(this.value)">
+              <option value="dark">Dark</option><option value="light">Light</option><option value="sepia">Sepia</option>
+              <option value="night">Night</option><option value="gray">Gray</option><option value="rosewood">Rosewood</option>
+              <option value="azure">Azure</option><option value="ocean">Ocean</option>
+            </select>
+          </div>
+          <div class="rs-row rs-epub-only" style="display:none">
+            <span class="rs-label">Font</span>
+            <select id="rsFontFamily" onchange="epubFontFamily(this.value)">
+              <option value="serif">Serif</option><option value="sans-serif">Sans-serif</option>
+              <option value="monospace">Monospace</option><option value="Georgia">Georgia</option><option value="Palatino">Palatino</option>
+            </select>
+          </div>
+          <div class="rs-row rs-epub-only" style="display:none">
+            <span class="rs-label">Size</span>
+            <button onclick="epubFontSize(-10)" style="padding:2px 6px;border:none;border-radius:4px;cursor:pointer;background:#334155;color:#e2e8f0">A&#x2212;</button>
+            <span id="rsFontLevel" style="font-size:0.72rem;color:#94a3b8;min-width:28px;text-align:center">100%</span>
+            <button onclick="epubFontSize(10)" style="padding:2px 6px;border:none;border-radius:4px;cursor:pointer;background:#334155;color:#e2e8f0">A&#x2B;</button>
+          </div>
+          <div class="rs-row rs-epub-only" style="display:none">
+            <span class="rs-label">Spacing</span>
+            <select id="rsLineHeight" onchange="epubLineHeight(this.value)">
+              <option value="1.4">Compact</option><option value="1.6" selected>Normal</option>
+              <option value="1.9">Relaxed</option><option value="2.2">Loose</option>
+            </select>
+          </div>
+          <div class="rs-row rs-epub-only" style="display:none">
+            <span class="rs-label">Justify</span>
+            <button id="rsJustifyBtn" class="rs-toggle rs-toggle-off" onclick="epubToggleJustify()">Off</button>
+            <span class="rs-label" style="margin-left:6px">Hyphen</span>
+            <button id="rsHyphenBtn" class="rs-toggle rs-toggle-off" onclick="epubToggleHyphenation()">Off</button>
+          </div>
+          <div class="rs-row rs-epub-only" style="display:none">
+            <span class="rs-label">Width</span>
+            <input type="range" id="rsContentWidth" min="400" max="1600" value="1000" step="50" oninput="epubContentWidth(this.value)">
+            <span id="rsContentWidthLabel" style="font-size:0.65rem;color:#64748b;min-width:28px">1000</span>
+          </div>
+        </div>
+        <!-- BL-022: Glass footer scrubber -->
+        <div class="reader-glass-footer" id="readerGlassFooter">
+          <div class="gf-chapter-nav">
+            <button id="gfPrevCh" onclick="readerPrev()" title="Previous chapter/page">&#x2039;</button>
+            <button id="gfNextCh" onclick="readerNext()" title="Next chapter/page">&#x203A;</button>
+          </div>
+          <div class="gf-scrubber">
+            <div class="gf-ticks" id="gfTicks"></div>
+            <input type="range" id="gfRange" min="0" max="100" value="0" step="0.1" oninput="onFooterScrub(this.value)">
+          </div>
+          <span class="gf-chip" id="gfChip" onclick="toggleFooterPageJump()">0%</span>
+          <input class="gf-chip-input" id="gfChipInput" type="number" min="1" step="1" onkeydown="onFooterPageJump(event)" onblur="onFooterPageJumpBlur()">
+          <span class="gf-location" id="gfLocation"></span>
+          <span class="gf-time" id="gfTime"></span>
+        </div>
       </div>
       <!-- Annotations sidebar (right side, P4.2c / P8.2 Zettelkasten) -->
       <div id="annotationsSidebar" class="annotations-sidebar">
@@ -855,6 +1050,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       <button class="sb-collapse-btn" id="collapseLeftBtn" onclick="toggleCollapseSidebar('left')" title="Collapse / expand contents &amp; reading list">&#x2039;</button>
       <button class="sb-collapse-btn" id="collapseRightBtn" onclick="toggleCollapseSidebar('right')" title="Collapse / expand annotations">&#x203A;</button>
     </div>
+    <!-- BL-029: Bookmark ribbon indicator -->
+    <div class="bookmark-ribbon" id="bookmarkRibbon">Bookmark saved</div>
+    <!-- BL-025: Resume toast -->
+    <div id="readerResumeToast" class="reader-resume-toast">
+      <span id="resumeToastMsg">Resume reading?</span>
+      <button class="rt-resume" onclick="resumeReading()">Resume</button>
+      <button class="rt-dismiss" onclick="dismissResumeToast()">Start fresh</button>
+    </div>
     <!-- Highlight selection popup -->
     <div id="hlPopup" class="hl-popup">
       <div class="hl-colors" id="hlColors"></div>
@@ -864,8 +1067,34 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         <button onclick="saveHighlightNoteOnly()" style="background:#334155;color:#e2e8f0">Note only</button>
         <button onclick="hideHighlightPopup()" style="background:#334155;color:#94a3b8">Cancel</button>
       </div>
+      <!-- BL-024: Selection actions -->
+      <div class="hl-sel-actions" id="hlSelActions" style="display:flex;gap:4px;margin-top:6px;padding-top:6px;border-top:1px solid #334155">
+        <button onclick="hlActionCopy()" style="flex:1;padding:4px 6px;border:none;border-radius:4px;cursor:pointer;font-size:0.7rem;background:#22c55e;color:#0f172a;font-weight:600" title="Copy text">&#x1F4CB; Copy</button>
+        <button onclick="hlActionTranslate()" style="flex:1;padding:4px 6px;border:none;border-radius:4px;cursor:pointer;font-size:0.7rem;background:#a78bfa;color:#0f172a;font-weight:600" title="Translate text">&#x1F310; Translate</button>
+        <button onclick="hlActionDefine()" style="flex:1;padding:4px 6px;border:none;border-radius:4px;cursor:pointer;font-size:0.7rem;background:#f97316;color:#0f172a;font-weight:600" title="Define word">&#x1F4D6; Define</button>
+        <button onclick="hlActionSearch()" style="flex:1;padding:4px 6px;border:none;border-radius:4px;cursor:pointer;font-size:0.7rem;background:#eab308;color:#0f172a;font-weight:600" title="Search text">&#x1F50D; Search</button>
+      </div>
+      <div id="hlActionResult" style="display:none;margin-top:6px;padding:6px;background:#0f172a;border-radius:4px;border:1px solid #334155;font-size:0.72rem;color:#e2e8f0;max-height:120px;overflow-y:auto;word-break:break-word"></div>
     </div>
   </div>
+
+    <!-- BL-028: Keyboard shortcuts modal -->
+    <div class="shortcuts-modal" id="shortcutsModal" onclick="if(event.target===this)_closeShortcutsModal()">
+      <div class="sm-content">
+        <h3>Keyboard Shortcuts</h3>
+        <table>
+          <tr><td>Arrow Left</td><td>Previous page</td></tr>
+          <tr><td>Arrow Right</td><td>Next page</td></tr>
+          <tr><td>Arrow Up / Page Up</td><td>Scroll up / Previous page</td></tr>
+          <tr><td>Arrow Down / Page Down / Space</td><td>Scroll down / Next page</td></tr>
+          <tr><td>Home</td><td>Jump to start of book</td></tr>
+          <tr><td>End</td><td>Jump to end of book</td></tr>
+          <tr><td>Escape</td><td>Close panels / Exit fullscreen</td></tr>
+          <tr><td>?</td><td>Show this shortcuts modal</td></tr>
+        </table>
+        <button class="sm-close" onclick="_closeShortcutsModal()">Close</button>
+      </div>
+    </div>
 
   <!-- ════ SETTINGS TAB ════ -->
   <div class="tab-panel" id="tab-settings">
@@ -3264,6 +3493,55 @@ let _lastProgress = 0;          // last known reading % (all formats)
 let _epubProgressTimer = null;  // P8.1: polling timer for EPUB completion counter
 let _epubLocationsStarted = false;
 
+// BL-021 — Persistent reader settings (per-format defaults + per-book overrides)
+var _readerPrefs = {
+  _defaults: { theme: "dark", zoom: 100, lineHeight: "1.6", fontFamily: "", justify: false, hyphenation: false, contentWidth: 100 },
+  _formatKey: function(fmt) { return "reader.prefs." + (fmt || "epub"); },
+  _bookKey: function(id) { return "reader.book." + id; },
+  get: function(fmt, bookId) {
+    var prefs = Object.assign({}, this._defaults);
+    // Layer 1: per-format defaults from localStorage
+    try { var stored = JSON.parse(localStorage.getItem(this._formatKey(fmt)) || "{}"); Object.assign(prefs, stored); } catch(e) {}
+    // Layer 2: per-book override from localStorage
+    if (bookId) { try { var bp = JSON.parse(localStorage.getItem(this._bookKey(bookId)) || "{}"); Object.assign(prefs, bp); } catch(e) {} }
+    return prefs;
+  },
+  set: function(fmt, bookId, key, value) {
+    // Save to per-book override if we have a bookId, else per-format
+    var target = bookId ? this._bookKey(bookId) : this._formatKey(fmt);
+    try {
+      var stored = JSON.parse(localStorage.getItem(target) || "{}");
+      stored[key] = value;
+      localStorage.setItem(target, JSON.stringify(stored));
+    } catch(e) {}
+  },
+  setFormat: function(fmt, key, value) {
+    try {
+      var stored = JSON.parse(localStorage.getItem(this._formatKey(fmt)) || "{}");
+      stored[key] = value;
+      localStorage.setItem(this._formatKey(fmt), JSON.stringify(stored));
+    } catch(e) {}
+  }
+};
+function _applyReaderPrefs(fmt, bookId) {
+  var p = _readerPrefs.get(fmt, bookId);
+  setReaderTheme(p.theme);
+  _readerZoom = p.zoom || 100;
+  var fz = document.getElementById("readerZoomLevel");
+  if (fz) fz.textContent = _readerZoom + "%";
+  var fzFs = document.getElementById("readerFsZoomLevel");
+  if (fzFs) fzFs.textContent = _readerZoom + "%";
+  if (fmt === "epub") {
+    _epubLineHeight = p.lineHeight || "1.6";
+    var lhEl = document.getElementById("readerLineHeight");
+    if (lhEl) lhEl.value = _epubLineHeight;
+  }
+  _applyReaderZoom();
+}
+function _saveReaderPref(fmt, bookId, key, value) {
+  _readerPrefs.set(fmt, bookId, key, value);
+}
+
 // ═══ Reading List (R1) ═══
 
 function loadReadingList() {
@@ -3472,6 +3750,163 @@ function _applyReaderProgress(pct) {
   if (fill) fill.style.width = pct + "%";
   var rlFill = document.querySelector(".rl-item.active .rl-progress-fill");
   if (rlFill) rlFill.style.width = pct + "%";
+  // BL-022: update glass footer scrubber + chip
+  var r = document.getElementById("gfRange"); if (r) r.value = pct;
+  var f = document.getElementById("gfFsRange"); if (f) f.value = pct;
+  var c = document.getElementById("gfChip"); if (c && !c._editing) c.textContent = pct + "%";
+  var fc = document.getElementById("gfFsChip"); if (fc && !fc._editing) fc.textContent = pct + "%";
+}
+
+// BL-022: Glass footer — show/hide + location label
+function _showGlassFooter(show) {
+  var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  var gf = document.getElementById("readerGlassFooter");
+  var fsGf = document.getElementById("readerFsGlassFooter");
+  // In normal mode: show regular footer, hide fs footer
+  // In fullscreen: CSS hides regular footer, we show fs footer
+  if (gf) gf.style.display = show && !isFs ? "flex" : "none";
+  if (fsGf) fsGf.style.display = show && isFs ? "flex" : "none";
+}
+function _setFooterLocation(text) {
+  var el = document.getElementById("gfLocation"); if (el) el.textContent = text;
+  var fel = document.getElementById("gfFsLocation"); if (fel) fel.textContent = text;
+}
+function _buildFooterTicks(count, currentIdx) {
+  var ticks = document.getElementById("gfTicks");
+  var fsTicks = document.getElementById("gfFsTicks");
+  function build(container) {
+    if (!container) return;
+    container.innerHTML = "";
+    if (count < 2) return;
+    for (var i = 1; i < count; i++) {
+      var t = document.createElement("div");
+      t.className = "gf-tick";
+      t.style.left = (i / count * 100) + "%";
+      if (i === currentIdx) t.style.background = "#0ea5e9";
+      container.appendChild(t);
+    }
+  }
+  build(ticks);
+  build(fsTicks);
+}
+
+// BL-022: Scrubber drag → navigate
+var _footerScrubTarget = 0;
+function onFooterScrub(val) {
+  _footerScrubTarget = parseFloat(val);
+}
+
+// BL-022: Scrubber commit (mouseup / touchend)
+function _commitFooterScrub() {
+  var pct = _footerScrubTarget;
+  if (isEpubFormat(readerFormat) && readerRendition) {
+    readerRendition.display(pct / 100);
+  } else if ((readerFormat === "pdf" || readerFormat === "djvu") && _pdfDoc && _pdfDoc.numPages) {
+    var pg = Math.max(1, Math.round(pct / 100 * _pdfDoc.numPages));
+    pdfRenderPage(readerBookId, pg);
+  } else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPages.length > 0) {
+    var idx = Math.max(0, Math.round(pct / 100 * (readerPages.length - 1)));
+    showComicPage(readerBookId, idx);
+  }
+}
+function _bindFooterScrub() {
+  var els = [document.getElementById("gfRange"), document.getElementById("gfFsRange")];
+  els.forEach(function(el) {
+    if (!el) return;
+    el.addEventListener("mouseup", _commitFooterScrub);
+    el.addEventListener("touchend", _commitFooterScrub);
+  });
+}
+
+// BL-022: Percentage chip → page-jump input toggle
+function toggleFooterPageJump() {
+  var chip = document.getElementById("gfChip");
+  var input = document.getElementById("gfChipInput");
+  var fsChip = document.getElementById("gfFsChip");
+  var fsInput = document.getElementById("gfFsChipInput");
+  if (chip) { chip.style.display = "none"; chip._editing = true; }
+  if (input) { input.style.display = "block"; input.value = ""; input.focus(); }
+  if (fsChip) { fsChip.style.display = "none"; fsChip._editing = true; }
+  if (fsInput) { fsInput.style.display = "block"; fsInput.value = ""; fsInput.focus(); }
+}
+function onFooterPageJump(e) {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  _commitFooterPageJump(e.target);
+}
+function onFooterPageJumpBlur() {
+  setTimeout(function() {
+    var chip = document.getElementById("gfChip");
+    var input = document.getElementById("gfChipInput");
+    var fsChip = document.getElementById("gfFsChip");
+    var fsInput = document.getElementById("gfFsChipInput");
+    if (chip) { chip.style.display = ""; chip._editing = false; }
+    if (input) input.style.display = "none";
+    if (fsChip) { fsChip.style.display = ""; fsChip._editing = false; }
+    if (fsInput) fsInput.style.display = "none";
+  }, 150);
+}
+function _commitFooterPageJump(inputEl) {
+  var val = parseInt(inputEl.value, 10);
+  if (!val || val < 1) { onFooterPageJumpBlur(); return; }
+  if (isEpubFormat(readerFormat) && readerRendition) {
+    var totalSpines = readerBook && readerBook.spine ? (readerBook.spine.length || 0) : 0;
+    var idx = Math.max(0, Math.min(val - 1, totalSpines - 1));
+    readerRendition.display(idx);
+  } else if ((readerFormat === "pdf" || readerFormat === "djvu") && _pdfDoc && _pdfDoc.numPages) {
+    var pg = Math.max(1, Math.min(val, _pdfDoc.numPages));
+    pdfRenderPage(readerBookId, pg);
+  } else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPages.length > 0) {
+    var ci = Math.max(0, Math.min(val - 1, readerPages.length - 1));
+    showComicPage(readerBookId, ci);
+  }
+  onFooterPageJumpBlur();
+}
+
+// BL-030: Reading analytics — session timer
+var _readingTimerStart = 0;      // ms timestamp when current reading segment started
+var _readingTimerElapsed = 0;    // ms accumulated reading time this session
+var _readingTimerInterval = null;
+function _startReadingTimer() {
+  if (_readingTimerInterval) return;
+  _readingTimerStart = Date.now();
+  _readingTimerInterval = setInterval(_tickReadingTimer, 5000);
+}
+function _stopReadingTimer() {
+  if (_readingTimerInterval) { clearInterval(_readingTimerInterval); _readingTimerInterval = null; }
+  if (_readingTimerStart) { _readingTimerElapsed += Date.now() - _readingTimerStart; _readingTimerStart = 0; }
+  _saveReadingTime();
+}
+function _tickReadingTimer() {
+  if (!_readingTimerStart) return;
+  var total = _readingTimerElapsed + (Date.now() - _readingTimerStart);
+  _updateReadingTimeDisplay(total);
+}
+function _updateReadingTimeDisplay(ms) {
+  var s = Math.floor(ms / 1000);
+  var m = Math.floor(s / 60);
+  s = s % 60;
+  var label = m + ":" + (s < 10 ? "0" : "") + s;
+  var el = document.getElementById("gfTime"); if (el) el.textContent = label;
+  var fel = document.getElementById("gfFsTime"); if (fel) fel.textContent = label;
+}
+function _saveReadingTime() {
+  if (!readerBookId || _readingTimerElapsed < 1000) return;
+  var key = "reader.readTime." + readerBookId;
+  try {
+    var prev = parseInt(localStorage.getItem(key) || "0", 10);
+    localStorage.setItem(key, String(prev + _readingTimerElapsed));
+  } catch(e) {}
+}
+function _getReadingTime(bookId) {
+  try { return parseInt(localStorage.getItem("reader.readTime." + bookId) || "0", 10); } catch(e) { return 0; }
+}
+function _formatReadingTime(ms) {
+  var totalMin = Math.floor(ms / 60000);
+  if (totalMin < 1) return "< 1 min";
+  var h = Math.floor(totalMin / 60);
+  var m = totalMin % 60;
+  return h > 0 ? h + "h " + m + "m" : m + " min";
 }
 
 // P8.1: recompute the current reading position from whatever is on screen. Called
@@ -3480,15 +3915,22 @@ function _updateReaderProgress() {
   if (isEpubFormat(readerFormat) && readerRendition) { _trackEpubProgress(false); return; }
   var pct = 0;
   var label = "";
+  var tickCount = 0, tickCurrent = 0;
   if ((readerFormat === "pdf" || readerFormat === "djvu") && _pdfDoc && _pdfDoc.numPages) {
     pct = Math.round(readerPage / _pdfDoc.numPages * 100);
     label = readerPage + " / " + _pdfDoc.numPages;
+    tickCount = Math.ceil(_pdfDoc.numPages / 10);
+    tickCurrent = Math.floor(readerPage / 10);
   } else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPages.length > 0) {
     pct = Math.round((readerPage + 1) / readerPages.length * 100);
     label = (readerPage + 1) + " / " + readerPages.length;
+    tickCount = Math.ceil(readerPages.length / 10);
+    tickCurrent = Math.floor(readerPage / 10);
   }
   var locEl = document.getElementById("readerLocation");
   if (label && locEl) locEl.textContent = label;
+  _setFooterLocation(label);
+  _buildFooterTicks(tickCount, tickCurrent);
   _applyReaderProgress(pct);
 }
 
@@ -3533,6 +3975,16 @@ function _trackEpubProgress(triggerSave) {
   _lastProgress = pct;
   var locEl = document.getElementById("readerLocation");
   if (locEl) locEl.textContent = pct + "%";
+  _setFooterLocation(pct + "%");
+  // BL-022: update footer ticks with current spine index
+  if (readerBook && readerBook.spine) {
+    var curIdx = 0;
+    try {
+      var loc2 = readerRendition.currentLocation();
+      if (loc2 && loc2.start && loc2.start.index !== undefined) curIdx = loc2.start.index;
+    } catch(e) {}
+    _buildFooterTicks(readerBook.spine.length || 0, curIdx);
+  }
   _applyReaderProgress(pct);
   if (triggerSave) {
     if (readerSaveTimer) clearTimeout(readerSaveTimer);
@@ -3542,6 +3994,71 @@ function _trackEpubProgress(triggerSave) {
 
 function _teardownEpubProgress() {
   if (_epubProgressTimer) { clearInterval(_epubProgressTimer); _epubProgressTimer = null; }
+}
+
+// ═══ BL-026: Settings dropdown panel ═══
+var _readerSettingsOpen = false;
+function toggleReaderSettings() {
+  _readerSettingsOpen = !_readerSettingsOpen;
+  var dd = document.getElementById("readerSettingsDropdown");
+  var btn = document.getElementById("readerSettingsBtn");
+  if (dd) dd.style.display = _readerSettingsOpen ? "block" : "none";
+  if (btn) btn.style.background = _readerSettingsOpen ? "#0ea5e9" : "#475569";
+  if (_readerSettingsOpen) syncReaderSettingsPanel();
+}
+function syncReaderSettingsPanel() {
+  var isEpub = isEpubFormat(readerFormat);
+  // Show/hide EPUB-only rows
+  var epubRows = document.querySelectorAll(".rs-epub-only");
+  for (var i = 0; i < epubRows.length; i++) epubRows[i].style.display = isEpub ? "flex" : "none";
+  // Theme
+  var th = document.getElementById("rsTheme"); if (th) th.value = _readerTheme;
+  if (isEpub) {
+    var ff = document.getElementById("rsFontFamily"); if (ff) ff.value = (document.getElementById("readerFontFamily") || {}).value || "serif";
+    var fs = document.getElementById("rsFontLevel"); if (fs) fs.textContent = _readerZoom + "%";
+    var lh = document.getElementById("rsLineHeight"); if (lh) lh.value = _epubLineHeight || "1.6";
+    var jb = document.getElementById("rsJustifyBtn"); if (jb) { jb.textContent = _epubJustify ? "On" : "Off"; jb.className = "rs-toggle " + (_epubJustify ? "rs-toggle-on" : "rs-toggle-off"); }
+    var hb = document.getElementById("rsHyphenBtn"); if (hb) { hb.textContent = _epubHyphenation ? "On" : "Off"; hb.className = "rs-toggle " + (_epubHyphenation ? "rs-toggle-on" : "rs-toggle-off"); }
+    var cw = document.getElementById("rsContentWidth"); var cwL = document.getElementById("rsContentWidthLabel");
+    var cwVal = (_readerPrefs.get(readerFormat, readerBookId) || {}).contentWidth || 1000;
+    if (cw) cw.value = cwVal; if (cwL) cwL.textContent = cwVal;
+  }
+}
+
+// ═══ BL-025: Resume toast ═══
+var _resumeLocation = null;
+var _resumeFormat = null;
+function _showResumeToast(bookId, format, savedState) {
+  _resumeLocation = savedState.location || null;
+  _resumeFormat = format;
+  _resumeBookId = bookId;
+  var pct = savedState.progress_pct || 0;
+  var msg = document.getElementById("resumeToastMsg");
+  if (msg) msg.textContent = "Resume reading at " + Math.round(pct) + "%?";
+  var toast = document.getElementById("readerResumeToast");
+  if (toast) toast.style.display = "flex";
+}
+function resumeReading() {
+  dismissResumeToast();
+  if (!_resumeLocation || !_resumeFormat) return;
+  var loc = _resumeLocation;
+  var fmt = _resumeFormat;
+  var bid = _resumeBookId;
+  if (fmt === "epub" && readerRendition && loc) {
+    try { readerRendition.display(loc); } catch(e) {}
+  } else if ((fmt === "pdf" || fmt === "djvu") && loc) {
+    var pg = parseInt(loc, 10);
+    if (pg && pg >= 1) pdfRenderPage(bid, pg);
+  } else if ((fmt === "cbz" || fmt === "cbr") && loc) {
+    var ci = parseInt(loc, 10);
+    if (ci >= 0) showComicPage(bid, ci);
+  }
+}
+function dismissResumeToast() {
+  var toast = document.getElementById("readerResumeToast");
+  if (toast) toast.style.display = "none";
+  _resumeLocation = null;
+  _resumeFormat = null;
 }
 
 // ═══ Open Reader ═══
@@ -3557,6 +4074,12 @@ function openReader(bookId) {
     document.getElementById("readerNext").style.display = "";
     document.getElementById("readerProgressWrap").style.display = "";
     _applyReaderProgress(0);
+    _showGlassFooter(true);
+    _bindFooterScrub();
+    _setFooterLocation("");
+    _readingTimerElapsed = _getReadingTime(bookId);
+    _updateReadingTimeDisplay(_readingTimerElapsed);
+    _startReadingTimer();
     _readerTwoPage = false;  // BL-003: two-page mode is per-book
     var _tpBtn = document.getElementById("readerTwoPageBtn");
     if (_tpBtn) _tpBtn.style.background = "#475569";
@@ -3566,8 +4089,8 @@ function openReader(bookId) {
     var epubLike = ["epub", "azw3", "mobi", "fb2"].indexOf(ext) !== -1;
     // BL-007: export works for every format the reader can open (backend is format-agnostic).
     document.getElementById("exportHighlightsBtn").style.display = "";
-    setReaderTheme((function() { try { return localStorage.getItem("reader.theme") || "dark"; } catch(e) { return "dark"; } })());
-    _epubLineHeight = (function() { try { return localStorage.getItem("reader.lineHeight") || "1.6"; } catch(e) { return "1.6"; } })();
+    // BL-021: apply per-format + per-book settings
+    _applyReaderPrefs(readerFormat, bookId);
     _readerRtl = false;
     var rtlBtn = document.getElementById("readerRtlBtn");
     if (rtlBtn) { rtlBtn.classList.remove("rtl-on"); rtlBtn.style.display = "none"; }
@@ -3584,6 +4107,12 @@ function openReader(bookId) {
       _setReadingListBtn(btn, inList);
     }).catch(function() {});
     switchTab("reader");
+    // BL-025: check for saved reader state and show resume toast
+    fetch(API + "/api/book/" + bookId + "/reader-state").then(function(r) { return r.json(); }).then(function(state) {
+      if (state && state.location && (state.progress_pct || 0) > 2) {
+        _showResumeToast(bookId, ext, state);
+      }
+    }).catch(function() {});
     if (epubLike) {
       loadReader(bookId, b);
     } else if (ext === "pdf") {
@@ -3831,6 +4360,23 @@ function _loadEpubReader(bookId, area, restoreCfi) {
     readerRendition = readerBook.renderTo(areaId, opts);
     applyEpubTheme(_readerTheme);
     epubLineHeight(_epubLineHeight);
+    // BL-021: apply persisted zoom for EPUB
+    if (_readerZoom !== 100) { try { readerRendition.themes.fontSize((_readerZoom / 100) + "em"); } catch(e) {} }
+    // BL-023: apply persisted typography prefs
+    _applyEpubTypographyPrefs(readerFormat, bookId);
+    // Apply justify/hyphenation after rendition is ready
+    try {
+      if (_epubJustify) readerRendition.themes.override("text-align", "justify", true);
+      if (_epubHyphenation) {
+        readerRendition.themes.override("hyphens", "auto", true);
+        readerRendition.themes.override("-webkit-hyphens", "auto", true);
+        readerRendition.themes.override("overflow-wrap", "break-word", true);
+      }
+      var ffSel = document.getElementById("readerFontFamily");
+      if (ffSel && ffSel.value && ffSel.value !== "serif") readerRendition.themes.font(ffSel.value);
+      var cwRange = document.getElementById("readerContentWidth");
+      if (cwRange && parseInt(cwRange.value) !== 1000) readerRendition.themes.override("max-width", cwRange.value + "px", true);
+    } catch(e) {}
 
     var opened = false;
     readerBook.opened.then(function() {
@@ -3877,6 +4423,8 @@ function _loadEpubReader(bookId, area, restoreCfi) {
     document.getElementById("exportHighlightsBtn").style.display = "";
     document.getElementById("readerZoomGroup").style.display = "flex";
     document.getElementById("readerFontGroup").style.display = "flex";
+    document.getElementById("readerFontFamilyGroup").style.display = "flex";
+    document.getElementById("readerContentWidthGroup").style.display = "flex";
     _readerZoom = 100;
     var fzEl = document.getElementById("readerFontLevel");
     if (fzEl) fzEl.textContent = _readerZoom + "%";
@@ -3953,6 +4501,8 @@ function loadPdfReader(bookId, book) {
   var rtlPdf = document.getElementById("readerRtlBtn");
   if (rtlPdf) rtlPdf.style.display = "none";
   document.getElementById("readerFontGroup").style.display = "none";
+  document.getElementById("readerFontFamilyGroup").style.display = "none";
+  document.getElementById("readerContentWidthGroup").style.display = "none";
   _readerZoom = 100; _readerScrollMode = false;
   document.getElementById("readerZoomLevel").textContent = "100%";
   document.getElementById("readerArea").style.overflowY = "auto";  // BL-001: #readerArea is the single scroll container
@@ -4254,6 +4804,8 @@ function loadComicReader(bookId, book) {
   if (rtlComic) rtlComic.style.display = "";
   document.getElementById("tocBlock").style.display = "none";
   document.getElementById("readerFontGroup").style.display = "none";
+  document.getElementById("readerFontFamilyGroup").style.display = "none";
+  document.getElementById("readerContentWidthGroup").style.display = "none";
   _readerZoom = 100; _readerScrollMode = false;
   document.getElementById("readerZoomLevel").textContent = "100%";
   document.getElementById("readerArea").style.overflowY = "auto";  // BL-001: zoomed comic must scroll
@@ -4410,11 +4962,13 @@ var _epubLineHeight = "1.6";
 function setReaderTheme(theme) {
   _readerTheme = theme || "dark";
   try { localStorage.setItem("reader.theme", _readerTheme); } catch(e) {}
+  if (readerFormat && readerBookId) _saveReaderPref(readerFormat, readerBookId, "theme", _readerTheme);
+  else if (readerFormat) _readerPrefs.setFormat(readerFormat, "theme", _readerTheme);
   var sel = document.getElementById("readerThemeSelect");
   if (sel) sel.value = _readerTheme;
   var area = document.getElementById("readerArea");
   if (area) {
-    area.classList.remove("rt-light", "rt-sepia", "rt-night");
+    area.classList.remove("rt-light", "rt-sepia", "rt-night", "rt-gray", "rt-rosewood", "rt-azure", "rt-ocean");
     if (_readerTheme !== "dark") area.classList.add("rt-" + _readerTheme);
   }
   if (readerFormat === "epub" && readerRendition) applyEpubTheme(_readerTheme);
@@ -4427,7 +4981,11 @@ function applyEpubTheme(theme) {
       dark: { body: { background: "#1e293b !important", color: "#e2e8f0 !important" } },
       light: { body: { background: "#ffffff !important", color: "#1e293b !important" } },
       sepia: { body: { background: "#f4ecd8 !important", color: "#5b4636 !important" } },
-      night: { body: { background: "#111318 !important", color: "#cbd5e1 !important" } }
+      night: { body: { background: "#111318 !important", color: "#cbd5e1 !important" } },
+      gray: { body: { background: "#2d2d2d !important", color: "#d4d4d4 !important" } },
+      rosewood: { body: { background: "#3b1e2e !important", color: "#e8d0d8 !important" } },
+      azure: { body: { background: "#1a2744 !important", color: "#c8daf0 !important" } },
+      ocean: { body: { background: "#0f2027 !important", color: "#d4e4e7 !important" } }
     };
     var p = palettes[theme] || palettes.dark;
     readerRendition.themes.register(theme, p);
@@ -4440,14 +4998,82 @@ function epubFontSize(delta) {
   _readerZoom = Math.max(50, Math.min(300, (_readerZoom || 100) + delta));
   var fz = document.getElementById("readerFontLevel");
   if (fz) fz.textContent = _readerZoom + "%";
+  if (readerFormat && readerBookId) _saveReaderPref(readerFormat, readerBookId, "zoom", _readerZoom);
+  else if (readerFormat) _readerPrefs.setFormat(readerFormat, "zoom", _readerZoom);
   _applyReaderZoom();
 }
 
 function epubLineHeight(val) {
   _epubLineHeight = val || "1.6";
   try { localStorage.setItem("reader.lineHeight", _epubLineHeight); } catch(e) {}
+  if (readerFormat && readerBookId) _saveReaderPref(readerFormat, readerBookId, "lineHeight", _epubLineHeight);
+  else if (readerFormat) _readerPrefs.setFormat(readerFormat, "lineHeight", _epubLineHeight);
   if (!readerRendition) return;
   try { readerRendition.themes.override("line-height", _epubLineHeight, true); } catch(e) {}
+}
+
+// BL-023: Font family selector
+function epubFontFamily(val) {
+  if (readerFormat && readerBookId) _saveReaderPref(readerFormat, readerBookId, "fontFamily", val);
+  else if (readerFormat) _readerPrefs.setFormat(readerFormat, "fontFamily", val);
+  if (!readerRendition) return;
+  try { readerRendition.themes.font(val); } catch(e) {}
+}
+// BL-023: Justify toggle
+var _epubJustify = false;
+function epubToggleJustify() {
+  _epubJustify = !_epubJustify;
+  var btn = document.getElementById("readerJustifyBtn");
+  if (btn) btn.style.background = _epubJustify ? "#0ea5e9" : "#475569";
+  if (readerFormat && readerBookId) _saveReaderPref(readerFormat, readerBookId, "justify", _epubJustify);
+  else if (readerFormat) _readerPrefs.setFormat(readerFormat, "justify", _epubJustify);
+  if (!readerRendition) return;
+  try {
+    var val = _epubJustify ? "justify" : "left";
+    readerRendition.themes.override("text-align", val, true);
+  } catch(e) {}
+}
+// BL-023: Hyphenation toggle
+var _epubHyphenation = false;
+function epubToggleHyphenation() {
+  _epubHyphenation = !_epubHyphenation;
+  var btn = document.getElementById("readerHyphenBtn");
+  if (btn) btn.style.background = _epubHyphenation ? "#0ea5e9" : "#475569";
+  if (readerFormat && readerBookId) _saveReaderPref(readerFormat, readerBookId, "hyphenation", _epubHyphenation);
+  else if (readerFormat) _readerPrefs.setFormat(readerFormat, "hyphenation", _epubHyphenation);
+  if (!readerRendition) return;
+  try {
+    var val = _epubHyphenation ? "auto" : "none";
+    readerRendition.themes.override("hyphens", val, true);
+    readerRendition.themes.override("-webkit-hyphens", val, true);
+    readerRendition.themes.override("overflow-wrap", _epubHyphenation ? "break-word" : "normal", true);
+  } catch(e) {}
+}
+// BL-023: Content width
+function epubContentWidth(val) {
+  val = parseInt(val, 10) || 1000;
+  var lbl = document.getElementById("readerContentWidthLabel");
+  if (lbl) lbl.textContent = val;
+  if (readerFormat && readerBookId) _saveReaderPref(readerFormat, readerBookId, "contentWidth", val);
+  else if (readerFormat) _readerPrefs.setFormat(readerFormat, "contentWidth", val);
+  if (!readerRendition) return;
+  try { readerRendition.themes.override("max-width", val + "px", true); } catch(e) {}
+}
+// BL-023: Apply persisted typography prefs on open
+function _applyEpubTypographyPrefs(fmt, bookId) {
+  var p = _readerPrefs.get(fmt, bookId);
+  _epubJustify = !!p.justify;
+  _epubHyphenation = !!p.hyphenation;
+  var jBtn = document.getElementById("readerJustifyBtn");
+  if (jBtn) jBtn.style.background = _epubJustify ? "#0ea5e9" : "#475569";
+  var hBtn = document.getElementById("readerHyphenBtn");
+  if (hBtn) hBtn.style.background = _epubHyphenation ? "#0ea5e9" : "#475569";
+  var ffSel = document.getElementById("readerFontFamily");
+  if (ffSel) ffSel.value = p.fontFamily || "serif";
+  var cwRange = document.getElementById("readerContentWidth");
+  if (cwRange) cwRange.value = p.contentWidth || 1000;
+  var cwLbl = document.getElementById("readerContentWidthLabel");
+  if (cwLbl) cwLbl.textContent = p.contentWidth || 1000;
 }
 
 // ── Manga / RTL toggle (C6) ──
@@ -4785,6 +5411,17 @@ function setupComicSelection(canvas, bookId, pageIdx) {
 }
 
 function readerKeyHandler(e) {
+  if (e.key === "Escape") {
+    // Cascade: close search → close sidebar → unpin toolbar → exit fullscreen
+    var sbl = document.getElementById("readerSearchBlock");
+    if (sbl && sbl.style.display !== "none") { sbl.style.display = "none"; e.preventDefault(); return; }
+    if (document.fullscreenElement) {
+      if (fsPinned.left) { toggleFsPane("left"); e.preventDefault(); return; }
+      if (fsPinned.right) { toggleFsPane("right"); e.preventDefault(); return; }
+      if (_fsPinnedToolbar) { _fsTogglePin(); e.preventDefault(); return; }
+    }
+    return; // let browser handle fullscreen exit
+  }
   if (e.key === "ArrowLeft") { readerPrev(); e.preventDefault(); return; }
   if (e.key === "ArrowRight") { readerNext(); e.preventDefault(); return; }
   var epubScroll = readerFormat === "epub" && _readerScrollMode;
@@ -4805,6 +5442,40 @@ function readerKeyHandler(e) {
   // Paginated PDF/comic/epub: arrows + paging keys turn pages.
   if (e.key === "ArrowUp" || e.key === "PageUp") { readerPrev(); e.preventDefault(); }
   else if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") { readerNext(); e.preventDefault(); }
+  // BL-028: Home/End jump to start/end of book
+  else if (e.key === "Home") { _readerJumpToStart(); e.preventDefault(); }
+  else if (e.key === "End") { _readerJumpToEnd(); e.preventDefault(); }
+  // BL-028: ? opens keyboard shortcuts modal
+  else if (e.key === "?") { _toggleShortcutsModal(); e.preventDefault(); }
+}
+
+// BL-028: Home/End navigation
+function _readerJumpToStart() {
+  if (isEpubFormat(readerFormat) && readerRendition) { readerRendition.display(0); }
+  else if ((readerFormat === "pdf" || readerFormat === "djvu") && _pdfDoc) { pdfRenderPage(readerBookId, 1); }
+  else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPages.length) { showComicPage(readerBookId, 0); }
+}
+function _readerJumpToEnd() {
+  if (isEpubFormat(readerFormat) && readerRendition && readerBook && readerBook.spine) {
+    readerRendition.display(readerBook.spine.length - 1);
+  } else if ((readerFormat === "pdf" || readerFormat === "djvu") && _pdfDoc) {
+    pdfRenderPage(readerBookId, _pdfDoc.numPages);
+  } else if ((readerFormat === "cbz" || readerFormat === "cbr") && readerPages.length) {
+    showComicPage(readerBookId, readerPages.length - 1);
+  }
+}
+
+// BL-028: Keyboard shortcuts modal
+var _shortcutsModalOpen = false;
+function _toggleShortcutsModal() {
+  _shortcutsModalOpen = !_shortcutsModalOpen;
+  var m = document.getElementById("shortcutsModal");
+  if (m) m.style.display = _shortcutsModalOpen ? "flex" : "none";
+}
+function _closeShortcutsModal() {
+  _shortcutsModalOpen = false;
+  var m = document.getElementById("shortcutsModal");
+  if (m) m.style.display = "none";
 }
 
 function _scrollableElement() {
@@ -4825,7 +5496,15 @@ function closeReader() {
   hideReaderDrawGroup();
   saveReaderState();
   _teardownEpubProgress();  // P8.1
+  _showGlassFooter(false);
+  _stopReadingTimer();
+  dismissResumeToast();
+  _readerSettingsOpen = false;
+  var rdd = document.getElementById("readerSettingsDropdown"); if (rdd) rdd.style.display = "none";
+  var rsb = document.getElementById("readerSettingsBtn"); if (rsb) rsb.style.background = "#475569";
   _readerLoadStatus(null);
+  _fsPinnedToolbar = false; _fsPanelOpen = false;
+  if (_fsToolbarTimer) { clearTimeout(_fsToolbarTimer); _fsToolbarTimer = null; }
   var tb = document.getElementById("tocBlock"); if (tb) tb.style.display = "none";
   var tl = document.getElementById("tocList"); if (tl) tl.innerHTML = '<div class="toc-empty">Loading...</div>';
   showThumbs(false);
@@ -4883,36 +5562,102 @@ function toggleFullscreen() {
   }
 }
 
-// P8.4 — Minimal fullscreen toolbar auto-hide (show on any mousemove, hide after idle)
+// BL-020 — Chrome auto-hide: edge-zone triggers + tap-to-pin + panel-open lock
 var _fsToolbarTimer = null;
-function showFsToolbar() {
+var _fsPinnedToolbar = false;  // when true, toolbar stays visible until unpinned
+var _fsPanelOpen = false;      // when true (sidebar/search open), toolbar is locked visible
+var _fsVisibilityBound = false;
+
+function _fsShowToolbar() {
   var tb = document.getElementById("readerFsToolbar");
   if (!tb) return;
   tb.classList.remove("fs-hidden");
+  _fsResetHideTimer();
+}
+function _fsHideToolbar() {
+  if (_fsPinnedToolbar || _fsPanelOpen) return;  // don't hide when pinned or panel open
+  var tb = document.getElementById("readerFsToolbar");
+  if (tb && document.fullscreenElement) tb.classList.add("fs-hidden");
+}
+function _fsResetHideTimer() {
   if (_fsToolbarTimer) clearTimeout(_fsToolbarTimer);
-  _fsToolbarTimer = setTimeout(function() {
-    var t2 = document.getElementById("readerFsToolbar");
-    if (t2 && document.fullscreenElement) t2.classList.add("fs-hidden");
-  }, 2600);
+  _fsToolbarTimer = setTimeout(_fsHideToolbar, 3000);
 }
-function initFsToolbarHide() {
-  if (typeof _fsMouseBound !== "undefined" && _fsMouseBound) return;
-  _fsMouseBound = true;
-  document.addEventListener("mousemove", showFsToolbar);
+function _fsTogglePin() {
+  _fsPinnedToolbar = !_fsPinnedToolbar;
+  var tb = document.getElementById("readerFsToolbar");
+  if (tb) tb.classList.toggle("fs-pinned", _fsPinnedToolbar);
+  if (_fsPinnedToolbar) {
+    _fsShowToolbar();
+    if (_fsToolbarTimer) { clearTimeout(_fsToolbarTimer); _fsToolbarTimer = null; }
+  } else {
+    _fsResetHideTimer();
+  }
 }
-var _fsMouseBound = false;
+function _fsSetPanelOpen(open) {
+  _fsPanelOpen = open;
+  if (open) {
+    _fsShowToolbar();
+    if (_fsToolbarTimer) { clearTimeout(_fsToolbarTimer); _fsToolbarTimer = null; }
+  } else if (!_fsPinnedToolbar) {
+    _fsResetHideTimer();
+  }
+}
+function _fsBindVisibility() {
+  if (_fsVisibilityBound) return;
+  _fsVisibilityBound = true;
+  // Edge trigger: top 24px reveals toolbar
+  var topZone = document.getElementById("fsTopZone");
+  var bottomZone = document.getElementById("fsBottomZone");
+  if (topZone) topZone.addEventListener("mouseenter", function() { if (document.fullscreenElement) _fsShowToolbar(); });
+  if (bottomZone) bottomZone.addEventListener("mouseenter", function() { if (document.fullscreenElement) _fsShowToolbar(); });
+  // Center tap: toggle pin on click (not on drag)
+  var centerTap = document.getElementById("fsCenterTap");
+  var _tapStartX = 0, _tapStartY = 0;
+  if (centerTap) {
+    centerTap.addEventListener("mousedown", function(e) { _tapStartX = e.clientX; _tapStartY = e.clientY; });
+    centerTap.addEventListener("mouseup", function(e) {
+      var dx = Math.abs(e.clientX - _tapStartX), dy = Math.abs(e.clientY - _tapStartY);
+      if (dx < 8 && dy < 8 && document.fullscreenElement) _fsTogglePin();
+    });
+    // Touch: middle tap toggles pin
+    centerTap.addEventListener("touchstart", function(e) { _tapStartX = e.touches[0].clientX; _tapStartY = e.touches[0].clientY; }, { passive: true });
+    centerTap.addEventListener("touchend", function(e) {
+      var tx = e.changedTouches[0].clientX, ty = e.changedTouches[0].clientY;
+      var dx = Math.abs(tx - _tapStartX), dy = Math.abs(ty - _tapStartY);
+      if (dx < 12 && dy < 12 && document.fullscreenElement) {
+        _fsTogglePin();
+        _fsShowToolbar();  // always show on tap
+      }
+    }, { passive: true });
+  }
+  // Hovering the toolbar itself keeps it visible and resets the timer
+  var fsTb = document.getElementById("readerFsToolbar");
+  if (fsTb) {
+    fsTb.addEventListener("mouseenter", function() { _fsShowToolbar(); });
+    fsTb.addEventListener("mouseleave", function() {
+      if (!_fsPinnedToolbar && !_fsPanelOpen) _fsResetHideTimer();
+    });
+  }
+}
 
 // P5.5 — Reader View Controls
 function readerZoomIn() {
   _readerZoom = Math.min(300, _readerZoom + 10);
+  if (readerFormat && readerBookId) _saveReaderPref(readerFormat, readerBookId, "zoom", _readerZoom);
+  else if (readerFormat) _readerPrefs.setFormat(readerFormat, "zoom", _readerZoom);
   _applyReaderZoom();
 }
 function readerZoomOut() {
   _readerZoom = Math.max(30, _readerZoom - 10);
+  if (readerFormat && readerBookId) _saveReaderPref(readerFormat, readerBookId, "zoom", _readerZoom);
+  else if (readerFormat) _readerPrefs.setFormat(readerFormat, "zoom", _readerZoom);
   _applyReaderZoom();
 }
 function readerZoomReset() {
   _readerZoom = 100;
+  if (readerFormat && readerBookId) _saveReaderPref(readerFormat, readerBookId, "zoom", _readerZoom);
+  else if (readerFormat) _readerPrefs.setFormat(readerFormat, "zoom", _readerZoom);
   _applyReaderZoom();
 }
 
@@ -5263,22 +6008,29 @@ document.addEventListener("fullscreenchange", function() {
   var sbtn = document.getElementById("sidebarToggleBtn");
   if (sbtn) sbtn.style.display = document.fullscreenElement && readerBookId != null ? "" : "none";
   if (document.fullscreenElement) {
-    initFsToolbarHide();
+    _fsBindVisibility();
+    _fsPinnedToolbar = false;
+    _fsPanelOpen = false;
     var ft = document.getElementById("readerFsToolbar");
-    if (ft) { ft.classList.remove("fs-hidden"); ft.style.display = "flex"; }
+    if (ft) { ft.classList.remove("fs-hidden", "fs-pinned"); ft.style.display = "flex"; }
     var ftitle = document.getElementById("readerFsTitle");
     var t = document.getElementById("readerTitle");
     if (ftitle && t) ftitle.textContent = t.textContent || "";
     var fz = document.getElementById("readerFsZoomLevel");
     var z = document.getElementById("readerZoomLevel");
     if (fz && z) fz.textContent = z.textContent || "100%";
-    showFsToolbar();
+    _fsShowToolbar();
+    _showGlassFooter(readerBookId != null);
   } else {
     fsPinned = { left: false, right: false };
+    _fsPinnedToolbar = false;
+    _fsPanelOpen = false;
+    if (_fsToolbarTimer) { clearTimeout(_fsToolbarTimer); _fsToolbarTimer = null; }
     var lp = document.getElementById("readingListPanel"); if (lp) lp.classList.remove("fs-show");
     var ap = document.getElementById("annotationsSidebar"); if (ap) ap.classList.remove("fs-show");
     var ft2 = document.getElementById("readerFsToolbar");
-    if (ft2) ft2.style.display = "none";
+    if (ft2) { ft2.style.display = "none"; ft2.classList.remove("fs-pinned"); }
+    _showGlassFooter(readerBookId != null);
   }
   if (!ra) return;
   var h = Math.max(ra.offsetHeight || window.innerHeight - 200, 400);
@@ -5326,6 +6078,8 @@ function fsRevealPane(side, on) {
   if (!document.fullscreenElement) return;
   var el = side === "left" ? document.getElementById("readingListPanel") : document.getElementById("annotationsSidebar");
   if (el) el.classList.toggle("fs-show", on);
+  // Lock toolbar while any sidebar is hover-visible
+  if (on) { _fsSetPanelOpen(true); } else if (!fsPinned.left && !fsPinned.right) { _fsSetPanelOpen(false); }
 }
 document.addEventListener("mouseover", function(ev) {
   if (!document.fullscreenElement) return;
@@ -5356,6 +6110,7 @@ document.addEventListener("mousemove", function(ev) {
 function toggleFsPane(side) {
   fsPinned[side] = !fsPinned[side];
   fsApply(side);
+  _fsSetPanelOpen(fsPinned.left || fsPinned.right);
 }
 
 // ═══ Annotations (R3 + R5) ═══
@@ -5668,6 +6423,58 @@ function hideHighlightPopup() {
   _hlPopup.page = null;
   _hlPopup.bbox = null;
   _hlPopup.format = null;
+  var ar = document.getElementById("hlActionResult"); if (ar) { ar.style.display = "none"; ar.innerHTML = ""; }
+}
+
+// BL-024: Selection action — Copy
+function hlActionCopy() {
+  var txt = _hlPopup.selectedText || "";
+  if (!txt) return;
+  navigator.clipboard.writeText(txt).then(function() {
+    var ar = document.getElementById("hlActionResult");
+    if (ar) { ar.style.display = "block"; ar.textContent = "Copied!"; }
+    setTimeout(function() { var ar2 = document.getElementById("hlActionResult"); if (ar2) ar2.style.display = "none"; }, 1500);
+  }).catch(function() {
+    var ar = document.getElementById("hlActionResult");
+    if (ar) { ar.style.display = "block"; ar.textContent = "Copy failed"; }
+  });
+}
+// BL-024: Selection action — Translate (opens Google Translate in new tab)
+function hlActionTranslate() {
+  var txt = (_hlPopup.selectedText || "").trim();
+  if (!txt) return;
+  window.open("https://translate.google.com/?sl=en&tl=auto&text=" + encodeURIComponent(txt), "_blank");
+}
+// BL-024: Selection action — Define (uses free dictionary API)
+function hlActionDefine() {
+  var txt = (_hlPopup.selectedText || "").trim().split(/\s+/)[0] || "";
+  if (!txt) return;
+  var ar = document.getElementById("hlActionResult");
+  if (ar) { ar.style.display = "block"; ar.textContent = "Looking up \"" + txt + "\"..."; }
+  fetch("https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(txt))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data || !data.length || !data[0].meanings) {
+        if (ar) ar.textContent = "No definition found for \"" + txt + "\".";
+        return;
+      }
+      var html = "<strong>" + txt + "</strong><br>";
+      data[0].meanings.slice(0, 3).forEach(function(m) {
+        html += "<em>" + m.partOfSpeech + ":</em> ";
+        html += m.definitions.slice(0, 2).map(function(d) { return d.definition; }).join("; ");
+        html += "<br>";
+      });
+      if (ar) ar.innerHTML = html;
+    })
+    .catch(function(e) {
+      if (ar) ar.textContent = "Lookup failed: " + String(e);
+    });
+}
+// BL-024: Selection action — Search (opens Google search in new tab)
+function hlActionSearch() {
+  var txt = (_hlPopup.selectedText || "").trim();
+  if (!txt) return;
+  window.open("https://www.google.com/search?q=" + encodeURIComponent(txt), "_blank");
 }
 
 function saveHighlightFromPopup() {
@@ -5749,6 +6556,9 @@ function addBookmark() {
       body: JSON.stringify(data)
     }).then(function(r) { return r.json(); }).then(function() {
       loadTimeline(bid);
+      // BL-029: show bookmark ribbon
+      var ribbon = document.getElementById("bookmarkRibbon");
+      if (ribbon) { ribbon.classList.remove("br-show"); void ribbon.offsetWidth; ribbon.classList.add("br-show"); }
     }).catch(function() {});
   });
 }
@@ -5809,7 +6619,8 @@ function navigateToBookmark(cfiLoc, pageNum) {
 function toggleAnnotationsSidebar() {
   if (document.fullscreenElement) { toggleFsPane("right"); return; }
   var sb = document.getElementById("annotationsSidebar");
-  sb.style.display = sb.style.display === "none" ? "block" : "none";
+  var wasHidden = sb.style.display === "none";
+  sb.style.display = wasHidden ? "block" : "none";
 }
 
 // ═══ Navigate to annotation ═══
@@ -6070,9 +6881,13 @@ var _statusInterval = setInterval(fetchStatus, 5000);
 document.addEventListener("visibilitychange", function() {
   if (document.hidden) {
     clearInterval(_statusInterval); _statusInterval = null;
+    // BL-030: pause reading timer when tab is hidden
+    if (readerBookId) _stopReadingTimer();
   } else if (!_statusInterval) {
     fetchStatus();
     _statusInterval = setInterval(fetchStatus, 5000);
+    // BL-030: resume reading timer when tab becomes visible
+    if (readerBookId) _startReadingTimer();
   }
 });
 </script>

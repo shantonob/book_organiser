@@ -815,3 +815,329 @@ but has no one-click audit of cover/file/DB consistency.
   duplicate groups) and expandable preview lists.
 
 ---
+
+## BL-020 — Chrome auto-hide: edge-zone triggers + tap-to-pin + panel-open lock
+
+- **Priority:** High
+- **Status:** implemented + deployed 2026-08-23
+- **Reported:** 2026-08-23
+
+### Symptom
+
+Fullscreen toolbar triggered on any mousemove globally — too sensitive, causing
+flicker during reading. No way to keep chrome visible while reading. Sidebars
+hover-revealed via 12px edge zones were hard to target. No Escape cascade.
+
+### Implemented
+
+- **Edge-zone triggers**: Top/bottom 24px strips reveal toolbar on mouseenter.
+- **Wider sidebar hotzones**: Left/right widened from 12px to 24px.
+- **Center-tap-to-pin**: Click/tap center toggles toolbar pin (blue dot indicator).
+  Drag threshold prevents accidental pin on scroll.
+- **Panel-open lock**: Sidebar open → toolbar auto-hide suspended.
+- **3-second auto-hide**: Timer only starts when chrome revealed + no panel open.
+- **Escape cascade**: search → sidebar unpin → toolbar unpin → fullscreen exit.
+- **Pin indicator**: CSS blue dot above toolbar when pinned.
+
+### Acceptance criteria
+
+1. Toolbar does NOT appear when mouse moves over the reading area.
+2. Toolbar appears when mouse enters top/bottom 24px edge zone.
+3. Clicking center toggles toolbar pin (blue dot indicator).
+4. Toolbar stays visible while a sidebar is open.
+5. Toolbar auto-hides after 3s idle when no panel is open.
+6. ESC closes panels in priority order before exiting fullscreen.
+7. Touch: tap center toggles pin; tap top/bottom edge reveals toolbar.
+
+---
+
+## BL-021 — Persistent reader settings (per-format + per-book)
+
+- **Priority:** High
+- **Status:** implemented + deployed 2026-08-23
+- **Reported:** 2026-08-23
+
+### Symptom
+
+Reader settings (theme, zoom, line height) reset every time the reader is
+closed. Users must reconfigure on every book open. No per-format memory.
+
+### Implemented
+
+- Three-layer cascade: per-book override → per-format default → built-in default.
+- Stored in localStorage keyed by format and per-book.
+- Auto-save on change for theme, zoom, line height.
+- Apply on open via `_applyReaderPrefs(fmt, bookId)`.
+- EPUB zoom applied after render via `themes.fontSize()`.
+- Backward compatible with old localStorage keys.
+
+### Acceptance criteria
+
+1. Set zoom 150% on PDF → close → reopen → zoom is 150%.
+2. Set zoom 150% on PDF → open different PDF → zoom is 150% (per-format).
+3. Set Sepia on EPUB → open PDF → theme is Dark (per-format).
+4. Change theme on specific book → open different book → default theme.
+5. Line height persists for EPUB across sessions.
+
+---
+
+## BL-022 — Chapter-aware progress scrubber (glass footer)
+
+- **Priority:** High
+- **Status:** implemented + deployed 2026-08-23
+- **Reported:** 2026-08-23
+
+### Symptom
+
+The thin 4px progress bar in the toolbar is nearly invisible and offers no
+chapter context. Users cannot see where they are relative to chapters, nor
+can they scrub to a specific page. No way to jump to a page by number.
+
+### Implemented
+
+- **Glass footer bar**: frosted-glass bar (`backdrop-filter: blur(16px)`) at the
+  bottom of the reader, full width, with scrubber + ticks + chip + page-jump.
+- **Range slider scrubber**: draggable slider updates position on mouseup/touchend.
+- **Chapter tick marks**: vertical lines at chapter boundaries (EPUB) or every
+  10 pages (PDF/CBZ). Current chapter tick highlighted in blue.
+- **Percentage chip**: click toggles to a number input for page-jump (Enter to
+  navigate). Works for EPUB (chapter index), PDF (page), CBZ (image index).
+- **Prev/next chapter chevrons**: quick jump to next/previous chapter boundary.
+- **Fullscreen version**: separate fixed-position footer bar shown only in
+  fullscreen mode. CSS toggles between normal and fullscreen footers.
+- **Auto-hide sync**: footer shows when reader is open, hides on close.
+
+### Acceptance criteria
+
+1. Glass footer visible when reader opens.
+2. Scrubber drag navigates to correct page/chapter on release.
+3. EPUB shows tick marks at each spine item; current tick is blue.
+4. PDF/CBZ show ticks every 10 pages.
+5. Click percentage chip → type page number → Enter navigates.
+6. Prev/next chevrons move by chapter (EPUB) or page (PDF/CBZ).
+7. Footer visible in fullscreen with same functionality.
+8. Footer hides when reader closes.
+
+---
+
+## BL-023 — Expanded themes & typography
+
+- **Priority:** High
+- **Status:** implemented + deployed 2026-08-23
+- **Reported:** 2026-08-23
+
+### Symptom
+
+Only 4 themes (Dark, Light, Sepia, Night). No font family selector, no text
+justification toggle, no hyphenation toggle, no content-width control.
+
+### Implemented
+
+- **8 themes**: Dark, Light, Sepia, Night, Gray, Rosewood, Azure, Ocean.
+  Each has CSS for `readerArea` + epub.js palette for EPUB rendering.
+- **Font family selector**: serif, sans-serif, monospace, Georgia, Palatino.
+  Persists per-format via `_readerPrefs`.
+- **Justify toggle**: toggles `text-align: justify` for EPUB. Blue when active.
+- **Hyphenation toggle**: toggles `hyphens: auto` for EPUB. Blue when active.
+- **Content width slider**: 400–1600px range input. Overrides `max-width`
+  for EPUB body. All prefs persist per-format and per-book (BL-021).
+- Controls show only for EPUB, hidden for PDF/CBZ.
+
+### Acceptance criteria
+
+1. All 8 themes apply correctly in both EPUB and PDF/CBZ modes.
+2. Font family selector changes EPUB font and persists.
+3. Justify toggle applies justify alignment to EPUB text.
+4. Hyphenation toggle enables CSS hyphenation.
+5. Content width slider restricts EPUB text width.
+6. All new settings persist per-format via BL-021 system.
+
+---
+
+## BL-024 — Selection popup actions (Copy + Translate + Define + Search)
+
+- **Priority:** High
+- **Status:** implemented + deployed 2026-08-23
+- **Reported:** 2026-08-23
+
+### Symptom
+
+Text selection popup only has Highlight + Note + Cancel. No way to copy
+selected text, translate it, look up a definition, or search the web.
+
+### Implemented
+
+- **Copy button**: copies selected text to clipboard via `navigator.clipboard`.
+  Shows "Copied!" confirmation for 1.5s.
+- **Translate button**: opens Google Translate in a new tab with the selected
+  text pre-filled as source.
+- **Define button**: calls free dictionary API (`dictionaryapi.dev`) and
+  displays part-of-speech + definitions inline in the popup. Shows first word
+  only for multi-word selections.
+- **Search button**: opens Google search in a new tab with the selected text.
+- **Action result area**: collapsible div below the action buttons, shows
+  API responses or confirmation messages. Cleared when popup closes.
+
+### Acceptance criteria
+
+1. Select text → popup shows Copy/Translate/Define/Search buttons below
+   Highlight/Note/Cancel row.
+2. Copy copies text to clipboard.
+3. Translate opens Google Translate with text pre-filled.
+4. Define shows dictionary definition inline.
+5. Search opens Google with text as query.
+6. Action result area clears when popup closes.
+
+---
+
+## BL-025 — Resume toast on book open
+
+- **Priority:** Medium
+- **Status:** implemented + deployed 2026-08-23
+- **Reported:** 2026-08-23
+
+### Symptom
+
+When opening a book the reader always starts from the beginning (or restores
+via API silently). No visual feedback that a previous position exists.
+
+### Implemented
+
+- **Resume toast**: bottom-center frosted-glass toast appears when a book with
+  saved progress (>2%) is opened. Shows "Resume reading at X%?" with Resume
+  and Start Fresh buttons.
+- **Fetch on open**: `GET /api/book/<id>/reader-state` is fetched after
+  `switchTab("reader")`. If location exists and progress > 2%, toast is shown.
+- **Resume navigates**: EPUB → `rendition.display(cfi)`, PDF → `renderPage(n)`,
+  CBZ → `showComicPage(n)`.
+- **Dismiss**: toast hides on Start Fresh, on resume, and on closeReader.
+- **Animation**: slide-up keyframe animation for toast appearance.
+
+### Acceptance criteria
+
+1. Open a book previously read to 50% → toast appears "Resume reading at 50%?"
+2. Click Resume → navigates to saved position.
+3. Click Start fresh → starts from beginning.
+4. Open a new unread book → no toast.
+5. Close reader → toast is dismissed.
+
+---
+
+## BL-026 — Format-specific reader settings panels
+
+- **Priority:** Medium
+- **Status:** implemented + deployed 2026-08-23
+- **Reported:** 2026-08-23
+
+### Symptom
+
+Reader settings are scattered across the toolbar as individual controls.
+No single place to see and adjust all settings for the current format.
+
+### Implemented
+
+- **Gear button** in the toolbar opens a dropdown panel with all reader
+  settings consolidated in one place.
+- **Format-aware**: EPUB-only rows (font family, size, spacing, justify,
+  hyphenation, content width) show only for EPUB. PDF/CBZ show only theme.
+- **Syncs with toolbar controls**: dropdown state is read from the same
+  underlying variables as the inline toolbar controls.
+- **Toggle highlight**: gear button turns blue when panel is open.
+- Panel auto-closes on reader close.
+
+### Acceptance criteria
+
+1. Gear button appears in toolbar for all formats.
+2. Click gear → dropdown shows all settings.
+3. EPUB-specific settings (font/justify/hyphen/width) only visible for EPUB.
+4. Changing a setting in the dropdown updates the reader immediately.
+5. Changing a setting in the toolbar updates the dropdown when reopened.
+
+---
+
+## BL-027 — Mobile/responsive improvements
+
+- **Priority:** Medium
+- **Status:** implemented + deployed 2026-08-23
+- **Reported:** 2026-08-23
+
+### Symptom
+
+Reader toolbar buttons too small on mobile. Glass footer scrubber hard to
+touch. Settings dropdown overflows. Inline font controls crowd the toolbar
+on small screens.
+
+### Implemented
+
+- Larger touch targets for toolbar buttons (min 36px height, larger padding).
+- Glass footer scrubber thumb enlarged on mobile (20px).
+- Settings dropdown goes full-width on mobile (left/right aligned).
+- Inline font controls hidden on mobile; use settings gear panel instead.
+- Resume toast width constrained for mobile.
+- Chapter nav chevrons enlarged for touch.
+
+---
+
+## BL-028 — Keyboard shortcuts modal + Home/End
+
+- **Priority:** Low
+- **Status:** implemented + deployed 2026-08-23
+- **Reported:** 2026-08-23
+
+### Symptom
+
+No keyboard shortcuts reference. Home/End keys don't jump to start/end of book.
+
+### Implemented
+
+- **? key** opens a modal listing all keyboard shortcuts.
+- **Home** jumps to start of book (EPUB: spine 0, PDF: page 1, CBZ: image 0).
+- **End** jumps to end of book (last spine/page/image).
+- Modal closes on click outside or Close button.
+
+---
+
+## BL-029 — Bookmark ribbon (animated visual indicator)
+
+- **Priority:** Low
+- **Status:** implemented + deployed 2026-08-23
+- **Reported:** 2026-08-23
+
+### Symptom
+
+Bookmark saved silently with no visual feedback. User doesn't know if the
+action succeeded.
+
+### Implemented
+
+- Yellow ribbon indicator appears at top-right when bookmark is saved.
+- Slide-down animation (1.8s): slides in, stays visible, slides out.
+- Re-triggers cleanly on rapid bookmarks (class reflow trick).
+- Automatically disappears — no user interaction needed.
+
+---
+
+## BL-030 — Reading analytics (time tracking)
+
+- **Priority:** Low
+- **Status:** implemented + deployed 2026-08-23
+- **Reported:** 2026-08-23
+
+### Symptom
+
+No tracking of how much time is spent reading each book. No reading
+statistics visible to the user.
+
+### Implemented
+
+- **Session timer**: starts when reader opens, pauses on tab hide,
+  resumes on tab show, stops on reader close. Accumulates across multiple
+  page views within a session.
+- **Persistent total**: reading time per book saved to localStorage
+  (`reader.readTime.<bookId>`) on every pause/stop.
+- **Live display**: MM:SS counter shown in the glass footer (both normal
+  and fullscreen). Updates every 5 seconds.
+- **Cumulative**: reopening a book shows the accumulated total from the
+  start, including previous sessions.
+- **Helper**: `_getReadingTime(bookId)` and `_formatReadingTime(ms)` for
+  future dashboard use.

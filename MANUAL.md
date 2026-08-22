@@ -324,6 +324,7 @@ The toolbar sits at the top of the reader and provides these controls (left to r
 | **A− / A+** | Decrease / increase font size (EPUB) or zoom (PDF/comic) |
 | **🔍+ / 🔍−** | Zoom in / out (PDF/comic) |
 | **⛶** | Enter fullscreen |
+| **⚙** | Open settings dropdown panel (BL-026) — consolidates all reader settings in one place |
 | **🌙 / ☀ / 📜 / 🌑** | Theme selector: Dark, Light, Sepia, Night |
 
 ### 3.3 Navigation
@@ -336,6 +337,10 @@ The toolbar sits at the top of the reader and provides these controls (left to r
 | Arrow Right | Next page |
 | Arrow Up / Page Up | Previous page (paginated) or scroll up (EPUB) |
 | Arrow Down / Page Down / Space | Next page (paginated) or scroll down (EPUB) |
+| Home | Jump to start of book |
+| End | Jump to end of book |
+| Escape | Close panels / Exit fullscreen |
+| ? | Open keyboard shortcuts modal |
 
 **Mouse:**
 - Click **◀** / **▶** buttons for previous/next
@@ -350,9 +355,17 @@ The toolbar sits at the top of the reader and provides these controls (left to r
 **Page thumbnails:**
 A scrollable strip of page thumbnails appears below the toolbar (PDF/CBZ). Click any thumbnail to jump directly to that page. Thumbnails are lazy-loaded as you scroll. Hidden in fullscreen mode.
 
+**Glass footer scrubber (BL-022):**
+A frosted-glass bar at the bottom of the reader shows:
+- **Draggable scrubber** — drag to any position; release to navigate.
+- **Chapter tick marks** — vertical lines at chapter boundaries (EPUB) or every 10 pages (PDF/CBZ). Current chapter is highlighted in blue.
+- **Percentage chip** — click to toggle a number input. Type a page/chapter number and press Enter to navigate directly.
+- **Prev/next chevrons** — jump to the start of the next/previous chapter.
+- In fullscreen, the same footer appears at the bottom of the screen.
+
 ### 3.4 Themes & Typography
 
-**Four reading themes:**
+**Eight reading themes:**
 
 | Theme | Background | Text | Best for |
 |-------|-----------|------|----------|
@@ -360,13 +373,20 @@ A scrollable strip of page thumbnails appears below the toolbar (PDF/CBZ). Click
 | Light | `#ffffff` | Dark | Bright environments |
 | Sepia | `#f4ecd8` | Warm brown | Extended reading sessions |
 | Night | `#111318` | Dim gray | Late-night reading |
+| Gray | `#2d2d2d` | Medium gray | Neutral tones |
+| Rosewood | `#3b1e2e` | Pink-gray | Warm ambiance |
+| Azure | `#1a2744` | Light blue | Cool tones |
+| Ocean | `#0f2027` | Teal-gray | Deep calm |
 
-Theme selection persists in localStorage across sessions.
+Theme selection persists in localStorage across sessions. Settings are saved per-format (EPUB, PDF, CBZ have independent settings) and per-book (each book remembers its own zoom/theme/line-height). When you reopen a book, it resumes with your last-used settings.
 
 **Typography controls (EPUB):**
 - Font size: 50%–300% via **A−** / **A+** buttons or keyboard
-- Line height: Configurable (default 1.6)
-- Font family: Inherits from epub.js defaults (serif/sans-serif)
+- Line height: Configurable (Compact/Normal/Relaxed/Loose)
+- Font family: Serif, Sans-serif, Monospace, Georgia, Palatino
+- **J** button: toggle text justification
+- **Hy** button: toggle hyphenation
+- Content width slider: 400–1600px (restricts text block width)
 
 **Zoom controls (PDF/Comic):**
 - 30%–300% via **🔍+** / **🔍−** buttons
@@ -409,17 +429,35 @@ Click the **⛶** button in the toolbar to enter fullscreen mode. This provides 
 - No toolbar, no buttons, no sidebars
 - Page thumbnails are hidden
 
-**Revealing controls:**
-- **Desktop:** Move the mouse to reveal a centered floating toolbar (close, title, prev/next, zoom, exit fullscreen)
-- **Mobile:** Tap the center of the screen to reveal the floating toolbar
+**Revealing the toolbar:**
+- **Desktop:** Hover the mouse into the top or bottom 24px edge zone of the screen — the floating toolbar slides in
+- **Mobile:** Tap the top or bottom edge zone — the toolbar appears
 - The toolbar auto-hides after 3 seconds of inactivity
+- Hovering the toolbar itself keeps it visible and resets the timer
+
+**Pinning the toolbar:**
+- **Desktop:** Click anywhere in the center of the reading area — a small blue dot appears above the toolbar indicating it is pinned
+- **Mobile:** Tap the center of the reading area to toggle pin
+- Pinned toolbar stays visible until you click/tap center again to unpin
+- A drag gesture (moving the pointer more than 8px) does NOT trigger pin — this prevents accidental pin while scrolling
+
+**Panel-open lock:**
+- When a sidebar (reading list or annotations) is open — either hover-visible or pinned — the toolbar stays visible and the auto-hide timer is suspended
+- The timer resumes when all panels are closed
 
 **Sidebar access:**
-- **Desktop:** Hover over the left/right screen edge to slide in the reading list or annotations sidebar
+- **Desktop:** Hover over the left/right screen edge (24px zone) to slide in the reading list or annotations sidebar
 - **Mobile:** Swipe from the left/right edge to reveal sidebars
 
+**Escape key cascade (priority order):**
+1. Close the search panel (if open)
+2. Unpin the left sidebar (if pinned)
+3. Unpin the right sidebar (if pinned)
+4. Unpin the toolbar (if pinned)
+5. Exit browser fullscreen (standard behavior)
+
 **Exiting fullscreen:**
-- **ESC key**: Exits browser fullscreen (standard behavior); reader stays open
+- **ESC key**: Follows the cascade above; at the final step exits fullscreen
 - **✕ button**: In the floating toolbar; closes the reader and exits fullscreen
 
 ### 3.9 Annotations & Highlights
@@ -428,6 +466,13 @@ Click the **⛶** button in the toolbar to enter fullscreen mode. This provides 
 - **EPUB:** Select text with the mouse → a popup appears with color choices and an optional note field
 - **PDF:** Click and drag to select a rectangular region → the same popup appears
 - **CBZ:** Click and drag to select a region (for marking panels or details)
+
+**Selection actions (BL-024):**
+Below the highlight buttons, a row of action buttons provides:
+- **Copy** — copies the selected text to the clipboard
+- **Translate** — opens Google Translate with the selected text pre-filled
+- **Define** — looks up the first word in the free dictionary API and shows the definition inline
+- **Search** — opens a Google search with the selected text
 
 **Colors (7 choices):**
 Yellow, Green, Blue, Red, Purple, Orange, White
@@ -523,6 +568,23 @@ The reader automatically tracks your position in each book:
 - On reader close, the final position is saved immediately
 - Reopening a book resumes from the last saved position
 - Zoom level, theme, and two-page mode are also saved
+
+**Resume toast (BL-025):** If you've previously read a book (progress > 2%),
+a frosted-glass toast appears at the bottom asking "Resume reading at X%?".
+Click **Resume** to jump to your saved position, or **Start fresh** to begin
+from the beginning. The toast auto-dismisses after you choose or close the
+reader.
+
+**Keyboard shortcuts (BL-028):** Press **?** to open the shortcuts modal.
+**Home** jumps to the start of the book; **End** jumps to the end.
+
+**Bookmark ribbon (BL-029):** When you save a bookmark, a yellow ribbon
+indicator slides down from the top right corner for 1.8 seconds, then
+disappears automatically.
+
+**Reading timer (BL-030):** A reading timer in the glass footer tracks time
+spent on each book. It accumulates across sessions and pauses when the tab is
+hidden. The total time is displayed in MM:SS format in the footer.
 
 **Reader state endpoint:**
 - `GET /api/book/<id>/reader-state` — retrieves saved position

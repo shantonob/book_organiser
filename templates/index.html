@@ -335,19 +335,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .fs-edge-trigger.fs-bottom { bottom: 0; }
   /* No center-tap overlay — it blocked text selection and toolbar clicks.
      Tap-to-pin is now handled by a document-level click handler on readerArea. */
-  /* Minimal fullscreen toolbar: centered pill, auto-hides when idle, transitions */
-  .fs-toolbar { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 600; display: none; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.92); border: 1px solid #475569; border-radius: 999px; padding: 6px 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.5); transition: opacity 0.3s ease, transform 0.3s ease; }
-  .reader-layout:fullscreen .fs-toolbar,
-  .reader-layout:-webkit-full-screen .fs-toolbar { display: flex; }
-  .reader-layout:fullscreen .fs-toolbar.fs-hidden,
-  .reader-layout:-webkit-full-screen .fs-toolbar.fs-hidden { opacity: 0; transform: translateX(-50%) translateY(-16px); pointer-events: none; }
-  .fs-toolbar button { padding: 4px 10px; border: none; border-radius: 999px; cursor: pointer; font-size: 0.78rem; background: #334155; color: #e2e8f0; }
-  .fs-toolbar button:hover { background: #475569; }
-  /* Pin indicator — small dot shows when toolbar is pinned */
-  .fs-toolbar.fs-pinned::after { content: ''; position: absolute; top: -4px; left: 50%; transform: translateX(-50%); width: 6px; height: 6px; background: #38bdf8; border-radius: 50%; }
-  .reader-fs-zoom { display: flex; align-items: center; gap: 3px; background: #1a2332; border-radius: 999px; padding: 2px 4px; }
-  .reader-fs-zoom button { background: transparent; padding: 2px 8px; }
-  .reader-fs-zoom button:hover { background: #334155; }
+  /* Fullscreen: normal toolbar stays visible, nicely styled at top of reader-main */
+  .reader-layout:fullscreen #readerToolbar,
+  .reader-layout:-webkit-full-screen #readerToolbar { background: rgba(15, 23, 42, 0.95); padding: 6px 8px; border-radius: 0 0 8px 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
   /* Collapse buttons hug the screen edges while in fullscreen */
   .reader-layout.fs-auto-panes:fullscreen #collapseLeftBtn,
   .reader-layout.fs-auto-panes:-webkit-full-screen #collapseLeftBtn { left: 0; }
@@ -827,24 +817,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       <div class="fs-hotzone fs-right" id="fsRightZone" title="Show notes &amp; annotations"></div>
       <div class="fs-edge-trigger fs-top" id="fsTopZone" title=""></div>
       <div class="fs-edge-trigger fs-bottom" id="fsBottomZone" title=""></div>
-      <!-- Minimal fullscreen toolbar (P8.4): floats top-center, auto-hides when idle -->
-      <div id="readerFsToolbar" class="fs-toolbar">
-        <button onclick="closeReader()" title="Close reader (bookmarks saved)">&#x2715;</button>
-        <span id="readerFsTitle" style="color:#e2e8f0;font-weight:600;font-size:0.8rem;max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-        <button onclick="readerPrev()" title="Previous page">&#x2190;</button>
-        <button onclick="readerNext()" title="Next page">&#x2192;</button>
-        <button onclick="addBookmark()" title="Add bookmark">&#x1F516;</button>
-        <button onclick="addPageNote()" title="Add page note">&#x270F;</button>
-        <button onclick="toggleAnnotationsSidebar()" title="Notes &amp; annotations">&#x1F4DD;</button>
-        <span class="reader-fs-zoom">
-          <button onclick="readerZoomOut()" title="Zoom out">&#x2212;</button>
-          <span id="readerFsZoomLevel" style="color:#94a3b8;font-size:0.72rem;min-width:34px;text-align:center">100%</span>
-          <button onclick="readerZoomIn()" title="Zoom in">&#x2B;</button>
-          <button onclick="readerZoomReset()" title="Reset zoom">&#x21BA;</button>
-          <button onclick="readerToggleTwoPage()" id="readerFsTwoPageBtn" title="Toggle two-page (opposite page) view">&#x2621;</button>
-        </span>
-        <button onclick="toggleFullscreen()" title="Exit fullscreen">&#x26F6;</button>
-      </div>
+
       <!-- BL-022: Fullscreen glass footer scrubber -->
       <div class="fs-glass-footer" id="readerFsGlassFooter">
         <div class="gf-chapter-nav">
@@ -3550,8 +3523,7 @@ function _applyReaderPrefs(fmt, bookId) {
   _readerZoom = p.zoom || 100;
   var fz = document.getElementById("readerZoomLevel");
   if (fz) fz.textContent = _readerZoom + "%";
-  var fzFs = document.getElementById("readerFsZoomLevel");
-  if (fzFs) fzFs.textContent = _readerZoom + "%";
+
   if (fmt === "epub") {
     _epubLineHeight = p.lineHeight || "1.6";
     var lhEl = document.getElementById("readerLineHeight");
@@ -4104,8 +4076,6 @@ function openReader(bookId) {
     _readerTwoPage = false;  // BL-003: two-page mode is per-book
     var _tpBtn = document.getElementById("readerTwoPageBtn");
     if (_tpBtn) _tpBtn.style.background = "#475569";
-    var _tpFbtn = document.getElementById("readerFsTwoPageBtn");
-    if (_tpFbtn) _tpFbtn.style.background = "#475569";
     document.getElementById("readingListBtn").style.display = "";
     var epubLike = ["epub", "azw3", "mobi", "fb2"].indexOf(ext) !== -1;
     // BL-007: export works for every format the reader can open (backend is format-agnostic).
@@ -5590,14 +5560,14 @@ var _fsPanelOpen = false;      // when true (sidebar/search open), toolbar is lo
 var _fsVisibilityBound = false;
 
 function _fsShowToolbar() {
-  var tb = document.getElementById("readerFsToolbar");
+  var tb = document.getElementById("readerToolbar");
   if (!tb) return;
   tb.classList.remove("fs-hidden");
   _fsResetHideTimer();
 }
 function _fsHideToolbar() {
-  if (_fsPinnedToolbar || _fsPanelOpen) return;  // don't hide when pinned or panel open
-  var tb = document.getElementById("readerFsToolbar");
+  if (_fsPinnedToolbar || _fsPanelOpen) return;
+  var tb = document.getElementById("readerToolbar");
   if (tb && document.fullscreenElement) tb.classList.add("fs-hidden");
 }
 function _fsResetHideTimer() {
@@ -5606,7 +5576,7 @@ function _fsResetHideTimer() {
 }
 function _fsTogglePin() {
   _fsPinnedToolbar = !_fsPinnedToolbar;
-  var tb = document.getElementById("readerFsToolbar");
+  var tb = document.getElementById("readerToolbar");
   if (tb) tb.classList.toggle("fs-pinned", _fsPinnedToolbar);
   if (_fsPinnedToolbar) {
     _fsShowToolbar();
@@ -5651,7 +5621,7 @@ function _fsBindVisibility() {
     }, { passive: true });
   }
   // Hovering the toolbar itself keeps it visible and resets the timer
-  var fsTb = document.getElementById("readerFsToolbar");
+  var fsTb = document.getElementById("readerToolbar");
   if (fsTb) {
     fsTb.addEventListener("mouseenter", function() { _fsShowToolbar(); });
     fsTb.addEventListener("mouseleave", function() {
@@ -5691,16 +5661,12 @@ function readerToggleTwoPage() {
   _readerTwoPage = !_readerTwoPage;
   var btn = document.getElementById("readerTwoPageBtn");
   if (btn) btn.style.background = _readerTwoPage ? "#0ea5e9" : "#475569";
-  var fbtn = document.getElementById("readerFsTwoPageBtn");
-  if (fbtn) fbtn.style.background = _readerTwoPage ? "#0ea5e9" : "#475569";
   if (isEpubFormat(readerFormat) && readerRendition) {
     // Always-scroll mode uses scrolled-doc flow, which can't render two-page
     // spreads — the toggle is a no-op for EPUB.
     _readerTwoPage = false;
     var tp1 = document.getElementById("readerTwoPageBtn");
     if (tp1) tp1.style.background = "#475569";
-    var tp2 = document.getElementById("readerFsTwoPageBtn");
-    if (tp2) tp2.style.background = "#475569";
     return;
   }
   if (readerFormat === "pdf" || readerFormat === "djvu") {
@@ -5728,8 +5694,6 @@ function _refreshReaderScroll() {
 function _applyReaderZoom() {
   var lbl = document.getElementById("readerZoomLevel");
   if (lbl) lbl.textContent = _readerZoom + "%";
-  var fz = document.getElementById("readerFsZoomLevel");
-  if (fz) fz.textContent = _readerZoom + "%";
   if (readerFormat === "epub" && readerRendition) {
     readerRendition.themes.fontSize((_readerZoom / 100) + "em");
     return;
@@ -6030,15 +5994,8 @@ document.addEventListener("fullscreenchange", function() {
     _fsBindVisibility();
     _fsPinnedToolbar = false;
     _fsPanelOpen = false;
-    var ft = document.getElementById("readerFsToolbar");
-    if (ft) { ft.classList.remove("fs-hidden", "fs-pinned"); ft.style.display = "flex"; }
-    var ftitle = document.getElementById("readerFsTitle");
-    var t = document.getElementById("readerTitle");
-    if (ftitle && t) ftitle.textContent = t.textContent || "";
-    var fz = document.getElementById("readerFsZoomLevel");
-    var z = document.getElementById("readerZoomLevel");
-    if (fz && z) fz.textContent = z.textContent || "100%";
-    _fsShowToolbar();
+    var ft = document.getElementById("readerToolbar");
+    if (ft) { ft.classList.remove("fs-hidden", "fs-pinned"); }
     _showGlassFooter(readerBookId != null);
   } else {
     fsPinned = { left: false, right: false };
@@ -6047,8 +6004,6 @@ document.addEventListener("fullscreenchange", function() {
     if (_fsToolbarTimer) { clearTimeout(_fsToolbarTimer); _fsToolbarTimer = null; }
     var lp = document.getElementById("readingListPanel"); if (lp) lp.classList.remove("fs-show");
     var ap = document.getElementById("annotationsSidebar"); if (ap) ap.classList.remove("fs-show");
-    var ft2 = document.getElementById("readerFsToolbar");
-    if (ft2) { ft2.style.display = "none"; ft2.classList.remove("fs-pinned"); }
     _showGlassFooter(readerBookId != null);
   }
   if (!ra) return;

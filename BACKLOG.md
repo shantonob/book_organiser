@@ -1141,3 +1141,63 @@ statistics visible to the user.
   start, including previous sessions.
 - **Helper**: `_getReadingTime(bookId)` and `_formatReadingTime(ms)` for
   future dashboard use.
+
+---
+
+## BL-031 — Fullscreen reader: buttons unresponsive + prompt modal invisible
+
+- **Priority:** High
+- **Status:** implemented + deployed 2026-08-23
+- **Reported:** 2026-08-23
+
+### Symptom
+
+In fullscreen mode:
+1. All buttons in the normal reader toolbar (bookmark, note, annotations,
+   settings, etc.) are unresponsive — clicking does nothing.
+2. The prompt modal (for adding bookmarks and notes) does not appear.
+3. Exiting the reader or refreshing the page always returns to the Library
+   tab instead of the previously active view.
+
+### Root causes
+
+1. **Buttons blocked:** The `fs-center-tap` overlay (z-index 498) covers the
+   entire viewport except 24px edges. The normal `#readerToolbar` had no
+   z-index, so all clicks hit the center-tap instead of the buttons.
+2. **Prompt modal invisible:** `showPromptModal()` appended the overlay to
+   `document.body`, which is outside the fullscreen element
+   (`.reader-layout`). Elements outside the fullscreen top layer are not
+   rendered.
+3. **No tab persistence:** `closeReader()` hardcoded
+   `switchTab("library")`. No tab state was saved to localStorage.
+
+### Where
+
+`templates/index.html`:
+- CSS: `.fs-center-tap` z-index 498 (line ~337).
+- CSS: `#readerToolbar` — added `position: relative; z-index: 500` in
+  fullscreen context (line ~340).
+- JS: `showPromptModal()` — changed `document.body.appendChild(overlay)`
+  to `document.fullscreenElement || document.documentElement` (line ~1257).
+- JS: `showPromptModal()` — added `e.stopPropagation()` on Escape for
+  both input and overlay keydown handlers (lines ~1267, ~1269).
+- JS: `switchTab()` — added `_previousTab` tracking and
+  `localStorage.setItem("app.activeTab", ...)` persistence (line ~1300+).
+- JS: `checkAuth()` — added `_authTabRestored` flag and localStorage
+  restore on first successful auth (line ~1438+).
+- JS: `closeReader()` — changed `switchTab("library")` to
+  `switchTab(_previousTab || "library")` (line ~5565).
+- HTML: `readerFsToolbar` — added bookmark (📖), note (✏), and
+  annotations (📝) buttons (line ~833).
+
+### Acceptance criteria
+
+1. In fullscreen, all toolbar buttons (bookmark, note, annotations,
+   settings) respond to clicks.
+2. Adding a bookmark or note via the prompt modal works in fullscreen.
+3. Pressing Escape closes the prompt without also exiting fullscreen.
+4. Exiting the reader returns to the previously active tab (not always
+   Library).
+5. Refreshing the page restores the previously active tab.
+6. The fullscreen toolbar also has bookmark/note/annotations buttons for
+   quick access.

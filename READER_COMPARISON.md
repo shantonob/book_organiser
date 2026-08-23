@@ -189,15 +189,16 @@ All 11 items implemented and deployed 2026-08-23:
 3. Verify the screen goes fullscreen with ONLY the reading content visible
 4. Verify no toolbar, buttons, or sidebars are visible
 5. Move the mouse — verify the floating toolbar appears
-6. Wait 3 seconds — verify toolbar auto-hides
-7. Hover left edge — verify reading list sidebar slides in
-8. Move mouse away from sidebar — verify it hides
-9. Hover right edge — verify annotations sidebar slides in
-10. Press ESC — verify fullscreen exits, reader stays open
-**Expected:** Zero chrome. Toolbar auto-hides. Sidebars reveal on edge hover. ESC exits fullscreen only.
+6. Verify the floating toolbar has: close, title, prev, next, bookmark, note, annotations, zoom, exit fullscreen
+7. Wait 3 seconds — verify toolbar auto-hides
+8. Hover left edge — verify reading list sidebar slides in
+9. Move mouse away from sidebar — verify it hides
+10. Hover right edge — verify annotations sidebar slides in
+11. Press ESC — verify fullscreen exits, reader stays open
+**Expected:** Zero chrome. Toolbar has all action buttons. Auto-hides. Sidebars reveal on edge hover. ESC exits fullscreen only.
 
 ### TC-10: Fullscreen Sidebars & Pin (Laptop)
-**Objective:** Verify sidebar pinning in fullscreen mode.
+**Objective:** Verify sidebar pinning and action buttons in fullscreen mode.
 **Steps:**
 1. Enter fullscreen on a book
 2. Hover left edge — reading list sidebar appears
@@ -206,7 +207,10 @@ All 11 items implemented and deployed 2026-08-23:
 5. Hover right edge — annotations sidebar appears
 6. Click annotations toggle — verify it pins
 7. Verify both sidebars visible simultaneously
-8. Click toggle again to unpin — verify sidebar hides when mouse moves away
+8. Click the bookmark button in the fullscreen toolbar — verify prompt modal appears
+9. Click the note button — verify prompt modal appears
+10. Press ESC in the prompt — verify only the prompt closes (not fullscreen)
+11. Click toggle again to unpin — verify sidebar hides when mouse moves away
 **Expected:** Pin/unpin works for both sidebars. Both can be visible at once.
 
 ### TC-11: Annotations — Create & View (Laptop)
@@ -285,6 +289,21 @@ All 11 items implemented and deployed 2026-08-23:
 7. Verify resume at 60%
 8. Verify the progress bar in the Library tab reflects the reading progress
 **Expected:** Position persists across sessions. Library shows progress.
+
+### TC-16b: Tab Persistence — Exit & Refresh (Laptop)
+**Objective:** Verify tab state persists across reader open/close and page refresh.
+**Steps:**
+1. Open a book from the Library
+2. Read for a moment, then close the reader (✕ button)
+3. Verify you return to the Library tab (not a different tab)
+4. Navigate to the Manual tab
+5. Open a book from the Library
+6. Close the reader — verify you return to the Manual tab (not Library)
+7. Refresh the page — verify the Manual tab is still active
+8. Switch to Settings tab
+9. Refresh the page — verify the Settings tab is still active
+10. Switch to Library tab, open a book, close reader — verify Library tab
+**Expected:** Tab state persists across reader close and page refresh. Reader returns to the tab it was opened from.
 
 ### TC-17: iPad Portrait — Touch Navigation (iPad)
 **Objective:** Verify touch-based reading on iPad (portrait).

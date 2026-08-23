@@ -333,13 +333,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .reader-layout:-webkit-full-screen .fs-edge-trigger { display: block; }
   .fs-edge-trigger.fs-top { top: 0; }
   .fs-edge-trigger.fs-bottom { bottom: 0; }
-  /* Center tap zone — invisible, detects taps to toggle toolbar pin */
-  .fs-center-tap { position: fixed; top: 24px; bottom: 24px; left: 24px; right: 24px; z-index: 498; display: none; cursor: default; }
-  .reader-layout:fullscreen .fs-center-tap,
-  .reader-layout:-webkit-full-screen .fs-center-tap { display: block; }
-  /* Raise normal toolbar above center-tap so buttons remain clickable in fullscreen */
-  .reader-layout:fullscreen #readerToolbar,
-  .reader-layout:-webkit-full-screen #readerToolbar { position: relative; z-index: 500; }
+  /* No center-tap overlay — it blocked text selection and toolbar clicks.
+     Tap-to-pin is now handled by a document-level click handler on readerArea. */
   /* Minimal fullscreen toolbar: centered pill, auto-hides when idle, transitions */
   .fs-toolbar { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 600; display: none; align-items: center; gap: 6px; background: rgba(15, 23, 42, 0.92); border: 1px solid #475569; border-radius: 999px; padding: 6px 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.5); transition: opacity 0.3s ease, transform 0.3s ease; }
   .reader-layout:fullscreen .fs-toolbar,
@@ -368,6 +363,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .hl-popup .hl-actions button { flex: 1; padding: 4px 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.72rem; font-weight: 600; }
   /* PDF.js viewer */
   .pdf-viewer { width: 100%; height: auto; overflow: visible; }
+  #readerArea { text-align: center; }
   .pdf-canvas-wrap { position: relative; margin: 0 auto 8px auto; }
   .pdf-canvas-wrap canvas { display: block; width: 100%; height: auto; }
   /* Two-page (opposite page) spread */
@@ -831,7 +827,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       <div class="fs-hotzone fs-right" id="fsRightZone" title="Show notes &amp; annotations"></div>
       <div class="fs-edge-trigger fs-top" id="fsTopZone" title=""></div>
       <div class="fs-edge-trigger fs-bottom" id="fsBottomZone" title=""></div>
-      <div class="fs-center-tap" id="fsCenterTap" title=""></div>
       <!-- Minimal fullscreen toolbar (P8.4): floats top-center, auto-hides when idle -->
       <div id="readerFsToolbar" class="fs-toolbar">
         <button onclick="closeReader()" title="Close reader (bookmarks saved)">&#x2715;</button>
@@ -5637,24 +5632,22 @@ function _fsBindVisibility() {
   var bottomZone = document.getElementById("fsBottomZone");
   if (topZone) topZone.addEventListener("mouseenter", function() { if (document.fullscreenElement) _fsShowToolbar(); });
   if (bottomZone) bottomZone.addEventListener("mouseenter", function() { if (document.fullscreenElement) _fsShowToolbar(); });
-  // Center tap: toggle pin on click (not on drag)
-  var centerTap = document.getElementById("fsCenterTap");
+  // Center tap: toggle pin on click inside reading area (no overlay needed)
   var _tapStartX = 0, _tapStartY = 0;
-  if (centerTap) {
-    centerTap.addEventListener("mousedown", function(e) { _tapStartX = e.clientX; _tapStartY = e.clientY; });
-    centerTap.addEventListener("mouseup", function(e) {
+  var readerArea = document.getElementById("readerArea");
+  if (readerArea) {
+    readerArea.addEventListener("mousedown", function(e) { _tapStartX = e.clientX; _tapStartY = e.clientY; });
+    readerArea.addEventListener("mouseup", function(e) {
+      if (!document.fullscreenElement) return;
       var dx = Math.abs(e.clientX - _tapStartX), dy = Math.abs(e.clientY - _tapStartY);
-      if (dx < 8 && dy < 8 && document.fullscreenElement) _fsTogglePin();
+      if (dx < 8 && dy < 8) _fsTogglePin();
     });
-    // Touch: middle tap toggles pin
-    centerTap.addEventListener("touchstart", function(e) { _tapStartX = e.touches[0].clientX; _tapStartY = e.touches[0].clientY; }, { passive: true });
-    centerTap.addEventListener("touchend", function(e) {
+    readerArea.addEventListener("touchstart", function(e) { _tapStartX = e.touches[0].clientX; _tapStartY = e.touches[0].clientY; }, { passive: true });
+    readerArea.addEventListener("touchend", function(e) {
+      if (!document.fullscreenElement) return;
       var tx = e.changedTouches[0].clientX, ty = e.changedTouches[0].clientY;
       var dx = Math.abs(tx - _tapStartX), dy = Math.abs(ty - _tapStartY);
-      if (dx < 12 && dy < 12 && document.fullscreenElement) {
-        _fsTogglePin();
-        _fsShowToolbar();  // always show on tap
-      }
+      if (dx < 12 && dy < 12) { _fsTogglePin(); _fsShowToolbar(); }
     }, { passive: true });
   }
   // Hovering the toolbar itself keeps it visible and resets the timer

@@ -3501,6 +3501,8 @@ let readerFormat = null;
 let readerPage = 0;
 let readerPages = [];
 let readerBookId = null;
+var _openingReader = false;  // BL-035: re-entrancy guard
+var _openingBookId = null;   // BL-035: track which book is being opened
 let readerProgressTimer = null;
 let readerSaveTimer = null;
 let _readerZoom = 100;
@@ -4079,6 +4081,9 @@ function dismissResumeToast() {
 // ═══ Open Reader ═══
 
 function openReader(bookId) {
+  if (_openingReader) return;  // BL-035: prevent re-entrancy from switchTab("reader")
+  _openingReader = true;
+  _openingBookId = bookId;
   fetch(API + "/api/book/" + bookId).then(r => r.json()).then(b => {
     const ext = ((b.source_path || "").split(".").pop() || "").toLowerCase();
     readerFormat = ext;
@@ -4148,7 +4153,7 @@ function openReader(bookId) {
     if (document.getElementById("readerArea").style.display !== "none") {
       document.getElementById("readerDrawGroup").style.display = "flex";
     }
-  }).catch(() => alert("Could not load book info"));
+  }).catch(() => alert("Could not load book info")).finally(() => { _openingReader = false; _openingBookId = null; });
 }
 
 function showReaderFallback(title, msg) {
@@ -5569,6 +5574,7 @@ function closeReader() {
   applyCollapseState();
   switchTab(_previousTab || "library");
   loadReadingList();
+  _openingReader = false; _openingBookId = null;  // BL-035: clear re-entrancy guard
 }
 
 function toggleFullscreen() {

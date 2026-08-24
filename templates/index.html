@@ -240,7 +240,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .reading-list-sidebar .toc-item:hover { background: #334155; color: #e2e8f0; }
   .reading-list-sidebar .toc-empty { font-size: 0.7rem; color: #64748b; padding: 6px 4px; }
   .reading-list-sidebar .toc-item.active { background: #0ea5e9; color: #0f172a; font-weight: 600; }
-  .reader-main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+  .reader-main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; padding-bottom: 48px; }
   /* Progress bar in toolbar */
   .reader-progress-wrap { flex: 1; min-width: 80px; max-width: 160px; height: 4px; background: #334155; border-radius: 2px; overflow: hidden; }
   .reader-progress-fill { height: 100%; background: #0ea5e9; border-radius: 2px; transition: width 0.3s; }
@@ -303,9 +303,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .annotations-sidebar .ann-backlinks b { color: #94a3b8; font-weight: 600; }
   /* Fullscreen reader */
   .reader-layout:fullscreen .reader-main { max-width: 100%; }
-  .reader-layout:fullscreen #readerArea { width: 100%; height: calc(100vh - 60px); }
+  .reader-layout:fullscreen #readerArea { width: 100%; height: 100vh; }
   .reader-layout:-webkit-full-screen .reader-main { max-width: 100%; }
-  .reader-layout:-webkit-full-screen #readerArea { width: 100%; height: calc(100vh - 60px); }
+  .reader-layout:-webkit-full-screen #readerArea { width: 100%; height: 100vh; }
   /* Hide page thumbnails in fullscreen */
   .reader-layout:fullscreen #readerThumbs,
   .reader-layout:-webkit-full-screen #readerThumbs { display: none !important; }
@@ -314,11 +314,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .reader-layout:-webkit-full-screen.fs-reveal #readerThumbs { display: none !important; }
   /* Auto-hidden side panes in fullscreen: slide in from the edges on hover */
   .reader-layout.fs-auto-panes:fullscreen .reading-list-sidebar,
-  .reader-layout.fs-auto-panes:-webkit-full-screen .reading-list-sidebar { position: fixed; left: 0; top: 48px; bottom: 0; z-index: 500; margin: 0; border-radius: 0 8px 8px 0; transform: translateX(-100%); transition: transform 0.18s ease; max-height: none; width: 240px; background: rgba(15, 23, 42, 0.97); }
+  .reader-layout.fs-auto-panes:-webkit-full-screen .reading-list-sidebar { position: fixed; left: 0; top: 48px; bottom: 0; z-index: 500; margin: 0; border-radius: 0 8px 8px 0; transform: translateX(-100%); transition: transform 0.18s ease; max-height: none; width: 240px; background: rgba(15, 23, 42, 0.97); overflow: visible; padding: 10px; border-width: 1px; border-style: solid; border-color: #334155; }
   .reader-layout.fs-auto-panes:fullscreen .reading-list-sidebar.fs-show,
   .reader-layout.fs-auto-panes:-webkit-full-screen .reading-list-sidebar.fs-show { transform: translateX(0); }
   .reader-layout.fs-auto-panes:fullscreen .annotations-sidebar,
-  .reader-layout.fs-auto-panes:-webkit-full-screen .annotations-sidebar { position: fixed; right: 0; top: 48px; bottom: 0; z-index: 500; margin: 0; border-radius: 8px 0 0 8px; transform: translateX(100%); transition: transform 0.18s ease; max-width: none; background: rgba(15, 23, 42, 0.97); }
+  .reader-layout.fs-auto-panes:-webkit-full-screen .annotations-sidebar { position: fixed; right: 0; top: 48px; bottom: 0; z-index: 500; margin: 0; border-radius: 8px 0 0 8px; transform: translateX(100%); transition: transform 0.18s ease; max-width: none; background: rgba(15, 23, 42, 0.97); overflow-y: auto; padding: 10px; border-width: 1px; border-style: solid; border-color: #334155; }
   .reader-layout.fs-auto-panes:fullscreen .annotations-sidebar.fs-show,
   .reader-layout.fs-auto-panes:-webkit-full-screen .annotations-sidebar.fs-show { transform: translateX(0); }
   /* Edge hover strips (invisible) that reveal side panes — wider for easier targeting */
@@ -337,7 +337,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
      Tap-to-pin is now handled by a document-level click handler on readerArea. */
   /* Fullscreen: normal toolbar stays visible, nicely styled at top of reader-main */
   .reader-layout:fullscreen #readerToolbar,
-  .reader-layout:-webkit-full-screen #readerToolbar { background: rgba(15, 23, 42, 0.95); padding: 6px 8px; border-radius: 0 0 8px 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+  .reader-layout:-webkit-full-screen #readerToolbar { background: rgba(15, 23, 42, 0.95); padding: 6px 8px; border-radius: 0 0 8px 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); position: fixed; top: 0; left: 0; right: 0; z-index: 600; transition: opacity 0.25s ease, transform 0.25s ease; }
+  /* BL-020 CSS: fs-hidden fades toolbar out, fs-pinned locks it visible */
+  #readerToolbar.fs-hidden { opacity: 0; pointer-events: none; transform: translateY(-100%); }
+  #readerToolbar.fs-pinned { opacity: 1 !important; pointer-events: auto !important; transform: translateY(0) !important; }
+  /* Fullscreen: glass footer auto-hide — fades in/out like toolbar */
+  .reader-layout:fullscreen .fs-glass-footer,
+  .reader-layout:-webkit-full-screen .fs-glass-footer { transition: opacity 0.25s ease, transform 0.25s ease; }
+  .fs-glass-footer.fs-hidden { opacity: 0; pointer-events: none; transform: translateY(100%); }
   /* Collapse buttons hug the screen edges while in fullscreen */
   .reader-layout.fs-auto-panes:fullscreen #collapseLeftBtn,
   .reader-layout.fs-auto-panes:-webkit-full-screen #collapseLeftBtn { left: 0; }
@@ -462,8 +469,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     .detail-grid { grid-template-columns: 1fr; }
     .detail-grid .dl { white-space: normal; }
     .reader-layout { flex-direction: column; }
-    .sb-collapse-btn { display: none; }
-    .reading-list-sidebar, .annotations-sidebar { width: 100% !important; flex-shrink: 1; max-height: 240px; }
+    .sb-collapse-btn { display: flex !important; position: fixed; top: 50%; transform: translateY(-50%); z-index: 501; width: 28px; height: 48px; background: rgba(15,23,42,0.85); border: 1px solid #334155; color: #94a3b8; font-size: 1.1rem; padding: 0; cursor: pointer; align-items: center; justify-content: center; }
+    #collapseLeftBtn { left: 0; border-radius: 0 6px 6px 0; }
+    #collapseRightBtn { right: 0; border-radius: 6px 0 0 6px; }
+    #sbMobileBackdrop { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 499; }
+    .reading-list-sidebar, .annotations-sidebar { width: 260px !important; position: fixed; top: 48px; bottom: 0; z-index: 500; max-height: none; transform: translateX(-100%); transition: transform 0.18s ease; background: rgba(15, 23, 42, 0.97); border-radius: 0 8px 8px 0; }
+    .annotations-sidebar { right: 0; left: auto; transform: translateX(100%); border-radius: 8px 0 0 8px; }
+    .reading-list-sidebar.fs-show, .annotations-sidebar.fs-show { transform: translateX(0); }
     .reader-main #readerArea { width: 100%; }
     #readerToolbar { flex-wrap: wrap; gap: 4px; }
     #readerToolbar button { padding: 6px 10px; font-size: 0.82rem; min-height: 36px; }
@@ -855,7 +867,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       </div>
       <!-- Reader Main -->
       <div class="reader-main">
-        <div id="readerToolbar" style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+        <div id="readerToolbar" style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
           <button onclick="closeReader()" style="padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:0.8rem;background:#334155;color:#e2e8f0" title="Close reader (bookmarks saved)">&#x2715;</button>
           <span id="readerTitle" style="color:#e2e8f0;font-weight:600;font-size:0.9rem;flex:1;min-width:80px"></span>
           <span id="readerFormat" style="color:#64748b;font-size:0.75rem"></span>
@@ -1023,6 +1035,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       </div>
       <button class="sb-collapse-btn" id="collapseLeftBtn" onclick="toggleCollapseSidebar('left')" title="Collapse / expand contents &amp; reading list">&#x2039;</button>
       <button class="sb-collapse-btn" id="collapseRightBtn" onclick="toggleCollapseSidebar('right')" title="Collapse / expand annotations">&#x203A;</button>
+      <div id="sbMobileBackdrop" onclick="closeMobileSidebar()"></div>
     </div>
     <!-- BL-029: Bookmark ribbon indicator -->
     <div class="bookmark-ribbon" id="bookmarkRibbon">Bookmark saved</div>
@@ -1211,7 +1224,7 @@ function showConfirmCheckbox(title, desc, checkboxLabel, checkedDefault) {
 }
 
 // P8.6 — modal input prompt (replaces window.prompt, which mobile browsers block)
-function showPromptModal(title, placeholder, initial, okLabel) {
+function showPromptModal(title, placeholder, initial, okLabel, multiline) {
   return new Promise(function(resolve) {
     var overlay = document.getElementById("promptOverlay");
     if (!overlay) {
@@ -1219,24 +1232,29 @@ function showPromptModal(title, placeholder, initial, okLabel) {
       overlay.id = "promptOverlay";
       overlay.style.cssText = "display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;";
       overlay.innerHTML = '<div class="confirm-box" style="max-width:380px"><div class="confirm-msg" style="margin-bottom:10px"></div>'
-        + '<input type="text" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box" spellcheck="false">'
+        + '<input type="text" class="prompt-input prompt-single" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box" spellcheck="false">'
+        + '<textarea class="prompt-input prompt-multi" style="width:100%;min-height:80px;padding:8px 10px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box;resize:vertical;display:none;font-family:inherit" spellcheck="false"></textarea>'
         + '<div class="confirm-btns" style="margin-top:14px"><button class="confirm-cancel" style="background:#334155;color:#94a3b8;padding:6px 16px;border:none;border-radius:4px;font-size:0.78rem;cursor:pointer">Cancel</button><button class="confirm-ok" style="background:#0ea5e9;color:#0f172a;padding:6px 16px;border:none;border-radius:4px;font-size:0.78rem;font-weight:600;cursor:pointer">OK</button></div></div>';
     }
     var fsEl = document.fullscreenElement || document.documentElement;
     if (overlay.parentElement !== fsEl) fsEl.appendChild(overlay);
     overlay.querySelector(".confirm-msg").textContent = title;
-    var input = overlay.querySelector("input");
-    input.value = initial || "";
-    input.placeholder = placeholder || "";
+    var singleInput = overlay.querySelector(".prompt-single");
+    var multiInput = overlay.querySelector(".prompt-multi");
+    var activeInput = multiline ? multiInput : singleInput;
+    singleInput.style.display = multiline ? "none" : "";
+    multiInput.style.display = multiline ? "" : "none";
+    activeInput.value = initial || "";
+    activeInput.placeholder = placeholder || "";
     overlay.querySelector(".confirm-ok").textContent = okLabel || "OK";
     function done(val) { overlay.style.display = "none"; resolve(val); }
-    overlay.querySelector(".confirm-ok").onclick = function() { done(input.value); };
+    overlay.querySelector(".confirm-ok").onclick = function() { done(activeInput.value); };
     overlay.querySelector(".confirm-cancel").onclick = function() { done(null); };
-    input.onkeydown = function(e) { if (e.key === "Enter") done(input.value); if (e.key === "Escape") { e.stopPropagation(); done(null); } };
+    activeInput.onkeydown = function(e) { e.stopPropagation(); if (e.key === "Escape") { done(null); } else if (e.key === "Enter" && !multiline) { done(activeInput.value); } };
     overlay.style.display = "flex";
     overlay.onkeydown = function(e) { if (e.key === "Escape") { e.stopPropagation(); done(null); } };
-    input.focus();
-    input.select();
+    activeInput.focus();
+    activeInput.select();
   });
 }
 
@@ -1325,7 +1343,11 @@ function switchTab(name, filters) {
     loadSources();
     renderUdcTree();
   }
-  if (name === "reader") { loadReadingList(); }
+  if (name === "reader") {
+    loadReadingList();
+    // BL-035: auto-reload last book if reader content was torn down
+    if (readerBookId && !readerRendition) { openReader(readerBookId); }
+  }
   if (name === "quarantine") { loadQuarantine(); }
   if (name === "settings") { loadConfig(); refreshWatcherStatus(); loadBackups(); }
   if (name === "manual") { loadManual(); }
@@ -5402,6 +5424,9 @@ function setupComicSelection(canvas, bookId, pageIdx) {
 }
 
 function readerKeyHandler(e) {
+  // BL-034: Don't intercept keyboard shortcuts when typing in inputs/textareas
+  var tag = e.target && e.target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA") return;
   if (e.key === "Escape") {
     // Cascade: close search → close sidebar → unpin toolbar → exit fullscreen
     var sbl = document.getElementById("readerSearchBlock");
@@ -5410,8 +5435,11 @@ function readerKeyHandler(e) {
       if (fsPinned.left) { toggleFsPane("left"); e.preventDefault(); return; }
       if (fsPinned.right) { toggleFsPane("right"); e.preventDefault(); return; }
       if (_fsPinnedToolbar) { _fsTogglePin(); e.preventDefault(); return; }
+      document.exitFullscreen().catch(function(){});
+      e.preventDefault();
+      return;
     }
-    return; // let browser handle fullscreen exit
+    return;
   }
   if (e.key === "ArrowLeft") { readerPrev(); e.preventDefault(); return; }
   if (e.key === "ArrowRight") { readerNext(); e.preventDefault(); return; }
@@ -5572,7 +5600,7 @@ function _fsHideToolbar() {
 }
 function _fsResetHideTimer() {
   if (_fsToolbarTimer) clearTimeout(_fsToolbarTimer);
-  _fsToolbarTimer = setTimeout(_fsHideToolbar, 3000);
+  _fsToolbarTimer = setTimeout(_fsHideToolbar, 2000);
 }
 function _fsTogglePin() {
   _fsPinnedToolbar = !_fsPinnedToolbar;
@@ -5594,6 +5622,22 @@ function _fsSetPanelOpen(open) {
     _fsResetHideTimer();
   }
 }
+// BL-020: Fullscreen glass footer auto-hide (mirrors toolbar behavior)
+var _fsFooterTimer = null;
+function _fsShowFooter() {
+  var ft = document.getElementById("readerFsGlassFooter");
+  if (ft) ft.classList.remove("fs-hidden");
+  _fsResetFooterHideTimer();
+}
+function _fsHideFooter() {
+  if (_fsPinnedToolbar || _fsPanelOpen) return;
+  var ft = document.getElementById("readerFsGlassFooter");
+  if (ft && document.fullscreenElement) ft.classList.add("fs-hidden");
+}
+function _fsResetFooterHideTimer() {
+  if (_fsFooterTimer) clearTimeout(_fsFooterTimer);
+  _fsFooterTimer = setTimeout(_fsHideFooter, 2000);
+}
 function _fsBindVisibility() {
   if (_fsVisibilityBound) return;
   _fsVisibilityBound = true;
@@ -5601,7 +5645,7 @@ function _fsBindVisibility() {
   var topZone = document.getElementById("fsTopZone");
   var bottomZone = document.getElementById("fsBottomZone");
   if (topZone) topZone.addEventListener("mouseenter", function() { if (document.fullscreenElement) _fsShowToolbar(); });
-  if (bottomZone) bottomZone.addEventListener("mouseenter", function() { if (document.fullscreenElement) _fsShowToolbar(); });
+  if (bottomZone) bottomZone.addEventListener("mouseenter", function() { if (document.fullscreenElement) _fsShowFooter(); });
   // Center tap: toggle pin on click inside reading area (no overlay needed)
   var _tapStartX = 0, _tapStartY = 0;
   var readerArea = document.getElementById("readerArea");
@@ -5626,6 +5670,14 @@ function _fsBindVisibility() {
     fsTb.addEventListener("mouseenter", function() { _fsShowToolbar(); });
     fsTb.addEventListener("mouseleave", function() {
       if (!_fsPinnedToolbar && !_fsPanelOpen) _fsResetHideTimer();
+    });
+  }
+  // Hovering the fs glass footer keeps it visible
+  var fsGf = document.getElementById("readerFsGlassFooter");
+  if (fsGf) {
+    fsGf.addEventListener("mouseenter", function() { _fsShowFooter(); });
+    fsGf.addEventListener("mouseleave", function() {
+      if (!_fsPinnedToolbar && !_fsPanelOpen) _fsResetFooterHideTimer();
     });
   }
 }
@@ -5996,12 +6048,21 @@ document.addEventListener("fullscreenchange", function() {
     _fsPanelOpen = false;
     var ft = document.getElementById("readerToolbar");
     if (ft) { ft.classList.remove("fs-hidden", "fs-pinned"); }
-    _showGlassFooter(readerBookId != null);
+    // Hide glass footer initially in fullscreen, start auto-hide for both
+    var fsGf = document.getElementById("readerFsGlassFooter");
+    if (fsGf) fsGf.classList.add("fs-hidden");
+    _fsResetHideTimer();
+    _fsResetFooterHideTimer();
   } else {
     fsPinned = { left: false, right: false };
     _fsPinnedToolbar = false;
     _fsPanelOpen = false;
     if (_fsToolbarTimer) { clearTimeout(_fsToolbarTimer); _fsToolbarTimer = null; }
+    if (_fsFooterTimer) { clearTimeout(_fsFooterTimer); _fsFooterTimer = null; }
+    var tb = document.getElementById("readerToolbar");
+    if (tb) { tb.classList.remove("fs-hidden", "fs-pinned"); }
+    var fsGf = document.getElementById("readerFsGlassFooter");
+    if (fsGf) fsGf.classList.remove("fs-hidden");
     var lp = document.getElementById("readingListPanel"); if (lp) lp.classList.remove("fs-show");
     var ap = document.getElementById("annotationsSidebar"); if (ap) ap.classList.remove("fs-show");
     _showGlassFooter(readerBookId != null);
@@ -6022,8 +6083,8 @@ document.addEventListener("fullscreenchange", function() {
 var fsPinned = { left: false, right: false };
 
 // P8.3 — Collapsible sidebars (on-screen chevron buttons, state persisted)
-var _sbCollapsed = {};
-try { _sbCollapsed = JSON.parse(localStorage.getItem("reader.collapse") || "{}"); } catch(e) { _sbCollapsed = {}; }
+var _sbCollapsed = { left: true, right: true };
+try { var saved = JSON.parse(localStorage.getItem("reader.collapse") || "{}"); if (saved.left !== undefined || saved.right !== undefined) _sbCollapsed = saved; } catch(e) {}
 function applyCollapseState() {
   var lay = document.getElementById("readerLayout");
   if (!lay) return;
@@ -6037,9 +6098,26 @@ function applyCollapseState() {
 }
 function toggleCollapseSidebar(side) {
   if (document.fullscreenElement) { toggleFsPane(side); return; }
+  // BL-036: mobile overlay mode — slide sidebar in/out as overlay
+  if (window.innerWidth <= 768) {
+    var el = side === "left" ? document.getElementById("readingListPanel") : document.getElementById("annotationsSidebar");
+    var bd = document.getElementById("sbMobileBackdrop");
+    var isOpen = el && el.classList.contains("fs-show");
+    if (el) el.classList.toggle("fs-show", !isOpen);
+    if (bd) bd.style.display = isOpen ? "none" : "block";
+    return;
+  }
   _sbCollapsed[side] = !_sbCollapsed[side];
   try { localStorage.setItem("reader.collapse", JSON.stringify(_sbCollapsed)); } catch(e) {}
   applyCollapseState();
+}
+function closeMobileSidebar() {
+  var lp = document.getElementById("readingListPanel");
+  var ap = document.getElementById("annotationsSidebar");
+  var bd = document.getElementById("sbMobileBackdrop");
+  if (lp) lp.classList.remove("fs-show");
+  if (ap) ap.classList.remove("fs-show");
+  if (bd) bd.style.display = "none";
 }
 
 function fsApply(side) {
@@ -6080,6 +6158,21 @@ document.addEventListener("mousemove", function(ev) {
   if (!fsPinned.left && !inside(lp, ev.clientX, ev.clientY)) fsRevealPane("left", false);
   if (!fsPinned.right && !inside(ap, ev.clientX, ev.clientY)) fsRevealPane("right", false);
 });
+// BL-032: touch edge detection for fullscreen side panels
+document.addEventListener("touchstart", function(ev) {
+  if (!document.fullscreenElement || !ev.touches || !ev.touches.length) return;
+  var tx = ev.touches[0].clientX;
+  var vw = window.innerWidth;
+  if (tx < 20 && !fsPinned.left) { fsRevealPane("left", true); }
+  else if (tx > vw - 20 && !fsPinned.right) { fsRevealPane("right", true); }
+}, { passive: true });
+document.addEventListener("touchend", function(ev) {
+  if (!document.fullscreenElement) return;
+  setTimeout(function() {
+    if (!fsPinned.left) fsRevealPane("left", false);
+    if (!fsPinned.right) fsRevealPane("right", false);
+  }, 2000);
+}, { passive: true });
 
 function toggleFsPane(side) {
   fsPinned[side] = !fsPinned[side];
@@ -6381,7 +6474,7 @@ function showHighlightPopup(cfiRange, selectedText) {
   var range = sel.getRangeAt(0);
   var rect = range.getBoundingClientRect();
   popup.style.left = Math.min(rect.left, window.innerWidth - 240) + "px";
-  popup.style.top = (rect.bottom + 8 + window.scrollY) + "px";
+  popup.style.top = (rect.bottom + 8) + "px";
   popup.style.display = "block";
   document.getElementById("hlNoteInput").value = "";
   _hlPopup.cfiRange = cfiRange;
@@ -6540,7 +6633,7 @@ function addBookmark() {
 function addPageNote() {
   var bid = readerBookId;
   if (!bid) return;
-  showPromptModal("Add page note", "Note text", "").then(function(note) {
+  showPromptModal("Add page note", "Note text", "", "Add", true).then(function(note) {
     if (!note) return;
     var data = { type: "note", text: note, note: note, title: note.split("\n")[0].slice(0, 60) };
     if (readerFormat === "epub" && readerRendition) {

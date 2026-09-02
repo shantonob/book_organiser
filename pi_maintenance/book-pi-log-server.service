@@ -1,0 +1,11 @@
+[Unit]
+Description=Book Pi: serve /var/log/book-pi-updates.log for the Homarr tile
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -m http.server 8088 --bind 0.0.0.0 --directory /var/log/book-pi-updates
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

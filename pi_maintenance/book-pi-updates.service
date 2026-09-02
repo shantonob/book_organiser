@@ -1,0 +1,12 @@
+[Unit]
+Description=Book Pi: nightly OS + app updates
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/book-pi-updates.sh
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=multi-user.target

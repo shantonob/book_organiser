@@ -1,0 +1,16 @@
+[Unit]
+Description=Book Pi: web endpoint to restart the Pi (used by a Homarr tile)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Requires root so it can run `systemctl reboot` directly.
+# Set the shared secret via EnvironmentFile; overrides file at /etc/book-pi/reboot.env
+EnvironmentFile=/etc/book-pi/reboot.env
+ExecStart=/usr/bin/python3 /usr/local/sbin/book-pi-reboot.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1098,6 +1098,41 @@ def get_reading_list(conn, status=None):
     return [dict(r) for r in rows]
 
 
+def get_reading_home(conn, limit=200):
+    """"Reading Home" data split into in-progress and completed books.
+
+    Only books that have actually been read (progress > 1%) are included.
+    Returns {"in_progress": [...], "completed": [...]} — each item carries the
+    same fields as search_books plus `progress_pct` and `last_read`.
+    """
+    _book_cols = """
+        f.id, f.uuid, f.filename, f.format, f.stage, f.file_size,
+        f.is_master, f.source_path, f.source_group,
+        m.title, m.authors, m.year, m.publisher, m.isbn, m.language,
+        m.pages, m.description, m.udc_code, m.udc_label, m.enrich_source,
+        m.cover_path, m.series, m.series_num, m.volume, m.issue
+    """
+    rows = conn.execute(f"""
+        SELECT {_book_cols},
+               rs.progress_pct, rs.updated_at AS last_read
+        FROM files f
+        JOIN metadata m ON m.file_id = f.id
+        JOIN reader_state rs ON rs.book_id = f.id
+        WHERE rs.progress_pct > 1
+        ORDER BY rs.updated_at DESC
+        LIMIT ?
+    """, (limit * 2,)).fetchall()
+    in_progress = []
+    completed = []
+    for r in rows:
+        item = dict(r)
+        if item.get("progress_pct") and item["progress_pct"] >= 100:
+            completed.append(item)
+        else:
+            in_progress.append(item)
+    return {"in_progress": in_progress, "completed": completed}
+
+
 def add_to_reading_list(conn, book_id, status='to_read'):
     conn.execute("""
         INSERT INTO reading_list (book_id, status, added_at, updated_at)

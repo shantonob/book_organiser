@@ -72,6 +72,7 @@ from db import (
     get_quarantine_rules,
     get_quarantined,
     get_reader_state,
+    get_reading_home,
     get_reading_list,
     get_recent_books,
     get_series_facets,
@@ -2470,6 +2471,16 @@ def api_reading_list():
     try:
         items = get_reading_list(conn, status=status)
         return jsonify(items)
+    finally:
+        conn.close()
+
+
+@app.route("/api/reading-home")
+def api_reading_home():
+    limit = request.args.get("limit", default=200, type=int)
+    conn = get_connection(DB_PATH)
+    try:
+        return jsonify(get_reading_home(conn, limit=limit))
     finally:
         conn.close()
 

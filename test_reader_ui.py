@@ -2421,6 +2421,176 @@ def test_final_close(page):
         assert "reader" not in active.lower(), f"Reader still active: {active}"
     return _t
 
+# ── BL-038: Immersive reader (BookOrbit-style) ─────────────────────────────
+
+def _open_immersive_epub(page, wait=0.6):
+    """Open first in-progress book in immersive mode."""
+    page.evaluate("""async () => {
+        const r = await fetch(API + '/api/reading-home?limit=200');
+        const d = await r.json();
+        const ip = (d.in_progress || []).concat(d.completed || []);
+        if (!ip.length) throw new Error('no read books');
+        const id = ip[0].id;
+        enterImmersiveReader(id);
+    }""")
+    page.wait_for_function("() => document.body.classList.contains('reader-immersive')", timeout=12000)
+    time.sleep(wait)
+
+def test_bl038_immersive_enters(page):
+    def _t():
+        _refresh_session(page)
+        _open_immersive_epub(page, wait=0.4)
+        immersive = page.evaluate("() => document.body.classList.contains('reader-immersive')")
+        assert immersive, "body.reader-immersive not set"
+        imc = page.evaluate("() => !!document.getElementById('imChrome')")
+        assert imc, "imChrome element missing"
+        chrome = page.evaluate("() => document.getElementById('imChrome')?.offsetHeight > 0")
+        assert chrome, "imChrome not rendered"
+    return _t
+
+def test_bl038_immersive_notes_toggle(page):
+    def _t():
+        _refresh_session(page)
+        _open_immersive_epub(page, wait=0.4)
+        after_on = page.evaluate("""() => {
+            toggleImmersiveAnnotations();
+            return document.getElementById('annotationsSidebar')?.classList.contains('fs-show') || false;
+        }""")
+        time.sleep(0.5)
+        after_off = page.evaluate("""() => {
+            toggleImmersiveAnnotations();
+            return document.getElementById('annotationsSidebar')?.classList.contains('fs-show') || false;
+        }""")
+        assert after_on, "notes slid in failed"
+        assert not after_off, "notes did not slide out"
+    return _t
+
+def test_bl038_immersive_center_tap_toggles(page):
+    def _t():
+        _refresh_session(page)
+        _open_immersive_epub(page, wait=0.4)
+        # hide chrome via timer-selector, then center-tap should show it
+        page.evaluate("_imHideChrome()")
+        time.sleep(0.2)
+        hidden = page.evaluate("() => document.getElementById('imChrome')?.classList.contains('im-hidden')")
+        assert hidden, "chrome not hidden before tap"
+        page.evaluate("""() => {
+            _imTapStartX = 640; _imTapStartY = 400;
+            _imHandleTap(640, 400);
+        }""")
+        time.sleep(0.3)
+        shown = page.evaluate("() => !document.getElementById('imChrome')?.classList.contains('im-hidden')")
+        assert shown, "center tap did not show chrome"
+    return _t
+
+def test_bl038_immersive_exit_returns_reading(page):
+    def _t():
+        _refresh_session(page)
+        page.evaluate("switchTab('reading')")
+        time.sleep(1)
+        _open_immersive_epub(page, wait=0.4)
+        page.evaluate("exitImmersiveReader()")
+        time.sleep(1.5)
+        immersive = page.evaluate("() => document.body.classList.contains('reader-immersive')")
+        assert not immersive, "still immersive after exit"
+        panel = page.evaluate("() => document.querySelector('.tab-panel.active')?.id || ''")
+        assert panel == "tab-reading", f"expected tab-reading after exit, got {panel}"
+    return _t
+
+def test_bl038_reading_home_populated(page):
+    def _t():
+        _refresh_session(page)
+        page.evaluate("switchTab('reading')")
+        time.sleep(3)
+        cards = page.evaluate("() => document.querySelectorAll('.book-card').length")
+        assert cards > 0, f"0 book cards on Reading Home (default view)"
+    return _t
+
+def test_reading_home_two_sections(page):
+    def _t():
+        _refresh_session(page)
+        page.evaluate("switchTab('reading')")
+        time.sleep(3)
+        info = page.evaluate("""async () => {
+            const r = await fetch(API + '/api/reading-home?limit=200');
+            const d = await r.json();
+            const ipGrid = document.getElementById('inProgressGrid');
+            const doneGrid = document.getElementById('completedGrid');
+            const firstIp = ipGrid ? ipGrid.querySelector('.book-card') : null;
+            const fp = firstIp ? {
+                hasTitle: (firstIp.querySelector('.book-title')?.textContent || '').trim().length > 0,
+                titleW: Math.round((firstIp.querySelector('.book-title')?.getBoundingClientRect().width) || 0)
+            } : null;
+            return {
+                api: {
+                    in_progress: (d.in_progress||[]).map(b => b.id),
+                    completed: (d.completed||[]).map(b => b.id),
+                    ipAllPct: (d.in_progress||[]).every(b => b.progress_pct > 1 && b.progress_pct < 100),
+                    doneAllPct: (d.completed||[]).every(b => b.progress_pct >= 100)
+                },
+                grids: {
+                    ipCards: ipGrid ? ipGrid.querySelectorAll('.book-card').length : -1,
+                    doneCards: doneGrid ? doneGrid.querySelectorAll('.book-card').length : -1
+                },
+                firstCard: fp
+            };
+        }""")
+        assert isinstance(info["api"]["in_progress"], list) and isinstance(info["api"]["completed"], list), "reading-home shape wrong"
+        assert info["api"]["ipAllPct"], "in_progress contains out-of-range pct"
+        assert info["api"]["doneAllPct"], "completed contains pct < 100"
+        assert info["grids"]["ipCards"] >= 0 and info["grids"]["doneCards"] >= 0, "section grids missing"
+        assert info["firstCard"] and info["firstCard"]["hasTitle"] and info["firstCard"]["titleW"] > 0, "card title not visible"
+    return _t
+
+def test_immersive_paginated_epub_renders(page):
+    def _t():
+        _refresh_session(page)
+        page.evaluate("""async () => {
+            const r = await fetch(API + '/api/reading-home?limit=200');
+            const d = await r.json();
+            const all = (d.in_progress || []).concat(d.completed || []);
+            let epub = all.find(b => b.format === 'epub');
+            if (!epub) epub = all.find(b => b.format === 'epub');
+            if (!epub) throw new Error('no epub in reading home');
+            enterImmersiveReader(epub.id);
+        }""")
+        page.wait_for_function("() => document.body.classList.contains('reader-immersive') && typeof readerFormat === 'string' && readerFormat === 'epub'", timeout=15000)
+        time.sleep(1.5)
+        info = page.evaluate("""() => {
+            const ra = document.getElementById('readerArea');
+            const ifr = ra ? ra.querySelector('iframe') : null;
+            const rect = ifr ? ifr.getBoundingClientRect() : null;
+            const clip = ra ? ra.querySelector('.epub-container') : null;
+            const cr = clip ? clip.getBoundingClientRect() : null;
+            const wra = ra.getBoundingClientRect();
+            return {
+                format: (typeof readerFormat === 'string') ? readerFormat : String(readerFormat),
+                hasRendition: !!readerRendition,
+                scrollMode: _readerScrollMode,
+                iframeH: rect ? Math.round(rect.height) : -1,
+                areaH: ra ? Math.round(wra.height) : -1,
+                areaW: ra ? Math.round(wra.width) : -1,
+                containerW: cr ? Math.round(cr.width) : -1,
+                containerH: cr ? Math.round(cr.height) : -1,
+                vh: Math.round(window.innerHeight),
+                bodyScrollH: Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)
+            };
+        }""")
+        assert info["format"] == "epub", f"expected epub, got {info['format']}"
+        assert info["hasRendition"], "no epub rendition"
+        assert info["iframeH"] > 0, "epub iframe not rendered"
+        # Paginated render fills the viewport height (not a tiny scrolled section)
+        assert info["areaH"] >= info["vh"] * 0.7, f"reader area too small: {info['areaH']} vs vh {info['vh']}"
+        assert info["iframeH"] >= info["areaH"] * 0.95, f"iframe much shorter than area: {info['iframeH']} vs {info['areaH']}"
+        # The clipping container should match the reader area dims (page fills the viewport)
+        if info["containerW"] > 0:
+            assert abs(info["containerW"] - info["areaW"]) <= info["areaW"] * 0.1, \
+                f"container {info['containerW']} not aligned with area {info['areaW']}"
+            assert abs(info["containerH"] - info["areaH"]) <= info["areaH"] * 0.1, \
+                f"container {info['containerH']} not aligned with area {info['areaH']}"
+        assert abs(info["bodyScrollH"] - info["vh"]) < 15, f"body scrolls (not immersive fullscreen): {info['bodyScrollH']} vs {info['vh']}"
+    return _t
+
 # ── Main ───────────────────────────────────────────────────────────────────
 
 def main():
@@ -2696,6 +2866,15 @@ def main():
             ("BL-037: FS edge zones exist",         test_bl037_fs_edge_zones_exist_in_fs(page)),
             ("BL-037: FS sidebar width override",   test_bl037_fs_sidebar_width_override(page)),
             ("BL-037: mobile sidebar fallback",     test_bl037_mobile_non_fs_sidebar_fallback(page)),
+
+            # BL-038: Immersive reader (BookOrbit-style)
+("BL-038: reading-home populated",       test_bl038_reading_home_populated(page)),
+("BL-038: immersive enters",             test_bl038_immersive_enters(page)),
+("BL-038: notes slide toggle",           test_bl038_immersive_notes_toggle(page)),
+("BL-038: center tap toggles chrome",    test_bl038_immersive_center_tap_toggles(page)),
+("BL-038: exit returns reading",         test_bl038_immersive_exit_returns_reading(page)),
+("BL-038: reading-home two sections",    test_reading_home_two_sections(page)),
+("BL-038: immersive epub paginated",     test_immersive_paginated_epub_renders(page)),
 
             # Final
             ("Close reader",                       test_final_close(page)),

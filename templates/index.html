@@ -195,6 +195,42 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .gallery-item .cover-missing { width: 100%; height: 180px; background: #0f172a; display: flex; align-items: center; justify-content: center; color: #334155; font-size: 0.7rem; }
   .gallery-check { position: absolute; top: 4px; left: 4px; z-index: 2; }
   .gallery-check input { width: 16px; height: 16px; cursor: pointer; accent-color: #0ea5e9; }
+
+  /* Reading Home (default landing) */
+  .reading-home { padding: 16px; max-width: 100%; }
+  .rh-section { margin-bottom: 32px; }
+  .rh-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .rh-section-title { font-size: 1.1rem; color: #94a3b8; margin: 0; font-weight: 500; }
+  .rh-view-toggle { padding: 4px 10px; font-size: 0.85rem; background: #334155; border: none; border-radius: 4px; color: #e2e8f0; cursor: pointer; }
+  .rh-carousel { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .rh-carousel::-webkit-scrollbar { display: none; }
+  .rh-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .book-card { display: flex; flex-direction: column; background: #1e293b; border: 1px solid #334155; border-radius: 12px; overflow: hidden; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+  .book-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+  .book-card:active { transform: scale(0.98); }
+  .book-card:focus-visible { outline: 2px solid #0ea5e9; outline-offset: 2px; }
+  .book-cover { width: 100%; aspect-ratio: 2/3; object-fit: cover; background: #0f172a; }
+  .book-info { padding: 12px; flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .book-title { font-size: 0.85rem; color: #e2e8f0; margin: 0 0 4px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .book-author { font-size: 0.7rem; color: #94a3b8; margin: 0 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .book-progress { display: flex; align-items: center; gap: 6px; font-size: 0.65rem; color: #94a3b8; margin-top: auto; }
+  .book-pct { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .book-status-chip { display: inline-flex; align-items: center; gap: 4px; background: #065f46; color: #a7f3d0; border-radius: 999px; padding: 2px 8px; font-size: 0.65rem; font-weight: 600; }
+  .progress-bar { flex: 1; height: 4px; background: #334155; border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: #0ea5e9; border-radius: 2px; }
+  .read-now-btn { margin: 0 12px 12px; padding: 8px 16px; background: #0ea5e9; color: #0f172a; border: none; border-radius: 8px; font-weight: 600; font-size: 0.8rem; width: calc(100% - 24px); box-sizing: border-box; cursor: pointer; }
+  .read-now-btn:hover { background: #38bdf8; }
+  .read-now-btn:focus-visible { outline: 2px solid #f8fafc; outline-offset: 2px; }
+  .read-now-btn:active { background: #38bdf8; }
+  @media (min-width: 768px) {
+    .rh-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  }
+  .rh-grid.rh-list-view { grid-template-columns: 1fr; }
+  .rh-grid.rh-list-view .book-card { flex-direction: row; align-items: center; }
+  .rh-grid.rh-list-view .book-cover { width: 60px; height: 90px; aspect-ratio: auto; border-radius: 8px 0 0 8px; flex-shrink: 0; }
+  .rh-grid.rh-list-view .book-info { padding: 12px 16px; }
+  .rh-grid.rh-list-view .read-now-btn { width: auto; min-width: 100px; margin: 0 16px; }
+  .rh-empty { color: #64748b; font-size: 0.8rem; text-align: center; padding: 24px 16px; }
   /* UDC tree */
   .udc-tree-node { cursor: pointer; padding: 3px 4px; border-radius: 3px; transition: background 0.15s; display: flex; justify-content: space-between; }
   .udc-tree-node:hover { background: #1a2332; }
@@ -278,6 +314,38 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .fs-glass-footer .gf-location { font-size: 0.7rem; color: #64748b; flex-shrink: 0; white-space: nowrap; }
   .fs-glass-footer .gf-time { font-size: 0.7rem; color: #64748b; flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .reader-layout:fullscreen .fs-glass-footer { display: flex; }
+  /* ═══ BL-038: Immersive reader (BookOrbit-style — fills browser window) ═══ */
+  .im-chrome { display: none; }
+  body.reader-immersive .im-chrome { position: fixed; top: 0; left: 0; right: 0; z-index: 900; display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: linear-gradient(rgba(15,23,42,0.92), rgba(15,23,42,0)); transition: opacity 0.26s ease, transform 0.26s ease; opacity: 1; }
+  .im-chrome.im-hidden { opacity: 0; pointer-events: none; transform: translateY(-16px); }
+  .im-chrome .im-icon { padding: 6px 10px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; background: rgba(51,65,85,0.75); color: #e2e8f0; }
+  .im-chrome .im-icon:hover { background: rgba(71,105,145,0.9); }
+  .im-chrome .im-icon:active { background: #0ea5e9; color: #0f172a; }
+  .im-chrome .im-icon:focus-visible { outline: 2px solid #0ea5e9; outline-offset: 2px; }
+  .im-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 0.95rem; color: #e2e8f0; text-align: center; }
+  .im-zone { position: fixed; top: 0; bottom: 0; width: 15%; z-index: 700; display: none; cursor: pointer; }
+  .im-zone.im-left { left: 0; }
+  .im-zone.im-right { right: 0; }
+  body.reader-immersive .im-zone { display: block; }
+  body.reader-immersive .fs-edge-trigger { display: block; height: 32px; }
+  body.reader-immersive .container > h1,
+  body.reader-immersive .tab-bar,
+  body.reader-immersive .container > .tab-panel:not(#tab-reader) { display: none !important; }
+  body.reader-immersive .container { max-width: none; padding: 0; margin: 0; }
+  body.reader-immersive #tab-reader { padding: 0; }
+  body.reader-immersive .reader-layout { position: fixed; inset: 0; z-index: 800; width: 100vw; max-width: none; min-height: 0; height: 100vh; margin: 0; padding: 0; gap: 0; border-radius: 0; background: #0f172a; }
+  body.reader-immersive .reader-main { padding: 0; max-width: 100%; }
+  body.reader-immersive #readerArea { width: 100% !important; border: none !important; border-radius: 0 !important; }
+  body.reader-immersive #readerToolbar { display: none !important; }
+  body.reader-immersive .reader-layout .reading-list-sidebar,
+  body.reader-immersive .reader-layout .annotations-sidebar { position: fixed; top: 0; bottom: 0; z-index: 760; width: 260px; max-width: 85vw; max-height: none; margin: 0; border-radius: 0; background: rgba(15,23,42,0.97); padding: 10px; transition: transform 0.24s ease; }
+  body.reader-immersive .reader-layout .reading-list-sidebar { left: 0; border-right: 1px solid #334155; transform: translateX(-100%); }
+  body.reader-immersive .reader-layout .annotations-sidebar { right: 0; border-left: 1px solid #334155; transform: translateX(100%); }
+  body.reader-immersive .reader-layout .reading-list-sidebar.fs-show,
+  body.reader-immersive .reader-layout .annotations-sidebar.fs-show { transform: translateX(0); }
+  body.reader-immersive .reader-glass-footer { position: fixed; bottom: 0; left: 0; right: 0; z-index: 900; border-radius: 0; transition: opacity 0.26s ease, transform 0.26s ease; }
+  body.reader-immersive .reader-glass-footer.im-hidden { opacity: 0; pointer-events: none; transform: translateY(100%); }
+  @media (max-width: 480px) { .im-title { display: none; } }
   /* Reading list dropdown */
   .rl-status-select { font-size: 0.68rem; padding: 2px 4px; border-radius: 3px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; }
   /* Annotations sidebar (right side) */
@@ -501,8 +569,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   <div id="jsError" style="display:none;background:#701a22;color:#fca5a5;padding:12px;border-radius:6px;margin-bottom:12px;text-align:center"></div>
 
   <div class="tab-bar">
-    <button class="tab-btn active" onclick="switchTab('library')">Library</button>
-    <button class="tab-btn" onclick="switchTab('reader')">Reader</button>
+    <button class="tab-btn active" onclick="switchTab('reading')">Reading</button>
+    <button class="tab-btn" onclick="switchTab('library')">Library</button>
+    <button class="tab-btn" onclick="switchTab('reader')">Classic Reader</button>
     <button class="tab-btn admin-tab" onclick="switchTab('pipeline')" style="display:none">Pipeline</button>
     <button class="tab-btn admin-tab" onclick="switchTab('quarantine')" id="quarantineTabBtn" style="display:none">Quarantine <span id="quarantineBadge" style="display:none;background:#701a22;color:#fca5a5;padding:1px 6px;border-radius:8px;font-size:0.65rem;margin-left:4px"></span></button>
     <button class="tab-btn admin-tab" onclick="switchTab('settings')" style="display:none">Settings</button>
@@ -655,8 +724,27 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     </div>
   </div>
 
+  <!-- ════ READING HOME TAB (default) ════ -->
+  <div class="tab-panel active" id="tab-reading">
+    <div class="reading-home">
+      <section class="rh-section" aria-labelledby="rhInProgressTitle">
+        <div class="rh-section-header">
+          <h2 class="rh-section-title" id="rhInProgressTitle">Continue Reading</h2>
+          <button class="rh-view-toggle" onclick="toggleReadingView()" title="Toggle grid / list view" aria-label="Toggle grid / list view" style="padding:4px 10px;font-size:0.85rem;background:#334155;border:none;border-radius:4px;color:#e2e8f0;cursor:pointer">&#x25A6;</button>
+        </div>
+        <div class="rh-grid" id="inProgressGrid"></div>
+      </section>
+      <section class="rh-section" aria-labelledby="rhCompletedTitle">
+        <div class="rh-section-header">
+          <h2 class="rh-section-title" id="rhCompletedTitle">Completed</h2>
+        </div>
+        <div class="rh-grid" id="completedGrid"></div>
+      </section>
+    </div>
+  </div>
+
   <!-- ════ LIBRARY TAB ════ -->
-  <div class="tab-panel active" id="tab-library">
+  <div class="tab-panel" id="tab-library">
     <div class="row" style="flex-wrap:wrap">
       <input type="text" id="libSearch" placeholder="FTS query (title / author / desc)..." oninput="loadLibrary()" style="flex:1;min-width:180px">
       <button onclick="toggleAdvancedSearch()" id="advToggleBtn" style="padding:5px 12px;font-size:0.78rem;background:#334155;border:none;border-radius:4px;color:#e2e8f0;cursor:pointer">&#x25BC; Advanced</button>
@@ -825,10 +913,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   <!-- ════ READER TAB (P3.1 Enhanced) ════ -->
   <div class="tab-panel" id="tab-reader">
     <div class="reader-layout" id="readerLayout">
-      <div class="fs-hotzone fs-left" id="fsLeftZone" title="Show contents &amp; reading list"></div>
-      <div class="fs-hotzone fs-right" id="fsRightZone" title="Show notes &amp; annotations"></div>
-      <div class="fs-edge-trigger fs-top" id="fsTopZone" title=""></div>
-      <div class="fs-edge-trigger fs-bottom" id="fsBottomZone" title=""></div>
+      <div class="fs-hotzone fs-left" id="fsLeftZone" role="button" tabindex="-1" aria-label="Show contents &amp; reading list"></div>
+      <div class="fs-hotzone fs-right" id="fsRightZone" role="button" tabindex="-1" aria-label="Show notes &amp; annotations"></div>
+      <div class="fs-edge-trigger fs-top" id="fsTopZone" aria-hidden="true"></div>
+      <div class="fs-edge-trigger fs-bottom" id="fsBottomZone" aria-hidden="true"></div>
 
       <!-- BL-022: Fullscreen glass footer scrubber -->
       <div class="fs-glass-footer" id="readerFsGlassFooter">
@@ -845,6 +933,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         <span class="gf-location" id="gfFsLocation"></span>
         <span class="gf-time" id="gfFsTime"></span>
       </div>
+      <!-- BL-038: Immersive reader chrome (BookOrbit-style, tap-center overlay) -->
+      <div class="im-chrome" id="imChrome">
+        <button class="im-icon" id="imCloseBtn" onclick="exitImmersiveReader()" title="Close reader (bookmarks saved)" aria-label="Close reader and return">&#x2715;</button>
+        <span class="im-title" id="imTitle" aria-live="polite"></span>
+        <button class="im-icon" id="imNotesBtn" onclick="toggleImmersiveAnnotations()" title="Highlights &amp; notes" aria-label="Toggle highlights and notes">&#x1F4DD;&#xFE0E;</button>
+        <button class="im-icon" id="imSettBtn" onclick="toggleImmersiveSettings()" title="Reader settings" aria-label="Reader settings">&#x2699;&#xFE0E;</button>
+      </div>
+      <div class="im-zone im-left" onclick="imTapZone('prev')" aria-hidden="true" tabindex="-1"></div>
+      <div class="im-zone im-right" onclick="imTapZone('next')" aria-hidden="true" tabindex="-1"></div>
       <!-- Reading List Sidebar (R1) -->
       <div class="reading-list-sidebar" id="readingListPanel">
         <h3>Reading List</h3>
@@ -1290,7 +1387,7 @@ var _csrfToken = null;
 })();
 
 // ── Tab switching ──
-var _previousTab = "library";
+var _previousTab = "reading";
 function switchTab(name, filters) {
   // P8.7: whole app is behind login — every tab requires auth.
   if (!window._authenticated) {
@@ -1309,10 +1406,10 @@ function switchTab(name, filters) {
     document.removeEventListener("keydown", readerKeyHandler);
   }
   // Track previous tab for return-from-reader
-  var activeTabEl = document.querySelector(".tab-btn.active");
-  if (activeTabEl && name !== "reader") {
-    var prev = activeTabEl.id ? activeTabEl.id.replace("tab-btn-", "") : activeTabEl.textContent.trim().toLowerCase();
-    if (prev !== "reader") _previousTab = prev;
+  var activePanelEl = document.querySelector(".tab-panel.active");
+  if (activePanelEl && name !== "reader") {
+    var prev = activePanelEl.id ? activePanelEl.id.replace("tab-", "") : "";
+    if (prev && prev !== "reader") _previousTab = prev;
   }
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
@@ -1320,7 +1417,7 @@ function switchTab(name, filters) {
   document.getElementById("tab-" + name).classList.add("active");
   document.body.classList.toggle("reader-open", name === "reader");
   // Persist active tab (except reader — persist the tab the reader came from)
-  try { localStorage.setItem("app.activeTab", name === "reader" ? (_previousTab || "library") : name); } catch(e) {}
+  try { localStorage.setItem("app.activeTab", name === "reader" ? (_previousTab || "reading") : name); } catch(e) {}
   if (name === "pipeline") {
     loadSummary();
     fetchSourceConfig();
@@ -1342,6 +1439,9 @@ function switchTab(name, filters) {
     loadSummary();
     loadSources();
     renderUdcTree();
+  }
+  if (name === "reading") {
+    loadReadingHome();
   }
   if (name === "reader") {
     loadReadingList();
@@ -1448,9 +1548,14 @@ function checkAuth() {
       // Restore saved tab on first successful auth
       if (!window._authTabRestored) {
         window._authTabRestored = true;
-        var savedTab = "library";
-        try { savedTab = localStorage.getItem("app.activeTab") || "library"; } catch(e) {}
-        if (savedTab !== "library") switchTab(savedTab);
+        var savedTab = "reading";
+        try { savedTab = localStorage.getItem("app.activeTab") || "reading"; } catch(e) {}
+        if (savedTab !== "reading") {
+          switchTab(savedTab);
+        } else {
+          // Re-run reading home now that auth is valid (startup call got 401)
+          loadReadingHome();
+        }
       }
     }
   }).catch(function() {});
@@ -1496,8 +1601,8 @@ function doLogin() {
       closeLoginModal();
       checkAuth();
       // Reload the saved tab now that we are authenticated (P8.7).
-      var savedTab = "library";
-      try { savedTab = localStorage.getItem("app.activeTab") || "library"; } catch(e) {}
+      var savedTab = "reading";
+      try { savedTab = localStorage.getItem("app.activeTab") || "reading"; } catch(e) {}
       var active = document.querySelector(".tab-panel.active");
       if (active) switchTab(active.id.replace("tab-", ""));
       else switchTab(savedTab);
@@ -3620,18 +3725,59 @@ function updateReadingListBookInfo() {
   }).catch(function() {});
 }
 
-function _setReadingListBtn(btn, inList) {
-  if (!btn) return;
-  btn.dataset.inlist = inList ? "1" : "0";
-  if (inList) {
-    btn.textContent = "\u2716";   // ✖ remove
-    btn.style.background = "#ef4444";
-    btn.title = "Remove from reading list";
-  } else {
-    btn.textContent = "\u2795";   // ＋ add
-    btn.style.background = "#0ea5e9";
-    btn.title = "Add to reading list";
+// ═══ Reading Home (default landing) ═══
+
+function loadReadingHome() {
+  fetch(API + "/api/reading-home?limit=200").then(function(r) { return r.json(); }).then(function(data) {
+    var ip = data.in_progress || [];
+    var done = data.completed || [];
+    renderGrid('inProgressGrid', ip);
+    renderGrid('completedGrid', done);
+  }).catch(function() {
+    document.getElementById('inProgressGrid').innerHTML = '<div class="rh-empty">Could not load</div>';
+    document.getElementById('completedGrid').innerHTML = '<div class="rh-empty">Could not load</div>';
+  });
+}
+
+function renderGrid(containerId, books) {
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  if (!books.length) {
+    el.innerHTML = '<div class="rh-empty">Nothing here yet</div>';
+    return;
   }
+  el.innerHTML = books.map(bookCardHTML).join('');
+}
+
+function bookCardHTML(b) {
+  var pct = b.progress_pct || 0;
+  var isDone = pct >= 100;
+  var progressHtml = isDone
+    ? '<div class="book-progress"><span class="book-status-chip"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 8.5l3.5 3.5L14 4"/></svg>Completed</span></div>'
+    : '<div class="book-progress"><div class="progress-bar" role="presentation"><div class="progress-fill" style="width:' + Math.min(100, pct) + '%"></div></div><span class="book-pct" aria-label="Reading progress ' + Math.round(pct) + ' percent">' + Math.round(pct) + '%</span></div>';
+  var author = esc(b.authors || b.udc_label || '');
+  var title = esc(b.title || b.filename || "Book #" + b.id);
+  return '<article class="book-card" data-book-id="' + b.id + '" tabindex="0" role="link" aria-label="' + title + ', ' + (isDone ? 'completed' : Math.round(pct) + ' percent read') + '" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();enterImmersiveReader(' + b.id + ')}" onclick="if(!event.target.closest(\'.read-now-btn\'))enterImmersiveReader(' + b.id + ')">'
+    + '<img class="book-cover" src="' + API + '/api/cover/' + b.id + '" loading="lazy" alt="" aria-hidden="true">'
+    + '<div class="book-info">'
+    + '<h3 class="book-title">' + title + '</h3>'
+    + (author ? '<p class="book-author">' + author + '</p>' : '')
+    + progressHtml
+    + '</div>'
+    + '<button class="read-now-btn" onclick="event.stopPropagation();enterImmersiveReader(' + b.id + ')">' + (isDone ? 'Read Again' : 'Read Now') + '</button>'
+    + '</article>';
+}
+
+function toggleReadingView() {
+  var btn = document.querySelector('.rh-view-toggle');
+  var list = false;
+  ['inProgressGrid', 'completedGrid'].forEach(function(id) {
+    var g = document.getElementById(id);
+    if (!g) return;
+    var isList = g.classList.toggle('rh-list-view');
+    list = list || isList;
+  });
+  if (btn) btn.textContent = list ? '\u25A6' : '\u2630';
 }
 
 function toggleReadingListForBook() {
@@ -4153,7 +4299,8 @@ function openReader(bookId) {
     if (document.getElementById("readerArea").style.display !== "none") {
       document.getElementById("readerDrawGroup").style.display = "flex";
     }
-  }).catch(() => alert("Could not load book info")).finally(() => { _openingReader = false; _openingBookId = null; });
+  }).catch(() => alert("Could not load book info"))
+   .finally(function() { _openingReader = false; });
 }
 
 function showReaderFallback(title, msg) {
@@ -4373,7 +4520,9 @@ function _loadEpubReader(bookId, area, restoreCfi) {
     var ra = document.getElementById(areaId);
     var rh = Math.max(ra.offsetHeight || 600, 400);
     var opts = { width: "100%", height: rh, spread: _readerTwoPage ? "auto" : "none" };
-    if (_readerScrollMode) opts.flow = "scrolled-doc";
+    var imAct = document.body.classList.contains("reader-immersive");
+    if (imAct && _readerScrollMode) { opts.flow = "paginated"; opts.spread = "none"; }
+    else if (_readerScrollMode) opts.flow = "scrolled-doc";
     ra.innerHTML = "";  // clear any leftover loading/converting panel before mounting
     readerRendition = readerBook.renderTo(areaId, opts);
     applyEpubTheme(_readerTheme);
@@ -5433,6 +5582,8 @@ function readerKeyHandler(e) {
   var tag = e.target && e.target.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA") return;
   if (e.key === "Escape") {
+    // Immersive mode: Esc exits back to the app
+    if (_immersiveActive) { exitImmersiveReader(); e.preventDefault(); return; }
     // Cascade: close search → close sidebar → unpin toolbar → exit fullscreen
     var sbl = document.getElementById("readerSearchBlock");
     if (sbl && sbl.style.display !== "none") { sbl.style.display = "none"; e.preventDefault(); return; }
@@ -5561,6 +5712,7 @@ function closeReader() {
   _lastProgress = 0; _epubLocationsStarted = false;
   document.removeEventListener("keydown", readerKeyHandler);
   readerBookId = null;
+  _openingReader = false;
   if (document.fullscreenElement) { document.exitFullscreen().catch(function(){}); }
   var sbBtn = document.getElementById("sidebarToggleBtn"); if (sbBtn) sbBtn.style.display = "none";
   // BL-004: keep the comic extraction cache between opens (TTL sweep handles
@@ -5572,9 +5724,8 @@ function closeReader() {
   document.getElementById("readerZoomGroup").style.display = "none";
   document.getElementById("annotationsSidebar").style.display = "none";
   applyCollapseState();
-  switchTab(_previousTab || "library");
+  switchTab(_previousTab || "reading");
   loadReadingList();
-  _openingReader = false; _openingBookId = null;  // BL-035: clear re-entrancy guard
 }
 
 function toggleFullscreen() {
@@ -5686,6 +5837,154 @@ function _fsBindVisibility() {
       if (!_fsPinnedToolbar && !_fsPanelOpen) _fsResetFooterHideTimer();
     });
   }
+}
+
+// ═══ BL-038: Immersive reader (BookOrbit-style) ═══
+var _immersiveActive = false;
+var _imBound = false;
+var _imHideTimer = null;
+var _imTapStartX = 0, _imTapStartY = 0;
+
+function enterImmersiveReader(bookId) {
+  if (!window._authenticated) { showLoginModal(); return; }
+  if (_openingReader) return;
+  var ap = document.querySelector(".tab-panel.active");
+  var cur = ap && ap.id ? ap.id.replace("tab-", "") : "";
+  if (cur && cur !== "reader") _previousTab = cur;
+  fetch(API + "/api/book/" + bookId).then(function(r) { return r.json(); }).then(function(b) {
+    var im = document.getElementById("imTitle");
+    if (im) im.textContent = b.title || "Book #" + bookId;
+  }).catch(function() {});
+  _activateImmersive();
+  openReader(bookId);
+}
+
+function _activateImmersive() {
+  _immersiveActive = true;
+  document.body.classList.add("reader-immersive");
+  var imc = document.getElementById("imChrome");
+  if (imc) imc.classList.remove("im-hidden");
+  var gf = document.getElementById("readerGlassFooter");
+  if (gf) gf.classList.remove("im-hidden");
+  _bindImmersive();
+  _imShowChrome();
+  if (typeof readerFormat === "string" && isEpubFormat(readerFormat) && readerRendition) {
+    setTimeout(function() {
+      if (_immersiveActive && readerRendition) try { readerRendition.resize(); } catch(e) {}
+    }, 80);
+  }
+}
+
+function _deactivateImmersive() {
+  _immersiveActive = false;
+  document.body.classList.remove("reader-immersive");
+  var imc = document.getElementById("imChrome");
+  if (imc) imc.classList.add("im-hidden");
+  var gf = document.getElementById("readerGlassFooter");
+  if (gf) gf.classList.remove("im-hidden");
+  var sb = document.getElementById("annotationsSidebar");
+  if (sb) sb.classList.remove("fs-show");
+  var rd = document.getElementById("readerSettingsDropdown");
+  if (rd) rd.style.display = "none";
+  _readerSettingsOpen = false;
+  _imClearChromeTimer();
+}
+
+function exitImmersiveReader() {
+  _deactivateImmersive();
+  closeReader();
+}
+
+function _imShowChrome() {
+  if (!_immersiveActive) return;
+  var imc = document.getElementById("imChrome");
+  var gf = document.getElementById("readerGlassFooter");
+  if (imc) imc.classList.remove("im-hidden");
+  if (gf) gf.classList.remove("im-hidden");
+  _imResetHideTimer();
+}
+function _imHideChrome() {
+  if (!_immersiveActive) return;
+  var imc = document.getElementById("imChrome");
+  var gf = document.getElementById("readerGlassFooter");
+  if (imc) imc.classList.add("im-hidden");
+  if (gf) gf.classList.add("im-hidden");
+}
+function _imResetHideTimer() {
+  if (_imHideTimer) clearTimeout(_imHideTimer);
+  _imHideTimer = setTimeout(_imHideChrome, 2600);
+}
+function _imClearChromeTimer() {
+  if (_imHideTimer) { clearTimeout(_imHideTimer); _imHideTimer = null; }
+}
+
+function _bindImmersive() {
+  if (_imBound) return;
+  _imBound = true;
+  var ra = document.getElementById("readerArea");
+  if (ra) {
+    ra.addEventListener("mousedown", function(e) { _imTapStartX = e.clientX; _imTapStartY = e.clientY; });
+    ra.addEventListener("mouseup", function(e) { _imHandleTap(e.clientX, e.clientY); });
+    ra.addEventListener("touchstart", function(e) {
+      if (e.touches.length) { _imTapStartX = e.touches[0].clientX; _imTapStartY = e.touches[0].clientY; }
+    }, { passive: true });
+    ra.addEventListener("touchend", function(e) {
+      var tc = e.changedTouches[0];
+      _imHandleTap(tc.clientX, tc.clientY);
+      _imTapStartX = _imTapStartY = -9999;  // swallow the synthetic mouseup after touch
+    }, { passive: true });
+  }
+  var imc = document.getElementById("imChrome");
+  if (imc) {
+    imc.addEventListener("mouseenter", function() { _imClearChromeTimer(); });
+    imc.addEventListener("mouseleave", function() { _imResetHideTimer(); });
+  }
+  var gf = document.getElementById("readerGlassFooter");
+  if (gf) {
+    gf.addEventListener("mouseenter", function() { _imClearChromeTimer(); });
+    gf.addEventListener("mouseleave", function() { _imResetHideTimer(); });
+  }
+  // Edge strips reveal the chrome on hover / touch
+  var tz = document.getElementById("fsTopZone");
+  var bz = document.getElementById("fsBottomZone");
+  if (tz) {
+    tz.addEventListener("mouseenter", function() { if (_immersiveActive) _imShowChrome(); });
+    tz.addEventListener("touchstart", function() { if (_immersiveActive) _imShowChrome(); }, { passive: true });
+  }
+  if (bz) {
+    bz.addEventListener("mouseenter", function() { if (_immersiveActive) _imShowChrome(); });
+    bz.addEventListener("touchstart", function() { if (_immersiveActive) _imShowChrome(); }, { passive: true });
+  }
+}
+
+function _imHandleTap(x, y) {
+  if (!_immersiveActive) return;
+  var dx = Math.abs(x - _imTapStartX), dy = Math.abs(y - _imTapStartY);
+  if (dx > 10 || dy > 10) return;
+  var sel = window.getSelection ? String(window.getSelection()) : "";
+  if (sel && sel.trim().length) return;
+  var w = window.innerWidth;
+  if (x < w * 0.15 || x > w * 0.85) return;  // edge zones do page turns
+  var imc = document.getElementById("imChrome");
+  var hidden = imc && imc.classList.contains("im-hidden");
+  if (hidden) { _imShowChrome(); } else { _imHideChrome(); }
+}
+
+function imTapZone(dir) {
+  if (dir === "prev") readerPrev(); else readerNext();
+}
+
+function toggleImmersiveAnnotations() {
+  var sb = document.getElementById("annotationsSidebar");
+  if (!sb) return;
+  var show = !sb.classList.contains("fs-show");
+  sb.classList.toggle("fs-show", show);
+  if (show) loadTimeline(readerBookId);
+  _imShowChrome();
+}
+function toggleImmersiveSettings() {
+  toggleReaderSettings();
+  _imShowChrome();
 }
 
 // P5.5 — Reader View Controls
@@ -6926,7 +7225,7 @@ loadDiagnostics();
 document.getElementById("statusLabel").textContent = "idle";
 // Fetch CSRF token (D7.16)
 fetch(API + "/api/csrf-token").then(function(r) { return r.json(); }).then(function(d) { _csrfToken = d.csrf_token; }).catch(function() {});
-loadLibrary({skipTree: true});
+loadReadingHome();
   loadSeriesFacets();
   loadSavedSearches();
 loadSummary();

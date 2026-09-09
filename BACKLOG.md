@@ -1201,3 +1201,66 @@ In fullscreen mode:
 5. Refreshing the page restores the previously active tab.
 6. The fullscreen toolbar also has bookmark/note/annotations buttons for
    quick access.
+
+---
+
+## BL-038 — Immersive reader (BookOrbit-style) + two-section reading pane
+
+- **Priority:** High
+- **Status:** implemented + deployed + verified 2026-09-09
+- **Reported:** 2026-09-09
+
+### Symptom / request
+
+- "Read Now" on a book should open a fullscreen (within the browser window)
+  reader; EPUBs were not rendering properly (tiny ~300px iframe sections in a
+  767px area, or a 4x-wide paginated iframe).
+- The reading pane cards' book names were not visible; the pane should look
+  like the library pane, split into two sections (in-progress on top,
+  completed below), showing only books actually read (>1%).
+- Fix usability and accessibility problems found along the way.
+
+### Implemented
+
+- **Immersive mode** (fills the browser window, no browser fullscreen):
+  `enterImmersiveReader()` adds `body.reader-immersive`, overlay `.im-chrome`
+  (close / title / notes / settings) auto-hides after 2.6s, center tap
+  toggles chrome, 15% edge zones (`imTapZone`) flip pages, Esc exits.
+- **EPUBs render full-page in immersive**: `loadReader()` (templates/
+  index.html:4525) forces `flow:"paginated"` + `spread:"none"` while
+  `body.reader-immersive` is set; `_activateImmersive()` calls
+  `readerRendition.resize()` if a reader is already open. Verified: iframe
+  767px fills the 767px area, page turns work, no body scroll.
+- **Two-section reading home**: `get_reading_home()` (db.py:1101) now returns
+  `{in_progress, completed}` from `reader_state` (progress > 1), split at
+  100%. Pane HTML = "Continue Reading" + "Completed" sections (no carousel);
+  cards are library-style vertical cover + title + author + progress bar /
+  "Completed" chip + Read Now / Read Again button. Titles use a 2-line clamp
+  and are always visible (found + fixed a `min-width:0` layout bug that
+  collapsed `.book-info` to 32px in the old desktop row layout).
+- **Usability/a11y**: focus-visible outlines on cards/buttons/im-icons,
+  `role=link` + Enter/Space on card, `aria-label`s on immersive buttons, tap
+  zones `aria-hidden`, `aria-live` reader title, `aria-label` on progress.
+
+### Verified
+
+- Full suite: 199 passed / 9 failed of 208 on the Pi. The 9 remaining are
+  all pre-existing (Settings dropdown click timeout, FS exit restore 143%,
+  Nav PDF book 67117 broken filename -> /read 500, and 7 responsive pane/
+  sidebar measurements). New tests: `test_reading_home_two_sections`,
+  `test_immersive_paginated_epub_renders` (checks `.epub-container` clips to
+  the area and the area fills the viewport), updated `_open_immersive_epub`.
+- Note: epubjs expands the paginated iframe to the full horizontal strip of
+  laid-out pages (e.g. 5120px for 4 pages); the visible page is the
+  `.epub-container` clipping div — do not assert on the raw iframe width.
+
+### Where
+
+- `templates/index.html`: reading-pane HTML ~725-741; `.book-card` CSS
+  208-232; `loadReadingHome`/`renderGrid`/`bookCardHTML` ~3746-3775;
+  `_activateImmersive` 5862; `enterImmersiveReader` 5849; `loadReader` epub
+  opts 4525; `.im-chrome` CSS 322-333.
+- `db.py`: `get_reading_home` 1101.
+- `test_reader_ui.py`: BL-038 block ~2424-2565, registrations ~2859-2866.
+
+---

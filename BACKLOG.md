@@ -1264,3 +1264,62 @@ In fullscreen mode:
 - `test_reader_ui.py`: BL-038 block ~2424-2565, registrations ~2859-2866.
 
 ---
+
+## BL-039 - Classic reader removed: immersive-only + Reader Menu + "Read Again"
+
+### Synopsis
+
+The "Classic Reader" is removed from the UI. Every open path (Reading Home
+cards, library "Read Online", reading-list items, conversion Retry) leads to
+the immersive reading view (BL-038). All classic reader toolbar features are
+now reachable from the settings gear on the immersive top ribbon, and
+"Read Again" starts a completed book from the beginning with a reset reading
+timer.
+
+### What changed
+
+- **Tab bar**: "Classic Reader" tab button deleted (the `#tab-reader` DOM is
+  kept as the reading surface). `switchTab` hardened so
+  `openReader` -> `switchTab('reader')` no longer crashes when there is no
+  matching `.tab-btn` to activate.
+- **Reader Menu**: the `#readerSettingsDropdown` panel (opened by the
+  immersive gear `#imSettBtn`, same as before) is now a full menu: Actions
+  row (Previous/Next, Contents + reading list via `toggleCollapseSidebar`,
+  in-book Search via `showReaderSearch`, Bookmark, Page note, Highlights &
+  notes, Export highlights), Page & layout row (Two-page, Manga RTL, native
+  fullscreen, Download), a Zoom row (A-/A+/reset with live `#rsZoomLevel`
+  label synced by `_applyReaderZoom`), then the existing Reader Settings rows
+  (theme/font/size/spacing/justify/hyphen/width). Two-page + RTL are
+  auto-hidden for EPUB (no-ops) via `syncReaderSettingsPanel`.
+- **Read Again**: completed-book button calls `readAgain(id)` ->
+  `enterImmersiveReader(id, {readAgain:true})` -> `openReader(id, freshStart)`.
+  Fresh start clears `reader.readTime.<id>` from localStorage, zeroes the
+  session timer, hides/dismisses the resume toast, and suppresses the
+  saved-position restore in `_loadEpubReader` so the book opens at page one.
+  Server progress is left untouched until the reader saves a new position.
+
+### Verified
+
+- Full suite: 202 passed / 9 failed of 211 on the Pi. The 9 are the same
+  pre-existing set (Settings dropdown click timeout, FS exit restore 143%,
+  Nav PDF book 67117 broken filename -> /read 500, and 6 responsive pane/sidebar
+  measurements) — no new regressions.
+- New tests: `test_bl039_no_classic_reader_tab`, `test_bl039_reader_menu_from_
+  immersive_gear`, `test_bl039_read_again_resets_timer_and_starts_fresh`.
+- `test_reading_home_two_sections` made deterministic + non-polluting: if no
+  in-progress book exists it seeds one at 45% via the reader-state API and
+  restores the original state afterwards. Tests that open books now restore
+  the book's reader-state after the run so repeated test runs don't erode
+  progress data.
+
+### Where
+
+- `templates/index.html`: tab-bar HTML ~571; `#readerSettingsDropdown`
+  ~1053-1095; `.rs-actions`/`.rs-act` CSS ~493; `switchTab` guard ~1455;
+  `bookCardHTML` Read Again ~3808; `toggleReaderSettings`/
+  `syncReaderSettingsPanel` ~4209-4256; `showReaderSearch`; `openReader(bookId,
+  freshStart)` ~4298; `_loadEpubReader` fresh-start branch ~4699;
+  `enterImmersiveReader`/`readAgain` ~5932-5949; `_applyReaderZoom` rs label.
+- `test_reader_ui.py`: BL-039 block ~2594-2690, registrations ~2886-2888.
+
+---

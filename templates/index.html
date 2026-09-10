@@ -490,6 +490,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .reader-settings-dropdown .rs-toggle { padding: 3px 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.7rem; font-weight: 600; }
   .rs-toggle-on { background: #0ea5e9; color: #0f172a; }
   .rs-toggle-off { background: #334155; color: #94a3b8; }
+  /* BL-039: Reader Menu (settings panel acts as the immersive reading menu) */
+  .reader-settings-dropdown .rs-head { display: flex; align-items: center; margin-bottom: 8px; }
+  .reader-settings-dropdown .rs-head strong { font-size: 0.8rem; color: #e2e8f0; }
+  .reader-settings-dropdown .rs-section-label { font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin: 6px 0 6px; }
+  .reader-settings-dropdown .rs-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+  .reader-settings-dropdown .rs-act { flex: 1 1 32px; min-width: 32px; height: 30px; padding: 0; border: none; border-radius: 6px; background: #334155; color: #e2e8f0; font-size: 0.95rem; line-height: 1; cursor: pointer; }
+  .reader-settings-dropdown .rs-act:hover { background: #0ea5e9; color: #0f172a; }
+  .reader-settings-dropdown .rs-divider { border-top: 1px solid #334155; margin: 8px 0; }
+  .reader-settings-dropdown .rs-head button:hover { color: #e2e8f0; }
   /* BL-028: Keyboard shortcuts modal */
   .shortcuts-modal { position: fixed; inset: 0; z-index: 2000; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); }
   .shortcuts-modal .sm-content { background: #1e293b; border: 1px solid #475569; border-radius: 10px; padding: 20px 24px; max-width: 480px; width: 90vw; max-height: 80vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
@@ -571,7 +580,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   <div class="tab-bar">
     <button class="tab-btn active" onclick="switchTab('reading')">Reading</button>
     <button class="tab-btn" onclick="switchTab('library')">Library</button>
-    <button class="tab-btn" onclick="switchTab('reader')">Classic Reader</button>
     <button class="tab-btn admin-tab" onclick="switchTab('pipeline')" style="display:none">Pipeline</button>
     <button class="tab-btn admin-tab" onclick="switchTab('quarantine')" id="quarantineTabBtn" style="display:none">Quarantine <span id="quarantineBadge" style="display:none;background:#701a22;color:#fca5a5;padding:1px 6px;border-radius:8px;font-size:0.65rem;margin-left:4px"></span></button>
     <button class="tab-btn admin-tab" onclick="switchTab('settings')" style="display:none">Settings</button>
@@ -1050,8 +1058,39 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <span id="readerLoadDetail" style="color:#94a3b8;margin-left:8px"></span>
         </div>
         <div id="readerArea" style="width:100%;flex:1;border:1px solid #334155;border-radius:6px;background:#f8fafc;overflow-y:auto"></div>
-        <!-- BL-026: Settings dropdown panel -->
-        <div class="reader-settings-dropdown" id="readerSettingsDropdown">
+        <!-- BL-026: Settings panel — also the immersive Reader Menu (BL-039) -->
+        <div class="reader-settings-dropdown" id="readerSettingsDropdown" role="menu" aria-label="Reader menu">
+          <div class="rs-head">
+            <strong>Reader Menu</strong>
+            <button onclick="toggleReaderSettings()" title="Close menu" aria-label="Close reader menu" style="margin-left:auto;background:none;border:none;color:#94a3b8;font-size:0.95rem;cursor:pointer;padding:0 4px">&times;</button>
+          </div>
+          <div class="rs-section-label">Actions</div>
+          <div class="rs-actions">
+            <button class="rs-act" onclick="readerPrev()" title="Previous page / chapter" aria-label="Previous page">&#8592;</button>
+            <button class="rs-act" onclick="readerNext()" title="Next page / chapter" aria-label="Next page">&#8594;</button>
+            <button class="rs-act" onclick="toggleCollapseSidebar('left')" title="Contents &amp; reading list" aria-label="Contents and reading list">&#9776;</button>
+            <button class="rs-act" onclick="showReaderSearch()" title="Search in book" aria-label="Search in book">&#8981;</button>
+            <button class="rs-act" onclick="addBookmark()" title="Add bookmark" aria-label="Add bookmark">&#128278;</button>
+            <button class="rs-act" onclick="addPageNote()" title="Add page note" aria-label="Add page note">&#9998;</button>
+            <button class="rs-act rs-ann" onclick="toggleCollapseSidebar('right')" title="Highlights &amp; notes" aria-label="Highlights and notes">&#128221;</button>
+            <button class="rs-act" onclick="exportHighlights()" title="Export highlights" aria-label="Export highlights">&#128228;</button>
+          </div>
+          <div class="rs-section-label">Page &amp; layout</div>
+          <div class="rs-actions">
+            <button class="rs-act rs-pageonly" id="rsTwoPageBtn" onclick="readerToggleTwoPage()" title="Two-page view" aria-label="Two-page view">&#8646;</button>
+            <button class="rs-act rs-pageonly" id="rsRtlBtn" onclick="toggleReaderRtl()" title="Manga / right-to-left" aria-label="Manga right to left">&#8644;</button>
+            <button class="rs-act" onclick="toggleFullscreen()" title="Fullscreen" aria-label="Toggle fullscreen">&#9974;</button>
+            <button class="rs-act" onclick="window.open(API + '/api/book/' + readerBookId + '/download', '_blank')" title="Download file" aria-label="Download book file">&#11015;</button>
+          </div>
+          <div class="rs-divider"></div>
+          <div class="rs-row">
+            <span class="rs-label">Zoom</span>
+            <button onclick="readerZoomOut()" style="padding:2px 6px;border:none;border-radius:4px;cursor:pointer;background:#334155;color:#e2e8f0" title="Zoom out">A&#x2212;</button>
+            <span id="rsZoomLevel" style="font-size:0.72rem;color:#94a3b8;min-width:34px;text-align:center">100%</span>
+            <button onclick="readerZoomIn()" style="padding:2px 6px;border:none;border-radius:4px;cursor:pointer;background:#334155;color:#e2e8f0" title="Zoom in">A&#x2B;</button>
+            <button onclick="readerZoomReset()" style="padding:2px 6px;border:none;border-radius:4px;cursor:pointer;background:#475569;color:#e2e8f0" title="Reset zoom">Reset</button>
+          </div>
+          <div class="rs-divider"></div>
           <h4>Reader Settings</h4>
           <div class="rs-row">
             <span class="rs-label">Theme</span>
@@ -1413,7 +1452,8 @@ function switchTab(name, filters) {
   }
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
-  document.querySelector(`.tab-btn[onclick*="${name}"]`).classList.add("active");
+  var btn = document.querySelector(`.tab-btn[onclick*="${name}"]`);
+  if (btn) btn.classList.add("active");
   document.getElementById("tab-" + name).classList.add("active");
   document.body.classList.toggle("reader-open", name === "reader");
   // Persist active tab (except reader — persist the tab the reader came from)
@@ -3524,7 +3564,7 @@ function showDetail(bookId) {
       html += '<button onclick="reCopyBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a">Re-copy</button>';
       html += '<button onclick="window.location.href=API+\'/api/book/' + bookId + '/download\'" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#6366f1;color:#f8fafc;font-weight:600">Download</button>';
       html += '<button onclick="convertBook(' + bookId + ')" title="Convert to another format (calibre ebook-convert)" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#6366f1;color:#f8fafc;font-weight:600">Download as…</button>';
-      html += '<button onclick="openReader(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f97316;color:#0f172a;font-weight:600">Read Online</button>';
+      html += '<button onclick="enterImmersiveReader(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f97316;color:#0f172a;font-weight:600">Read Online</button>';
       html += '<button onclick="enrichBook(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#f59e0b;color:#0f172a;font-weight:600">Enrich</button>';
       html += '<button onclick="document.getElementById(\'coverUploadInput\').click()" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#64748b;color:#0f172a;font-weight:600">Replace Cover</button>';
       html += '<input type="file" id="coverUploadInput" accept="image/*" style="display:none" onchange="uploadCover(' + bookId + ', this)">';
@@ -3608,6 +3648,7 @@ let readerPages = [];
 let readerBookId = null;
 var _openingReader = false;  // BL-035: re-entrancy guard
 var _openingBookId = null;   // BL-035: track which book is being opened
+var _readingFreshStart = false; // BL-039: "Read Again" — suppress restore, start at beginning
 let readerProgressTimer = null;
 let readerSaveTimer = null;
 let _readerZoom = 100;
@@ -3680,7 +3721,7 @@ function loadReadingList() {
       groups[g].forEach(function(i) {
         var pct = i.progress_pct || 0;
         var isActive = (readerBookId && i.book_id === readerBookId);
-        html += '<div class="rl-item' + (isActive ? ' active' : '') + '" onclick="openReader(' + i.book_id + ')">';
+        html += '<div class="rl-item' + (isActive ? ' active' : '') + '" onclick="enterImmersiveReader(' + i.book_id + ')">';
         html += '<div style="display:flex;justify-content:space-between;align-items:center">';
         html += '<div class="rl-title">' + esc(i.title || i.filename || "Book #" + i.book_id) + '</div>';
         html += '<span class="rl-close" onclick="event.stopPropagation();removeReadingListItem(' + i.book_id + ')" title="Remove from list">\u2715</span>';
@@ -3764,7 +3805,7 @@ function bookCardHTML(b) {
     + (author ? '<p class="book-author">' + author + '</p>' : '')
     + progressHtml
     + '</div>'
-    + '<button class="read-now-btn" onclick="event.stopPropagation();enterImmersiveReader(' + b.id + ')">' + (isDone ? 'Read Again' : 'Read Now') + '</button>'
+    + '<button class="read-now-btn" onclick="event.stopPropagation();' + (isDone ? "readAgain(" : "enterImmersiveReader(") + b.id + ')">' + (isDone ? 'Read Again' : 'Read Now') + '</button>'
     + '</article>';
 }
 
@@ -4165,8 +4206,11 @@ function toggleReaderSettings() {
   _readerSettingsOpen = !_readerSettingsOpen;
   var dd = document.getElementById("readerSettingsDropdown");
   var btn = document.getElementById("readerSettingsBtn");
+  var imSett = document.getElementById("imSettBtn");
   if (dd) dd.style.display = _readerSettingsOpen ? "block" : "none";
-  if (btn) btn.style.background = _readerSettingsOpen ? "#0ea5e9" : "#475569";
+  var activeBg = _readerSettingsOpen ? "#0ea5e9" : "#475569";
+  if (btn) btn.style.background = activeBg;
+  if (imSett) imSett.style.background = _readerSettingsOpen ? "#0ea5e9" : "";
   if (_readerSettingsOpen) syncReaderSettingsPanel();
 }
 function syncReaderSettingsPanel() {
@@ -4174,8 +4218,15 @@ function syncReaderSettingsPanel() {
   // Show/hide EPUB-only rows
   var epubRows = document.querySelectorAll(".rs-epub-only");
   for (var i = 0; i < epubRows.length; i++) epubRows[i].style.display = isEpub ? "flex" : "none";
+  // BL-039: page-layout actions (two-page / RTL) are no-ops for EPUB
+  var pageBtns = ["rsTwoPageBtn", "rsRtlBtn"];
+  for (var j = 0; j < pageBtns.length; j++) {
+    var pb = document.getElementById(pageBtns[j]);
+    if (pb) pb.style.display = isEpub ? "none" : "";
+  }
   // Theme
   var th = document.getElementById("rsTheme"); if (th) th.value = _readerTheme;
+  var zl = document.getElementById("rsZoomLevel"); if (zl) zl.textContent = _readerZoom + "%";
   if (isEpub) {
     var ff = document.getElementById("rsFontFamily"); if (ff) ff.value = (document.getElementById("readerFontFamily") || {}).value || "serif";
     var fs = document.getElementById("rsFontLevel"); if (fs) fs.textContent = _readerZoom + "%";
@@ -4186,6 +4237,24 @@ function syncReaderSettingsPanel() {
     var cwVal = (_readerPrefs.get(readerFormat, readerBookId) || {}).contentWidth || 1000;
     if (cw) cw.value = cwVal; if (cwL) cwL.textContent = cwVal;
   }
+}
+
+// BL-039: open the left sidebar (Contents/reading list) and reveal in-book search.
+function showReaderSearch() {
+  var el = document.getElementById("readingListPanel");
+  if (!el) return;
+  if (window.innerWidth <= 768) {
+    el.classList.add("fs-show");
+    var bd = document.getElementById("sbMobileBackdrop");
+    if (bd) bd.style.display = "block";
+  } else {
+    _sbCollapsed.left = false;
+    applyCollapseState();
+  }
+  var sb = document.getElementById("readerSearchBlock");
+  if (sb) sb.style.display = "block";
+  var inp = document.getElementById("readerSearchInput");
+  if (inp) inp.focus();
 }
 
 // ═══ BL-025: Resume toast ═══
@@ -4226,10 +4295,11 @@ function dismissResumeToast() {
 
 // ═══ Open Reader ═══
 
-function openReader(bookId) {
+function openReader(bookId, freshStart) {
   if (_openingReader) return;  // BL-035: prevent re-entrancy from switchTab("reader")
   _openingReader = true;
   _openingBookId = bookId;
+  _readingFreshStart = !!freshStart;
   fetch(API + "/api/book/" + bookId).then(r => r.json()).then(b => {
     const ext = ((b.source_path || "").split(".").pop() || "").toLowerCase();
     readerFormat = ext;
@@ -4243,7 +4313,13 @@ function openReader(bookId) {
     _showGlassFooter(true);
     _bindFooterScrub();
     _setFooterLocation("");
-    _readingTimerElapsed = _getReadingTime(bookId);
+    if (freshStart) {
+      // BL-039: "Read Again" — reset the session timer to a clean slate.
+      try { localStorage.removeItem("reader.readTime." + bookId); } catch(e) {}
+      _readingTimerElapsed = 0;
+    } else {
+      _readingTimerElapsed = _getReadingTime(bookId);
+    }
     _updateReadingTimeDisplay(_readingTimerElapsed);
     _startReadingTimer();
     _readerTwoPage = false;  // BL-003: two-page mode is per-book
@@ -4272,11 +4348,16 @@ function openReader(bookId) {
     }).catch(function() {});
     switchTab("reader");
     // BL-025: check for saved reader state and show resume toast
-    fetch(API + "/api/book/" + bookId + "/reader-state").then(function(r) { return r.json(); }).then(function(state) {
-      if (state && state.location && (state.progress_pct || 0) > 2) {
-        _showResumeToast(bookId, ext, state);
-      }
-    }).catch(function() {});
+    if (freshStart) {
+      dismissResumeToast();
+      _resumeLocation = null;
+    } else {
+      fetch(API + "/api/book/" + bookId + "/reader-state").then(function(r) { return r.json(); }).then(function(state) {
+        if (state && state.location && (state.progress_pct || 0) > 2) {
+          _showResumeToast(bookId, ext, state);
+        }
+      }).catch(function() {});
+    }
     if (epubLike) {
       loadReader(bookId, b);
     } else if (ext === "pdf") {
@@ -4300,7 +4381,7 @@ function openReader(bookId) {
       document.getElementById("readerDrawGroup").style.display = "flex";
     }
   }).catch(() => alert("Could not load book info"))
-   .finally(function() { _openingReader = false; });
+   .finally(function() { _openingReader = false; _readingFreshStart = false; });
 }
 
 function showReaderFallback(title, msg) {
@@ -4614,7 +4695,10 @@ function _loadEpubReader(bookId, area, restoreCfi) {
         try { readerRendition.display(state.location); } catch(e) {}
       }
     };
-    if (restoreCfi) {
+    if (_readingFreshStart) {
+      // BL-039: "Read Again" — stay on the opening page (start of book)
+      _readingFreshStart = false;
+    } else if (restoreCfi) {
       try { readerRendition.display(restoreCfi); } catch(e) {}
     } else {
       fetch(API + "/api/book/" + bookId + "/reader-state").then(r => r.json()).then(restoreFromState).catch(function() {});
@@ -5845,7 +5929,7 @@ var _imBound = false;
 var _imHideTimer = null;
 var _imTapStartX = 0, _imTapStartY = 0;
 
-function enterImmersiveReader(bookId) {
+function enterImmersiveReader(bookId, opts) {
   if (!window._authenticated) { showLoginModal(); return; }
   if (_openingReader) return;
   var ap = document.querySelector(".tab-panel.active");
@@ -5856,7 +5940,12 @@ function enterImmersiveReader(bookId) {
     if (im) im.textContent = b.title || "Book #" + bookId;
   }).catch(function() {});
   _activateImmersive();
-  openReader(bookId);
+  openReader(bookId, opts && opts.readAgain);
+}
+
+// BL-039: "Read Again" — reset the timer and start at the beginning of the book.
+function readAgain(bookId) {
+  enterImmersiveReader(bookId, { readAgain: true });
 }
 
 function _activateImmersive() {
@@ -6051,6 +6140,8 @@ function _refreshReaderScroll() {
 function _applyReaderZoom() {
   var lbl = document.getElementById("readerZoomLevel");
   if (lbl) lbl.textContent = _readerZoom + "%";
+  var rsLbl = document.getElementById("rsZoomLevel");
+  if (rsLbl) rsLbl.textContent = _readerZoom + "%";
   if (readerFormat === "epub" && readerRendition) {
     readerRendition.themes.fontSize((_readerZoom / 100) + "em");
     return;

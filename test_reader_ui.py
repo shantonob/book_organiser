@@ -2512,21 +2512,41 @@ def test_reading_home_two_sections(page):
         page.evaluate("switchTab('reading')")
         time.sleep(3)
         info = page.evaluate("""async () => {
-            const r = await fetch(API + '/api/reading-home?limit=200');
-            const d = await r.json();
+            const gh = await (await fetch(API + '/api/reading-home?limit=200')).json();
+            const ip = gh.in_progress || [], cp = gh.completed || [];
+            // Deterministic: if no in-progress book exists, seed one (progress 45%),
+            // record its original state so we can restore it afterwards.
+            let seedId = null, seedBefore = null;
+            if (ip.length === 0) {
+                const ids = new Set([...cp, ...ip].map(b => b.id));
+                const s = await (await fetch('/api/search?limit=200')).json();
+                const cand = (s.results || []).find(b => !ids.has(b.id));
+                if (cand) {
+                    seedId = cand.id;
+                    seedBefore = (await (await fetch(API + '/api/book/' + seedId + '/reader-state')).json()) || {};
+                    await fetch(API + '/api/book/' + seedId + '/reader-state', {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ location: 'seed', progress_pct: 45 })
+                    });
+                    loadReadingHome();
+                    await new Promise(r => setTimeout(r, 800));
+                }
+            }
             const ipGrid = document.getElementById('inProgressGrid');
             const doneGrid = document.getElementById('completedGrid');
             const firstIp = ipGrid ? ipGrid.querySelector('.book-card') : null;
             const fp = firstIp ? {
                 hasTitle: (firstIp.querySelector('.book-title')?.textContent || '').trim().length > 0,
-                titleW: Math.round((firstIp.querySelector('.book-title')?.getBoundingClientRect().width) || 0)
+                titleW: Math.round(firstIp.querySelector('.book-title')?.getBoundingClientRect().width || 0)
             } : null;
             return {
+                seeded: seedId,
+                seedBefore: seedBefore,
                 api: {
-                    in_progress: (d.in_progress||[]).map(b => b.id),
-                    completed: (d.completed||[]).map(b => b.id),
-                    ipAllPct: (d.in_progress||[]).every(b => b.progress_pct > 1 && b.progress_pct < 100),
-                    doneAllPct: (d.completed||[]).every(b => b.progress_pct >= 100)
+                    in_progress: ip.map(b => b.id),
+                    completed: cp.map(b => b.id),
+                    ipAllPct: ip.every(b => b.progress_pct > 1 && b.progress_pct < 100),
+                    doneAllPct: cp.every(b => b.progress_pct >= 100)
                 },
                 grids: {
                     ipCards: ipGrid ? ipGrid.querySelectorAll('.book-card').length : -1,
@@ -2535,11 +2555,21 @@ def test_reading_home_two_sections(page):
                 firstCard: fp
             };
         }""")
-        assert isinstance(info["api"]["in_progress"], list) and isinstance(info["api"]["completed"], list), "reading-home shape wrong"
         assert info["api"]["ipAllPct"], "in_progress contains out-of-range pct"
         assert info["api"]["doneAllPct"], "completed contains pct < 100"
-        assert info["grids"]["ipCards"] >= 0 and info["grids"]["doneCards"] >= 0, "section grids missing"
+        assert info["grids"]["ipCards"] > 0, "in-progress grid not populated"
+        assert info["grids"]["doneCards"] > 0, "completed grid not populated"
         assert info["firstCard"] and info["firstCard"]["hasTitle"] and info["firstCard"]["titleW"] > 0, "card title not visible"
+        if info["seeded"]:
+            page.evaluate("""async (o) => {
+                const before = o.before && o.before.progress_pct ? o.before : { location: '', progress_pct: 0 };
+                await fetch(API + '/api/book/' + o.id + '/reader-state', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ location: before.location || '', progress_pct: before.progress_pct || 0 })
+                });
+                loadReadingHome();
+            }""", {"id": info["seeded"], "before": info["seedBefore"]})
+            time.sleep(0.5)
     return _t
 
 def test_immersive_paginated_epub_renders(page):
@@ -2589,6 +2619,121 @@ def test_immersive_paginated_epub_renders(page):
             assert abs(info["containerH"] - info["areaH"]) <= info["areaH"] * 0.1, \
                 f"container {info['containerH']} not aligned with area {info['areaH']}"
         assert abs(info["bodyScrollH"] - info["vh"]) < 15, f"body scrolls (not immersive fullscreen): {info['bodyScrollH']} vs {info['vh']}"
+    return _t
+
+# ── BL-039: Classic reader removed → immersive-only, reader menu, read-again ──
+
+def test_bl039_no_classic_reader_tab(page):
+    def _t():
+        _refresh_session(page)
+        btns = page.evaluate("""
+            () => Array.from(document.querySelectorAll('.tab-bar .tab-btn')).map(b => b.textContent.trim())
+        """)
+        assert "Classic Reader" not in btns, f"Classic Reader tab still present: {btns}"
+        # openReader -> switchTab('reader') must still work without a matching tab-btn
+        page.evaluate("""async () => {
+            const r = await fetch('/api/search?limit=1');
+            const d = await r.json();
+            if (d.results && d.results.length > 0) openReader(d.results[0].id);
+        }""")
+        page.wait_for_function("() => document.querySelector('.tab-panel.active')?.id === 'tab-reader'", timeout=12000)
+        time.sleep(1.5)
+        panel = page.evaluate("() => document.querySelector('.tab-panel.active')?.id || ''")
+        assert panel == "tab-reader", f"switchTab('reader') failed with no tab-btn: {panel}"
+    return _t
+
+def test_bl039_reader_menu_from_immersive_gear(page):
+    def _t():
+        _refresh_session(page)
+        page.evaluate("""async () => {
+            const r = await fetch(API + '/api/reading-home?limit=200');
+            const d = await r.json();
+            const all = (d.in_progress || []).concat(d.completed || []);
+            const epub = all.find(b => b.format === 'epub');
+            if (!epub) throw new Error('no epub in reading home');
+            enterImmersiveReader(epub.id);
+        }""")
+        page.wait_for_function("() => document.body.classList.contains('reader-immersive') && typeof readerFormat === 'string' && readerFormat === 'epub'", timeout=15000)
+        time.sleep(1.0)
+        page.evaluate("toggleImmersiveSettings()")
+        time.sleep(0.3)
+        info = page.evaluate("""() => {
+            const dd = document.getElementById('readerSettingsDropdown');
+            const acts = dd ? dd.querySelectorAll('.rs-act') : [];
+            const twoPg = document.getElementById('rsTwoPageBtn');
+            const rtl = document.getElementById('rsRtlBtn');
+            const theme = document.getElementById('rsTheme');
+            return {
+                visible: !!dd && dd.style.display === 'block' && dd.offsetHeight > 0,
+                actCount: acts.length,
+                searchPresent: Array.from(acts).some(b => b.title === 'Search in book'),
+                prevPresent: Array.from(acts).some(b => b.title.indexOf('Previous') !== -1),
+                nextPresent: Array.from(acts).some(b => b.title.indexOf('Next') !== -1),
+                themeVisible: !!theme && theme.offsetHeight > 0,
+                twoPageHidden: !!twoPg && getComputedStyle(twoPg).display === 'none',
+                rtlHidden: !!rtl && getComputedStyle(rtl).display === 'none'
+            };
+        }""")
+        assert info["visible"], "reader menu did not open from immersive gear"
+        assert info["actCount"] >= 8, f"expected >=8 action buttons, got {info['actCount']}"
+        assert info["searchPresent"], "in-book search action missing"
+        assert info["prevPresent"] and info["nextPresent"], "prev/next actions missing"
+        assert info["themeVisible"], "theme select not rendered in menu"
+        assert info["twoPageHidden"] is True, "two-page should be hidden for EPUB"
+        assert info["rtlHidden"] is True, "RTL should be hidden for EPUB"
+    return _t
+
+def test_bl039_read_again_resets_timer_and_starts_fresh(page):
+    def _t():
+        _refresh_session(page)
+        # Pre-seed a false reading-time so a reset is actually observable; target a
+        # completed book and restore its progress afterwards so tests don't erode data.
+        seed = page.evaluate("""async () => {
+            const r = await fetch(API + '/api/reading-home?limit=200');
+            const d = await r.json();
+            const cp = d.completed || [];
+            const book = cp.find(b => b.format === 'epub') || cp[0] || (d.in_progress || [])[0];
+            if (!book) throw new Error('no books');
+            const before = (await (await fetch(API + '/api/book/' + book.id + '/reader-state')).json()) || {};
+            try { localStorage.setItem('reader.readTime.' + book.id, '60000'); } catch(e) {}
+            enterImmersiveReader(book.id);
+            return { id: book.id, before: before };
+        }""")
+        page.wait_for_function("() => document.body.classList.contains('reader-immersive')", timeout=12000)
+        time.sleep(1.5)
+        page.evaluate("readAgain(" + str(seed["id"]) + ")")
+        page.wait_for_function("() => document.body.classList.contains('reader-immersive')", timeout=12000)
+        time.sleep(1.5)
+        info = page.evaluate("""() => {
+            const key = _openingBookId ? 'reader.readTime.' + _openingBookId : null;
+            const raw = key ? localStorage.getItem(key) : null;
+            const toast = document.getElementById('readerResumeToast');
+            return {
+                elapsed: _readingTimerElapsed,
+                stored: raw,
+                toastDisplay: toast ? toast.style.display : null,
+                freshFlag: _readingFreshStart,
+                immersive: document.body.classList.contains('reader-immersive'),
+                format: (typeof readerFormat === 'string') ? readerFormat : String(readerFormat)
+            };
+        }""")
+        assert info["immersive"], "read-again did not stay in immersive view"
+        assert info["elapsed"] == 0, f"timer not reset: {info['elapsed']}"
+        assert info["stored"] in (None, "0"), f"reader.readTime not cleared: {info['stored']}"
+        assert info["toastDisplay"] in ("none", "", None), f"resume toast still shown on read-again: {info['toastDisplay']}"
+        assert info["freshFlag"] is False, "fresh-start flag not consumed"
+        # Close the reader (flushes ~0% + stops the progress poller), then restore the
+        # book's original progress so the fixtures stay intact.
+        page.evaluate("exitImmersiveReader()")
+        time.sleep(1.0)
+        page.evaluate("""async (o) => {
+            const before = o.before && o.before.progress_pct ? o.before : { location: '', progress_pct: 0 };
+            await fetch(API + '/api/book/' + o.id + '/reader-state', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ location: before.location || '', progress_pct: before.progress_pct || 0 })
+            });
+        }""", {"id": seed["id"], "before": seed["before"]})
+        time.sleep(0.5)
     return _t
 
 # ── Main ───────────────────────────────────────────────────────────────────
@@ -2875,6 +3020,11 @@ def main():
 ("BL-038: exit returns reading",         test_bl038_immersive_exit_returns_reading(page)),
 ("BL-038: reading-home two sections",    test_reading_home_two_sections(page)),
 ("BL-038: immersive epub paginated",     test_immersive_paginated_epub_renders(page)),
+
+# BL-039: Classic reader removed, reader menu, read-again reset
+("BL-039: no classic reader tab",         test_bl039_no_classic_reader_tab(page)),
+("BL-039: reader menu from gear",         test_bl039_reader_menu_from_immersive_gear(page)),
+("BL-039: read-again resets timer",       test_bl039_read_again_resets_timer_and_starts_fresh(page)),
 
             # Final
             ("Close reader",                       test_final_close(page)),

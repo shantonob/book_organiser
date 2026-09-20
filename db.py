@@ -131,6 +131,23 @@ def init_db(db_path):
     except Exception:
         pass
 
+    # BL-041: weighted top-N UDC category guesses per book
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS book_category_scores (
+            file_id     INTEGER NOT NULL,
+            udc_code    TEXT NOT NULL,
+            udc_label   TEXT,
+            weight      INTEGER NOT NULL DEFAULT 0,
+            rank        INTEGER NOT NULL DEFAULT 0,
+            source      TEXT NOT NULL DEFAULT 'classifier',
+            updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (file_id, udc_code),
+            FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_bcs_file ON book_category_scores(file_id);
+        CREATE INDEX IF NOT EXISTS idx_bcs_code ON book_category_scores(udc_code);
+    """)
+
     # Daemon status table for IPC (headless daemon ↔ API)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS daemon_status (
@@ -439,6 +456,34 @@ def get_tags(conn, file_id):
     """Return all tags for a file, grouped by type."""
     rows = conn.execute(
         "SELECT tag, tag_type, tag_label, score FROM tags WHERE file_id=? ORDER BY tag_type, score DESC",
+        (file_id,)
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def save_category_scores(conn, file_id, categories, source="classifier"):
+    """Replace the weighted top-N category guesses for a book."""
+    from datetime import datetime
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        "DELETE FROM book_category_scores WHERE file_id=? AND source=?",
+        (file_id, source)
+    )
+    for rank, cat in enumerate(categories, start=1):
+        conn.execute(
+            "INSERT OR REPLACE INTO book_category_scores "
+            "(file_id, udc_code, udc_label, weight, rank, source, updated_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (file_id, cat["tag"], cat.get("tag_label"), int(cat.get("weight", 0)),
+             rank, source, now)
+        )
+
+
+def get_category_scores(conn, file_id):
+    """Return the weighted top-N categories for a book, ranked."""
+    rows = conn.execute(
+        "SELECT udc_code, udc_label, weight, rank, source, updated_at "
+        "FROM book_category_scores WHERE file_id=? ORDER BY rank ASC",
         (file_id,)
     ).fetchall()
     return [dict(r) for r in rows]

@@ -416,21 +416,34 @@ def run_phase_metadata(source=None, inbox_files=None):
             logger.warning("cover download failed for file_id=%s: %s", file_id, e)
 
         state.update(log_msg=f"  ▶ classifying {fname}")
+        enriched_map = enriched or {}
+        final_title = enriched_map.get("title") or raw_meta.get("title") or clean_title
+        final_authors = enriched_map.get("authors") or raw_meta.get("authors") or clean_authors
+        final_subjects = enriched_map.get("subjects") or raw_meta.get("subjects")
+        final_desc = enriched_map.get("description") or raw_meta.get("description")
+        final_publisher = enriched_map.get("publisher") or raw_meta.get("publisher")
+
         udc_code, udc_label = classify(
-            raw_meta.get("title"),
-            raw_meta.get("authors"),
-            raw_meta.get("subjects"),
-            raw_meta.get("description"),
+            final_title,
+            final_authors,
+            final_subjects,
+            final_desc,
+            filename=fname,
+            publisher=final_publisher,
         )
         upsert_metadata(conn, file_id, udc_code=udc_code, udc_label=udc_label)
 
         all_udc_tags = classify_all(
-            raw_meta.get("title"),
-            raw_meta.get("authors"),
-            raw_meta.get("subjects"),
-            raw_meta.get("description"),
+            final_title,
+            final_authors,
+            final_subjects,
+            final_desc,
+            filename=fname,
+            publisher=final_publisher,
         )
         set_tags(conn, file_id, all_udc_tags, tag_type="udc")
+        from db import save_category_scores
+        save_category_scores(conn, file_id, all_udc_tags)
 
         cover_data = raw_meta.get("cover_data")
         if cover_data:

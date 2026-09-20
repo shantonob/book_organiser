@@ -2736,6 +2736,85 @@ def test_bl039_read_again_resets_timer_and_starts_fresh(page):
         time.sleep(0.5)
     return _t
 
+def test_bl041_reclassify_api(page):
+    def _t():
+        _refresh_session(page)
+        token = page.evaluate("() => window._csrfToken")
+        assert token, "No CSRF token available"
+        result = page.evaluate("""async (tok) => {
+            const r = await fetch('/api/reclassify', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': tok},
+                body: JSON.stringify({limit: 5})
+            });
+            return {ok: r.ok, d: await r.json()};
+        }""", token)
+        assert result["ok"], f"reclassify request failed: {result}"
+        d = result["d"]
+        assert d.get("status") == "ok", f"bad reclassify status: {d}"
+        for k in ("scanned", "categorized", "uncat", "uncategorized_before", "uncategorized_after"):
+            assert k in d, f"missing key {k!r} in response {d}"
+    return _t
+
+def test_bl041_categories_top5_weights(page):
+    def _t():
+        result = page.evaluate("""async () => {
+            const r = await fetch('/api/search?limit=50&sort=id&order=asc');
+            const d = await r.json();
+            const book = (d.results || []).find(b => b.udc_code && b.udc_code !== '000');
+            if (!book) return null;
+            const c = await fetch('/api/book/' + book.id + '/categories');
+            const cd = await c.json();
+            return {udc: book.udc_code, cats: (cd.categories || [])};
+        }""")
+        assert result, "No categorised book found after reclassify"
+        cats = result["cats"]
+        assert cats, "categories endpoint returned no categories"
+        assert len(cats) <= 5, f"more than 5 categories returned: {cats}"
+        weights = [c["weight"] for c in cats]
+        assert sum(weights) == 100, f"category weights do not sum to 100: {sum(weights)} ({cats})"
+        assert all(w >= 0 for w in weights), f"negative weight present: {weights}"
+        assert weights == sorted(weights, reverse=True), f"weights not sorted desc: {weights}"
+        assert all(c["udc_code"] for c in cats), "missing udc_code on a category"
+    return _t
+
+def test_bl041_detail_likely_categories(page):
+    def _t():
+        _refresh_session(page)
+        bid = page.evaluate("""async () => {
+            const r = await fetch('/api/search?limit=60&sort=id&order=asc');
+            const d = await r.json();
+            const b = (d.results || []).find(b => b.udc_code && b.udc_code !== '000');
+            return b ? b.id : null;
+        }""")
+        if not bid:
+            token = page.evaluate("() => window._csrfToken")
+            page.evaluate("""async (tok) => {
+                await fetch('/api/reclassify', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRF-Token': tok},
+                    body: JSON.stringify({limit: 20})
+                });
+            }""", token)
+            time.sleep(1)
+            bid = page.evaluate("""async () => {
+                const r = await fetch('/api/search?limit=60&sort=id&order=asc');
+                const d = await r.json();
+                const b = (d.results || []).find(b => b.udc_code && b.udc_code !== '000');
+                return b ? b.id : null;
+            }""")
+        assert bid is not None, "could not find any categorised book"
+        page.evaluate("switchTab('library')")
+        time.sleep(0.5)
+        page.evaluate("""(id) => showDetail(id)""", bid)
+        page.wait_for_function(
+            "() => document.getElementById('detailBody') && document.getElementById('detailBody').innerText.indexOf('Likely Categories') !== -1",
+            timeout=8000
+        )
+        text = page.evaluate("() => document.getElementById('detailBody').innerText")
+        assert "%" in text, "no percentage weight visible in Likely Categories detail"
+    return _t
+
 # ── Main ───────────────────────────────────────────────────────────────────
 
 def main():
@@ -3025,6 +3104,11 @@ def main():
 ("BL-039: no classic reader tab",         test_bl039_no_classic_reader_tab(page)),
 ("BL-039: reader menu from gear",         test_bl039_reader_menu_from_immersive_gear(page)),
 ("BL-039: read-again resets timer",       test_bl039_read_again_resets_timer_and_starts_fresh(page)),
+
+# BL-041: weighted UDC classification (top-5 categories) + reclassify
+("BL-041: reclassify API",                test_bl041_reclassify_api(page)),
+("BL-041: categories top-5 weights",      test_bl041_categories_top5_weights(page)),
+("BL-041: detail likely categories",      test_bl041_detail_likely_categories(page)),
 
             # Final
             ("Close reader",                       test_final_close(page)),

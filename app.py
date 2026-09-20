@@ -1038,6 +1038,46 @@ def api_udc_labels():
     return jsonify(UDC_LABELS)
 
 
+@app.route("/api/book/<int:book_id>/categories")
+def api_book_categories(book_id):
+    """Weighted top-N likely UDC categories for a book."""
+    conn = get_connection(DB_PATH)
+    try:
+        from db import get_category_scores
+        scores = get_category_scores(conn, book_id)
+        if not scores:
+            # Fall back to whatever the primary UDC says
+            meta = conn.execute(
+                "SELECT udc_code, udc_label FROM metadata WHERE file_id=?", (book_id,)
+            ).fetchone()
+            if meta and meta["udc_code"] and meta["udc_code"] != "000":
+                scores = [{"udc_code": meta["udc_code"], "udc_label": meta["udc_label"],
+                           "weight": 100, "rank": 1, "source": "legacy",
+                           "updated_at": None}]
+        return jsonify({"book_id": book_id, "categories": scores})
+    finally:
+        conn.close()
+
+
+@app.route("/api/reclassify", methods=["POST"])
+def api_reclassify():
+    """Re-run UDC classification across master books (top-5 weighted)."""
+    data = request.json or {}
+    limit = data.get("limit")
+    force = bool(data.get("force"))
+
+    from classifier import reclassify_masters, uncategorized_masters
+    conn = get_connection(DB_PATH)
+    try:
+        before = uncategorized_masters(conn)
+        stats = reclassify_masters(conn, limit=limit, force=force)
+        stats["uncategorized_before"] = before
+        stats["uncategorized_after"] = uncategorized_masters(conn)
+        return jsonify({"status": "ok", **stats})
+    finally:
+        conn.close()
+
+
 # â”€â”€ Pipeline funnel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/api/funnel")
@@ -1699,6 +1739,7 @@ def api_book_re_extract(book_id):
             or not raw_meta.get("description") or not raw_meta.get("isbn")
             or not raw_meta.get("publisher")
         )
+        api_enriched = {}
         if need_enrich:
             try:
                 api_enriched = enrich_book(
@@ -1728,17 +1769,26 @@ def api_book_re_extract(book_id):
             except Exception:
                 pass
 
-        # Classify
+        # Classify (use the best available title/subjects: embedded, filename, or API)
+        from db import save_category_scores
+
+        final_title = api_enriched.get("title") or clean_title
+        final_authors = api_enriched.get("authors") or clean_authors
+        final_subjects = api_enriched.get("subjects") or raw_meta.get("subjects")
+        final_desc = api_enriched.get("description") or raw_meta.get("description")
+        final_publisher = api_enriched.get("publisher") or raw_meta.get("publisher")
+
         udc_code, udc_label = classify(
-            raw_meta.get("title"), raw_meta.get("authors"),
-            raw_meta.get("subjects"), raw_meta.get("description"),
+            final_title, final_authors, final_subjects, final_desc,
+            filename=fname, publisher=final_publisher,
         )
         upsert_metadata(conn, book_id, udc_code=udc_code, udc_label=udc_label)
         all_udc_tags = classify_all(
-            raw_meta.get("title"), raw_meta.get("authors"),
-            raw_meta.get("subjects"), raw_meta.get("description"),
+            final_title, final_authors, final_subjects, final_desc,
+            filename=fname, publisher=final_publisher,
         )
         set_tags(conn, book_id, all_udc_tags, tag_type="udc")
+        save_category_scores(conn, book_id, all_udc_tags)
         set_stage(conn, book_id, "cataloged")
         conn.commit()
 

@@ -1322,4 +1322,103 @@ timer.
   `enterImmersiveReader`/`readAgain` ~5932-5949; `_applyReaderZoom` rs label.
 - `test_reader_ui.py`: BL-039 block ~2594-2690, registrations ~2886-2888.
 
+## BL-040 - Mobile: text truncated in library cards / titles clamped
+
+### Symptom / request
+
+On phone-sized screens the library card author line and reading-pane footers
+cut text off with a single-line ellipsis that can't be read in full.
+
+### What changed
+
+- `.book-author` (library table/meta) switched from `white-space:nowrap;
+  text-overflow:ellipsis` to a 2-line `-webkit-line-clamp`.
+- `.gallery-item .gt` (title) and `.gallery-item .ga` (author) now clamp to 2
+  lines instead of being nowrap-ellipsized.
+- UDC tree: `.udc-tree-node > span:first-child` gets `flex:1; min-width:0`,
+  nowrap + ellipsis, and `.utcnt` becomes `flex-shrink:0` so deep codes don't
+  push the tab off-screen.
+- `@media (max-width:768px)`: `.tab-bar {flex-wrap:wrap;gap:4px}`,
+  `.tab-btn {padding:8px 12px; font-size:.85rem}`, reader/fs glass footer
+  wraps, `.gf-location` hidden on small screens, `.gf-time` shrinkable.
+- "Likely Categories" weight chips use wrapping flex so they never clip.
+
+### Verified
+
+- Computed styles at 375px viewport: `.gt`/`.ga` show
+  `-webkit-line-clamp:2`, `overflow:hidden`, `white-space:normal`.
+
+### Where
+
+- `templates/index.html` CSS: `.book-author` ~215, `.gallery-item` ~186-230,
+  UDC tree rules, `@media (max-width:768px)` block ~539-567.
+
+## BL-041 - Automatic UDC categorisation: weighted top-5 per book + bulk re-classify
+
+### Synopsis / request
+
+Old classifier used a flat keyword->code map, returned only a single UDC code,
+and left the majority of the library uncategorised ("000"). Requested: every
+book gets its best UDC category, plus a top-5 list of *likely* categories each
+with a weighting (percentage), and a way to re-run categorisation over the
+whole library.
+
+### What changed
+
+- `classifier.py` rewritten: `UDC_MAP` + `UDC_SUB_MAP` hold `(code, label,
+  [(regex, weight)])`; per-signal multipliers `SIGNAL_WEIGHTS`
+  (title 3.0 / filename 2.0 / subjects 2.0 / description 1.2 / authors 0.9 /
+  publisher 0.6); `classify_all` returns top-5 `{tag, tag_label, score,
+  weight}` with weights normalised to sum 100 (rounding remainder to the best
+  match). No match at all falls back to `000 Generalities`; non-Latin scripts
+  (Cyrillic->891, Arabic/Hebrew->892, Indic->200, CJK->895, Greek->880) get a
+  script-aware fallback so foreign-language books still land on a plausible
+  division. Taxonomy expanded to ~48 categories incl. 320/355/400/520/550/620/
+  630/640/650/657/720/740/770/780/790 + national literatures 810-895.
+- `db.py`: new `book_category_scores` table
+  `(file_id, udc_code, udc_label, weight, rank, source, updated_at)`,
+  PK `(file_id, udc_code)`, FK files ON DELETE CASCADE, spawned at startup;
+  `save_category_scores()` / `get_category_scores()`.
+- `app.py`: re-extract path classifies on the enriched/clean metadata +
+  filename, persists the scores, and the new
+  `GET /api/book/<id>/categories` and `POST /api/reclassify` (`{limit, force}`)
+  endpoints.
+- `pipeline.py`: enrich phase classifies with enriched metadata + filename +
+  publisher and writes the top-5 scores.
+- `templates/index.html`: Settings tab gains "Library Classification (UDC)"
+  with Re-classify all books / Force re-classify buttons + live status
+  (`reclassifyLibrary`); book detail `showDetail` now shows "Likely
+  Categories" chips (`CODE Label NN%`, clickable to filter by UDC, falls back
+  to legacy tag / "None - run Re-classify..." message); gallery `gmeta` shows a
+  small UDC code chip when present and != "000".
+- `test_reader_ui.py`: `test_bl041_reclassify_api`,
+  `test_bl041_categories_top5_weights`, `test_bl041_detail_likely_categories`.
+
+### Verified
+
+- Live backfill on the Pi (`reclassify_masters` over all 7,469 masters,
+  ~100-115 s): uncategorised masters dropped 5,603 -> 3,303; 3,647 books now
+  have a primary with confidence >= 40%. Remaining 000s are genuine
+  generalities (encyclopedias, bare/no-title files) or titles with no signal.
+- Spot-checks: Deep Work/48 Laws of Power/Outliers -> 150; Personal MBA -> 650;
+  Catch-22/The Road -> 810; Samhita/Veda/Purana -> 200; tank encyclopedia ->
+  355; 1800 Mechanical Movements -> 620; Japanese-English Visual Dictionary ->
+  400; Coffee Obsession -> 640; Blender 3D/Digital Workflow/Airbrushing -> 740;
+  System Design -> 004; script fallbacks (Cyrillic->891, Devanagari->200,
+  CJK->895, Arabic->892).
+- 3 new BL-041 Playwright tests pass against the deployed Pi app. No new
+  regressions in the existing suite baseline.
+
+### Where
+
+- `classifier.py`: whole file (~680 lines).
+- `db.py`: `book_category_scores` migration + `save_category_scores`/
+  `get_category_scores` (~after`get_tags`).
+- `app.py`: `api_book_re_extract` classify ~1657; `/api/reclassify`,
+  `/api/book/<id>/categories` after `/api/udc-labels`.
+- `pipeline.py`: enrich-phase classify block ~after `set_tags`.
+- `templates/index.html`: Settings block ~1272-1276; `reclassifyLibrary` ~2949;
+  `showDetail` "Likely Categories" ~3620-3640; gallery UDC chip ~3237.
+- `test_reader_ui.py`: BL-041 block ~2739-2816, registrations ~3109-3111.
+
 ---

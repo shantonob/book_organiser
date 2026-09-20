@@ -189,8 +189,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .gallery-item:hover { transform: translateY(-2px); border-color: #0ea5e9; }
   .gallery-item img { width: 100%; height: 180px; object-fit: cover; display: block; background: #0f172a; }
   .gallery-item .info { padding: 6px 8px; }
-  .gallery-item .info .gt { font-size: 0.75rem; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .gallery-item .info .ga { font-size: 0.68rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gallery-item .info .gt { font-size: 0.75rem; color: #e2e8f0; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .gallery-item .info .ga { font-size: 0.68rem; color: #64748b; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .gallery-item .info .gmeta { font-size: 0.62rem; color: #475569; margin-top: 2px; }
   .gallery-item .cover-missing { width: 100%; height: 180px; background: #0f172a; display: flex; align-items: center; justify-content: center; color: #334155; font-size: 0.7rem; }
   .gallery-check { position: absolute; top: 4px; left: 4px; z-index: 2; }
@@ -212,7 +212,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .book-cover { width: 100%; aspect-ratio: 2/3; object-fit: cover; background: #0f172a; }
   .book-info { padding: 12px; flex: 1; display: flex; flex-direction: column; min-width: 0; }
   .book-title { font-size: 0.85rem; color: #e2e8f0; margin: 0 0 4px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-  .book-author { font-size: 0.7rem; color: #94a3b8; margin: 0 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .book-author { font-size: 0.7rem; color: #94a3b8; margin: 0 0 8px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .book-progress { display: flex; align-items: center; gap: 6px; font-size: 0.65rem; color: #94a3b8; margin-top: auto; }
   .book-pct { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .book-status-chip { display: inline-flex; align-items: center; gap: 4px; background: #065f46; color: #a7f3d0; border-radius: 999px; padding: 2px 8px; font-size: 0.65rem; font-weight: 600; }
@@ -238,6 +238,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .udc-tree-node .utc { color: #64748b; }
   .udc-tree-node.active .utc { color: #0f172a; }
   .udc-tree-node .utcnt { color: #94a3b8; font-weight: 600; }
+  .udc-tree-node .utcnt { margin-left: 8px; flex-shrink: 0; }
+  .udc-tree-node > span:first-child { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .udc-tree-node.active .utcnt { color: #0f172a; }
   .udc-sub-list { margin-left: 12px; border-left: 1px solid #334155; padding-left: 6px; }
 
@@ -538,6 +540,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   /* P7.3 Mobile/responsive: stack the 3 library panels + reader panes below 768px */
   @media (max-width: 768px) {
     .library-row { flex-direction: column; }
+    .tab-bar { flex-wrap: wrap; gap: 4px; }
+    .tab-btn { padding: 8px 12px; font-size: 0.85rem; }
     #udcTreePanel { width: 100% !important; flex-shrink: 1; max-height: 200px; }
     #detailWrap { width: 100% !important; flex-shrink: 1; }
     #libTableWrap { overflow-x: auto; }
@@ -561,6 +565,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     .reader-glass-footer .gf-scrubber input[type="range"]::-webkit-slider-thumb { width: 20px; height: 20px; }
     .reader-glass-footer .gf-scrubber input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; }
     .reader-glass-footer .gf-chapter-nav button { padding: 4px 10px; font-size: 1rem; min-height: 36px; }
+    .reader-glass-footer, .fs-glass-footer { flex-wrap: wrap; }
+    .reader-glass-footer .gf-location, .fs-glass-footer .gf-location { display: none; }
+    .reader-glass-footer .gf-time, .fs-glass-footer .gf-time { flex-shrink: 1; }
     .reader-settings-dropdown { right: 0; left: 0; border-radius: 8px 8px 0 0; }
     .reader-resume-toast { width: 90vw; max-width: 360px; justify-content: center; }
     .reader-font-group, .reader-font-family-group, .reader-content-width-group { display: none !important; }
@@ -1255,6 +1262,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       </div>
       <div id="backupList" style="font-size:0.75rem;color:#64748b">Loading...</div>
       <div style="font-size:0.65rem;color:#475569;margin-top:6px">Automatic nightly snapshot of the catalog database into <code id="backupDirLabel" style="background:#1a2332;padding:1px 4px;border-radius:2px">-</code> with <code id="backupRetentionLabel" style="background:#1a2332;padding:1px 4px;border-radius:2px">-</code>-day retention. Download a copy to keep off-box.</div>
+    </div>
+
+    <!-- Library Classification (BL-041) -->
+    <div style="margin-top:16px;padding:12px;background:#0f172a;border:1px solid #334155;border-radius:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h3 style="color:#94a3b8;font-size:0.82rem;margin:0">Library Classification <span style="color:#475569">(UDC)</span></h3>
+        <div style="display:flex;gap:6px">
+          <button id="reclassBtn" onclick="reclassifyLibrary(false)" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#22c55e;color:#0f172a;font-weight:600">Re-classify all books</button>
+          <button id="reclassForceBtn" onclick="reclassifyLibrary(true)" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#8b5cf6;color:#f8fafc" title="Also overwrite manually set categories">Force re-classify</button>
+        </div>
+      </div>
+      <div id="reclassStatus" style="font-size:0.75rem;color:#64748b">Every book gets its best UDC category plus a top-5 list of likely categories with a percentage weight based on title, filename, subjects and description. "Re-classify all books" re-runs classification for every book that is not categorised yet (manually set ones are kept). "Force re-classify" also overwrites manual choices.</div>
     </div>
 
     <!-- Diagnostics -->
@@ -2926,6 +2945,32 @@ function auditSummaryLine(s) {
     '</div>';
 }
 
+function reclassifyLibrary(force) {
+  const btn = document.getElementById("reclassBtn");
+  const fbtn = document.getElementById("reclassForceBtn");
+  const status = document.getElementById("reclassStatus");
+  if (!status) return;
+  status.innerHTML = '<span style="color:#94a3b8">Classifying books...</span>';
+  if (btn) btn.disabled = true;
+  if (fbtn) fbtn.disabled = true;
+  fetch(API + "/api/reclassify", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({force: !!force})
+  }).then(r => r.json()).then(d => {
+    if (d.error) { status.innerHTML = '<span style="color:#ef4444">Failed: ' + esc(d.error) + "</span>"; return; }
+    const pct = d.uncategorized_after != null && d.uncategorized_before != null
+      ? "  (" + d.uncategorized_before + " &#8594; " + d.uncategorized_after + " uncategorised)"
+      : "";
+    status.innerHTML = '<span style="color:#22c55e">Done.</span> Scanned <strong>' + d.scanned + "</strong> books, categorised <strong>" + d.categorized + "</strong>, left uncategorised <strong>" + d.uncat + "</strong>." + pct + " Refresh the library to see updated categories.";
+    loadSummary();
+  }).catch(() => { status.innerHTML = '<span style="color:#ef4444">Re-classify request failed</span>'; })
+    .finally(function() {
+      if (btn) btn.disabled = false;
+      if (fbtn) fbtn.disabled = false;
+    });
+}
+
 function runAudit() {
   const el = document.getElementById("auditResult");
   el.innerHTML = '<span style="color:#94a3b8">Running audit...</span>';
@@ -3189,7 +3234,7 @@ function renderLibraryGrid(books) {
       + '<div class="info">'
       + '<div class="gt" title="' + esc(b.title || '') + '">' + esc(b.title || b.filename || '?') + seriesBadge(b) + '</div>'
       + '<div class="ga">' + esc(b.authors || '') + '</div>'
-      + '<div class="gmeta">' + meta.join(' · ') + ' <span class="tag ' + stageClass + '" style="font-size:0.6rem;padding:1px 5px">' + esc(b.stage || '') + '</span></div>'
+      + '<div class="gmeta">' + (b.udc_code && b.udc_code !== "000" ? '<span class="tag udc" style="font-size:0.6rem;padding:1px 5px" title="' + esc(b.udc_label || '') + '">' + esc(b.udc_code) + '</span> ' : '') + meta.join(' · ') + ' <span class="tag ' + stageClass + '" style="font-size:0.6rem;padding:1px 5px">' + esc(b.stage || '') + '</span></div>'
       + '</div></div>';
   }).join("");
 }
@@ -3516,8 +3561,9 @@ function showDetail(bookId) {
   Promise.all([
     fetch(API + "/api/book/" + bookId).then(r => r.json()),
     fetch(API + "/api/book/" + bookId + "/log").then(r => r.json()),
-    fetch(API + "/api/quarantine?reviewed=0&limit=1000").then(r => r.json()).catch(() => ({results:[]}))
-  ]).then(([b, plog, qdata]) => {
+    fetch(API + "/api/quarantine?reviewed=0&limit=1000").then(r => r.json()).catch(() => ({results:[]})),
+    fetch(API + "/api/book/" + bookId + "/categories").then(r => r.json()).catch(() => ({categories:[]}))
+  ]).then(([b, plog, qdata, cdata]) => {
       if (b.error) { body.innerHTML = '<div style="color:#ef4444">Not found</div>'; return; }
       const tags = b.tags || [];
       const udcTags = tags.filter(t => t.tag_type === "udc");
@@ -3573,12 +3619,18 @@ function showDetail(bookId) {
       html += '<button id="detailRlBtn" onclick="addDetailToReadingList(' + bookId + ')" style="padding:5px 14px;border:none;border-radius:4px;cursor:pointer;font-size:0.78rem;background:#0ea5e9;color:#0f172a;font-weight:600">+ Reading List</button>';
       html += '</div>';
 
-      // UDC tags
-      html += '<div style="margin-top:10px"><strong style="color:#94a3b8;font-size:0.78rem">UDC Tags</strong><div class="tag-list">';
-      if (udcTags.length) {
+      // UDC tags (top-5 weighted category guesses)
+      html += '<div style="margin-top:10px"><strong style="color:#94a3b8;font-size:0.78rem">Likely Categories <span style="color:#475569;font-weight:400">(top 5 by UDC, ranked)</span></strong><div class="tag-list">';
+      const cats = (cdata && cdata.categories) || [];
+      if (cats.length) {
+        cats.forEach(c => {
+          const w = (c.weight != null && c.weight > 0) ? ' <b style="color:#38bdf8">' + c.weight + '%</b>' : "";
+          html += '<span class="tag udc" style="cursor:pointer" onclick="filterLibraryByUdc(\'' + esc(c.udc_code) + '\')" title="Show all books in ' + esc(c.udc_label || c.udc_code) + '">' + esc(c.udc_code) + ' ' + esc(c.udc_label || "") + w + '</span>';
+        });
+      } else if (udcTags.length) {
         udcTags.forEach(t => { html += `<span class="tag udc">${esc(t.tag)} ${esc(t.tag_label||"")}</span>`; });
       } else {
-        html += '<span style="color:#64748b;font-size:0.75rem">None</span>';
+        html += '<span style="color:#64748b;font-size:0.75rem">None — run "Re-classify all books" in Settings to auto-categorise</span>';
       }
       html += '</div></div>';
 

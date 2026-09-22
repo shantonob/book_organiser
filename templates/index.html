@@ -1092,6 +1092,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
             <button class="rs-act" onclick="addPageNote()" title="Add page note" aria-label="Add page note">&#9998;</button>
             <button class="rs-act rs-ann" onclick="toggleCollapseSidebar('right')" title="Highlights &amp; notes" aria-label="Highlights and notes">&#128221;</button>
             <button class="rs-act" onclick="exportHighlights()" title="Export highlights" aria-label="Export highlights">&#128228;</button>
+            <button class="rs-act" onclick="_readerJumpToStart()" title="Restart from the beginning" aria-label="Restart from the beginning">&#8634;</button>
           </div>
           <div class="rs-section-label">Page &amp; layout</div>
           <div class="rs-actions">
@@ -1521,6 +1522,45 @@ function switchTab(name, filters) {
   if (name === "quarantine") { loadQuarantine(); }
   if (name === "settings") { loadConfig(); refreshWatcherStatus(); loadBackups(); }
   if (name === "manual") { loadManual(); }
+  _saveViewState();
+}
+
+// ── BL-043: view-state persistence — a page refresh lands on the same view ──
+// (tab, open reader book, open detail panel) the user was on.
+function _collectViewState() {
+  var tab = "reading";
+  var ap = document.querySelector(".tab-panel.active");
+  if (ap && ap.id) tab = ap.id.replace("tab-", "");
+  var reader = null;
+  if (document.body.classList.contains("reader-open") && readerBookId) reader = readerBookId;
+  if (reader) tab = _previousTab || "reading";
+  var detail = null;
+  try {
+    var dp = document.getElementById("detailPanel");
+    if (dp && dp.classList.contains("visible") && selectedLibId) detail = selectedLibId;
+  } catch(e) {}
+  return { tab: tab, reader: reader, detail: detail };
+}
+function _saveViewState() {
+  try {
+    var vs = _collectViewState();
+    localStorage.setItem("app.view", JSON.stringify(vs));
+    localStorage.setItem("app.activeTab", vs.tab);
+  } catch(e) {}
+}
+function _readViewState() {
+  try { return JSON.parse(localStorage.getItem("app.view") || "null"); } catch(e) { return null; }
+}
+function _restoreInitialView() {
+  if (!window._authenticated) return;
+  var vs = _readViewState();
+  var tab = (vs && vs.tab) ? vs.tab : "reading";
+  if (tab !== "reading") { switchTab(tab); } else { loadReadingHome(); }
+  if (vs && vs.reader) {
+    enterImmersiveReader(vs.reader);
+  } else if (vs && vs.detail) {
+    showDetail(vs.detail);
+  }
 }
 
 // ── Manual tab (markdown renderer + loader) ──
@@ -1615,17 +1655,10 @@ function checkAuth() {
       showLoginModal();
     } else if (authed) {
       closeLoginModal();
-      // Restore saved tab on first successful auth
+      // Restore the last view (tab + reader + detail) on first successful auth
       if (!window._authTabRestored) {
         window._authTabRestored = true;
-        var savedTab = "reading";
-        try { savedTab = localStorage.getItem("app.activeTab") || "reading"; } catch(e) {}
-        if (savedTab !== "reading") {
-          switchTab(savedTab);
-        } else {
-          // Re-run reading home now that auth is valid (startup call got 401)
-          loadReadingHome();
-        }
+        _restoreInitialView();
       }
     }
   }).catch(function() {});
@@ -1670,12 +1703,8 @@ function doLogin() {
     if (d && d.authenticated) {
       closeLoginModal();
       checkAuth();
-      // Reload the saved tab now that we are authenticated (P8.7).
-      var savedTab = "reading";
-      try { savedTab = localStorage.getItem("app.activeTab") || "reading"; } catch(e) {}
-      var active = document.querySelector(".tab-panel.active");
-      if (active) switchTab(active.id.replace("tab-", ""));
-      else switchTab(savedTab);
+      // Reload the last view now that we are authenticated (BL-043).
+      _restoreInitialView();
     }
   }).catch(function() {});
 }
@@ -3567,6 +3596,7 @@ function showDetail(bookId) {
   const body = document.getElementById("detailBody");
   document.getElementById("detailId").textContent = "#" + bookId;
   panel.classList.add("visible");
+  _saveViewState();
   body.innerHTML = '<div style="color:#64748b;padding:12px 0">Loading...</div>';
 
   Promise.all([
@@ -3868,7 +3898,7 @@ function bookCardHTML(b) {
     + (author ? '<p class="book-author">' + author + '</p>' : '')
     + progressHtml
     + '</div>'
-    + '<button class="read-now-btn" onclick="event.stopPropagation();' + (isDone ? "readAgain(" : "enterImmersiveReader(") + b.id + ')">' + (isDone ? 'Read Again' : 'Read Now') + '</button>'
+    + '<button class="read-now-btn" onclick="event.stopPropagation();enterImmersiveReader(' + b.id + ')">' + (isDone ? 'Reopen' : 'Read Now') + '</button>'
     + '</article>';
 }
 
@@ -4857,9 +4887,20 @@ function loadPdfReader(bookId, book) {
     buildPdfToc();
     buildThumbnails();
     pdfRenderPage(bookId, 1);
-    // Restore saved position
+    // Restore saved position — BL-043: pdfRenderPage ignores calls while
+    // _pdfRendering is true (the page-1 draw), which used to drop restores.
+    // Poll until the renderer is free, then jump to the saved page.
     fetch(API + "/api/book/" + bookId + "/reader-state").then(function(r) { return r.json(); }).then(function(state) {
-      if (state && state.location) { var sp = parseInt(state.location); if (sp > 0 && sp <= pdf.numPages) { pdfRenderPage(bookId, sp); } }
+      if (state && state.location) {
+        var sp = parseInt(state.location);
+        if (sp > 0 && sp <= pdf.numPages && sp !== readerPage) {
+          var tryRestore = function() {
+            if (!_pdfRendering) { pdfRenderPage(bookId, sp); }
+            else { setTimeout(tryRestore, 150); }
+          };
+          tryRestore();
+        }
+      }
     }).catch(function() {});
   }).catch(function() {
     area.innerHTML = '<div style="color:#ef4444;text-align:center;padding:40px">Failed to load PDF</div>';
@@ -6009,12 +6050,14 @@ function enterImmersiveReader(bookId, opts) {
     if (im) im.textContent = b.title || "Book #" + bookId;
   }).catch(function() {});
   _activateImmersive();
-  openReader(bookId, opts && opts.readAgain);
+  openReader(bookId);
 }
 
-// BL-039: "Read Again" — reset the timer and start at the beginning of the book.
+// BL-043: "Reopen" (formerly Read Again) — a completed book reopens at the last
+// reading position instead of starting over. Use the Reader Menu "Restart" (or
+// the Home key) to jump back to the beginning of the book.
 function readAgain(bookId) {
-  enterImmersiveReader(bookId, { readAgain: true });
+  enterImmersiveReader(bookId);
 }
 
 function _activateImmersive() {
@@ -6024,6 +6067,10 @@ function _activateImmersive() {
   if (imc) imc.classList.remove("im-hidden");
   var gf = document.getElementById("readerGlassFooter");
   if (gf) gf.classList.remove("im-hidden");
+  // Every new immersive session starts with the Reader Menu closed (BL-043).
+  var rd = document.getElementById("readerSettingsDropdown");
+  if (rd) rd.style.display = "none";
+  _readerSettingsOpen = false;
   _bindImmersive();
   _imShowChrome();
   if (typeof readerFormat === "string" && isEpubFormat(readerFormat) && readerRendition) {

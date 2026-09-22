@@ -2832,58 +2832,132 @@ def test_bl039_reader_menu_from_immersive_gear(page):
         assert info["themeVisible"], "theme select not rendered in menu"
         assert info["twoPageHidden"] is True, "two-page should be hidden for EPUB"
         assert info["rtlHidden"] is True, "RTL should be hidden for EPUB"
+        # Leave the menu closed so later tests start from a clean state.
+        page.evaluate("toggleImmersiveSettings()")
+        time.sleep(0.2)
+        closed = page.evaluate("() => document.getElementById('readerSettingsDropdown').style.display === 'none'")
+        assert closed, "reader menu did not close"
     return _t
 
-def test_bl039_read_again_resets_timer_and_starts_fresh(page):
+def test_bl043_reopen_completed_epub_restores_position(page):
+    # BL-043: a completed book, when reopened, ALWAYS restores the last reading
+    # position (card tap and the round "Reopen" button now both go through
+    # enterImmersiveReader; readAgain() no longer starts over). The reading
+    # timer also resumes instead of resetting.
     def _t():
         _refresh_session(page)
-        # Pre-seed a false reading-time so a reset is actually observable; target a
-        # completed book and restore its progress afterwards so tests don't erode data.
-        seed = page.evaluate("""async () => {
+        seed = page.evaluate(r"""async () => {
             const r = await fetch(API + '/api/reading-home?limit=200');
             const d = await r.json();
             const cp = d.completed || [];
-            const book = cp.find(b => b.format === 'epub') || cp[0] || (d.in_progress || [])[0];
+            const book = cp.find(b => b.format === 'epub') || (d.in_progress || [])[0];
             if (!book) throw new Error('no books');
-            const before = (await (await fetch(API + '/api/book/' + book.id + '/reader-state')).json()) || {};
-            try { localStorage.setItem('reader.readTime.' + book.id, '60000'); } catch(e) {}
-            enterImmersiveReader(book.id);
-            return { id: book.id, before: before };
+            const state = (await (await fetch(API + '/api/book/' + book.id + '/reader-state')).json()) || {};
+            const m = (state.location || '').match(/\/6\/(\d+)[\/\[]/);
+            try { localStorage.setItem('reader.readTime.' + book.id, '45000'); } catch(e) {}
+            return { id: book.id, pct: book.progress_pct, savedLoc: state.location || '', savedPct: state.progress_pct || 0, savedSpine: m ? parseInt(m[1], 10) : null };
         }""")
-        page.wait_for_function("() => document.body.classList.contains('reader-immersive')", timeout=12000)
-        time.sleep(1.5)
-        page.evaluate("readAgain(" + str(seed["id"]) + ")")
-        page.wait_for_function("() => document.body.classList.contains('reader-immersive')", timeout=12000)
-        time.sleep(1.5)
+        # Reopen via the same call reading-home cards use (no fresh-start flag).
+        page.evaluate("enterImmersiveReader(%d)" % seed["id"])
+        page.wait_for_function("() => document.body.classList.contains('reader-immersive') && !!readerRendition", timeout=20000)
+        time.sleep(3.0)
         info = page.evaluate("""() => {
-            const key = _openingBookId ? 'reader.readTime.' + _openingBookId : null;
-            const raw = key ? localStorage.getItem(key) : null;
-            const toast = document.getElementById('readerResumeToast');
-            return {
-                elapsed: _readingTimerElapsed,
-                stored: raw,
-                toastDisplay: toast ? toast.style.display : null,
-                freshFlag: _readingFreshStart,
-                immersive: document.body.classList.contains('reader-immersive'),
-                format: (typeof readerFormat === 'string') ? readerFormat : String(readerFormat)
-            };
+            const loc = readerRendition.currentLocation();
+            const m = (loc && loc.start && loc.start.cfi || '').match(/\\/6\\/(\\d+)[\\/\\[]/);
+            return { cfi: loc && loc.start ? loc.start.cfi : '', spine: m ? parseInt(m[1], 10) : null,
+                     elapsed: _readingTimerElapsed, stored: localStorage.getItem('reader.readTime.' + readerBookId) };
         }""")
-        assert info["immersive"], "read-again did not stay in immersive view"
-        assert info["elapsed"] == 0, f"timer not reset: {info['elapsed']}"
-        assert info["stored"] in (None, "0"), f"reader.readTime not cleared: {info['stored']}"
-        assert info["toastDisplay"] in ("none", "", None), f"resume toast still shown on read-again: {info['toastDisplay']}"
-        assert info["freshFlag"] is False, "fresh-start flag not consumed"
-        # Close the reader (flushes ~0% + stops the progress poller), then restore the
-        # book's original progress so the fixtures stay intact.
+        assert info["cfi"], "reader did not restore a location"
+        if seed["savedSpine"] is not None:
+            assert info["spine"] == seed["savedSpine"], f"reopened completed book not at last position (spine {info['spine']} != saved {seed['savedSpine']})"
+        # Timer should resume (45000 kept), not reset to 0.
+        assert info["stored"] == "45000", f"reopen reset the reading timer: {info['stored']}"
+        assert info["elapsed"] >= 44000, f"timer did not resume: {info['elapsed']}"
+        # Close promptly and restore the fixture state (unchanged progress).
         page.evaluate("exitImmersiveReader()")
-        time.sleep(1.0)
+        time.sleep(0.6)
         page.evaluate("""async (o) => {
-            const before = o.before && o.before.progress_pct ? o.before : { location: '', progress_pct: 0 };
             await fetch(API + '/api/book/' + o.id + '/reader-state', {
                 method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ location: before.location || '', progress_pct: before.progress_pct || 0 })
+                body: JSON.stringify({ location: o.savedLoc, progress_pct: o.savedPct })
             });
-        }""", {"id": seed["id"], "before": seed["before"]})
+        }""", {"id": seed["id"], "savedLoc": seed["savedLoc"], "savedPct": seed["savedPct"]})
+        time.sleep(0.5)
+    return _t
+
+def test_bl043_pdf_reopen_restores_saved_page(page):
+    def _t():
+        _refresh_session(page)
+        info = page.evaluate("""async () => {
+            const r = await fetch(API + '/api/reading-home?limit=200');
+            const d = await r.json();
+            const b = (d.in_progress || []).concat(d.completed || []).find(x => x.format === 'pdf');
+            if (!b) return null;
+            const state = (await (await fetch(API + '/api/book/' + b.id + '/reader-state')).json()) || {};
+            return { id: b.id, savedPage: parseInt(state.location, 10) || 0 };
+        }""")
+        if not info or info["savedPage"] < 1:
+            return  # no saved-position PDF fixture; nothing to verify
+        page.evaluate("enterImmersiveReader(%d)" % info["id"])
+        page.wait_for_function("() => document.body.classList.contains('reader-immersive') && window._pdfDoc && !!_pdfDoc.numPages", timeout=30000)
+        time.sleep(4.0)
+        pg = page.evaluate("() => readerPage")
+        assert pg == info["savedPage"], f"PDF reopened at page {pg}, expected saved page {info['savedPage']}"
+        page.evaluate("exitImmersiveReader()")
+        time.sleep(0.5)
+    return _t
+
+def test_bl043_refresh_keeps_current_view(page):
+    """Refresh lands on the same view: library tab, open detail, or immersive reader."""
+    def _t():
+        _refresh_session(page)
+        # 1) Library tab
+        page.evaluate("switchTab('library')")
+        time.sleep(1.0)
+        page.reload()
+        page.wait_for_function("() => window._authenticated", timeout=15000)
+        time.sleep(1.5)
+        assert page.evaluate("() => document.getElementById('tab-library').classList.contains('active')"), "library tab not restored after refresh"
+        # 2) Open detail panel
+        page.evaluate("switchTab('library')")
+        time.sleep(0.8)
+        page.evaluate("""async () => {
+            const r = await fetch(API + '/api/search?limit=5');
+            const d = await r.json();
+            const b = (d.results || [])[0];
+            if (!b) throw new Error('no books');
+            showDetail(b.id);
+            return b.id;
+        }""")
+        time.sleep(1.5)
+        did = page.evaluate("() => (document.getElementById('detailPanel').classList.contains('visible') ? selectedLibId : null)")
+        assert did, "detail panel not open before refresh"
+        page.reload()
+        page.wait_for_function("() => window._authenticated", timeout=15000)
+        time.sleep(1.5)
+        shown = page.evaluate("() => { const dp = document.getElementById('detailPanel'); return { vis: dp.classList.contains('visible'), id: selectedLibId }; }")
+        assert shown["vis"] and shown["id"] == did, f"detail panel not restored ({shown})"
+        # 3) Immersive reader at last position
+        page.evaluate("switchTab('reading')")
+        time.sleep(0.8)
+        page.evaluate("""async () => {
+            const r = await fetch(API + '/api/reading-home?limit=200');
+            const d = await r.json();
+            const all = (d.in_progress || []).concat(d.completed || []);
+            const epub = all.find(b => b.format === 'epub') || all[0];
+            if (!epub) throw new Error('no book');
+            enterImmersiveReader(epub.id);
+        }""")
+        page.wait_for_function("() => document.body.classList.contains('reader-immersive') && !!readerRendition", timeout=20000)
+        time.sleep(2.5)
+        cfi_before = page.evaluate("() => readerRendition.currentLocation().start.cfi")
+        page.reload()
+        page.wait_for_function("() => window._authenticated", timeout=15000)
+        page.wait_for_function("() => document.body.classList.contains('reader-immersive') && !!readerRendition", timeout=25000)
+        time.sleep(2.5)
+        cfi_after = page.evaluate("() => readerRendition.currentLocation().start.cfi")
+        assert cfi_after == cfi_before, f"reader not restored to same position after refresh ({cfi_after} vs {cfi_before})"
+        page.evaluate("exitImmersiveReader()")
         time.sleep(0.5)
     return _t
 
@@ -3254,7 +3328,11 @@ def main():
 # BL-039: Classic reader removed, reader menu, read-again reset
 ("BL-039: no classic reader tab",         test_bl039_no_classic_reader_tab(page)),
 ("BL-039: reader menu from gear",         test_bl039_reader_menu_from_immersive_gear(page)),
-("BL-039: read-again resets timer",       test_bl039_read_again_resets_timer_and_starts_fresh(page)),
+
+# BL-043: completed-book reopen restores last position; refresh keeps current view
+("BL-043: reopen completed epub restores position", test_bl043_reopen_completed_epub_restores_position(page)),
+("BL-043: PDF reopen restores saved page",          test_bl043_pdf_reopen_restores_saved_page(page)),
+("BL-043: refresh keeps current view",              test_bl043_refresh_keeps_current_view(page)),
 
 # BL-041: weighted UDC classification (top-5 categories) + reclassify
 ("BL-041: reclassify API",                test_bl041_reclassify_api(page)),

@@ -1469,4 +1469,59 @@ Two immersive-reader bugs on phone/iPad:
 - `test_reader_ui.py`: BL-042 block after the BL-038 paginated test; BL-038
   pagination assertion now band-aware; registrations ~3266-3268.
 
+## BL-043 - Page refresh keeps the current view; reopening a completed book always restores the last position
+
+### What
+
+Two navigation/user-experience bugs:
+
+1. **Refresh lost your place.** The active *tab* was already persisted
+   (`app.activeTab`), but the reader isn't a tab, so refreshing mid-read landed
+   back on Reading Home — and an open book-detail panel was also lost. Now a
+   small view-state object (`localStorage "app.view"`) records the active tab,
+   the open reader book id, and the open detail book id after every
+   `switchTab`/`showDetail`/reader transition. A shared `_restoreInitialView()`
+   (used by both `checkAuth` and `doLogin`) re-applies it on load: refresh
+   while reading re-enters immersive reading and auto-resumes the last position;
+   refresh on a book detail re-opens the detail; refresh on Library/Search/etc.
+   keeps that tab.
+
+2. **A completed book reopened at the beginning.** Reopening a book already
+   auto-restores the last position from `/reader-state` for EPUB/PDF/CBZ, but
+   the completed-card button was "Read Again" -> `readAgain()` -> a *fresh
+   start* that silently reset the reading position. Also the PDF restore had a
+   race (`pdfRenderPage` ignores calls while `_pdfRendering` is true, so the
+   async state restore was dropped). Fixes:
+   - Completed cards now show **"Reopen"** and go through the same restore path
+     as Read Now; `readAgain()` is re-scoped to restore too. The reading timer
+     resumes instead of resetting.
+   - New **Restart** action (&#8634;) in the Reader Menu jumps to the beginning
+     of the current book (`_readerJumpToStart`) so re-reading is still one tap
+     away, plus the Home key.
+   - PDF restore now polls until the renderer is free then jumps to the saved
+     page, so the last page survives a reopen.
+   - `_activateImmersive` closes any leftover Reader Menu when a new immersive
+     session starts (a stale open menu made the first gear tap close it).
+   - Kept the `_readingFreshStart` guard as a safe fallback (unused now).
+
+### Verified
+
+- 3 new BL-043 Playwright tests pass against the deployed Pi app:
+  `reopen completed epub restores position` (spine + resumed timer),
+  `PDF reopen restores saved page`, and `refresh keeps current view` (library
+  tab, open detail, and immersive reader at the same CFI across `page.reload`).
+- BL-042 gear/top-band/band-inset, BL-038 paginated/tap/enter/exit, and BL-039
+  reader-menu tests re-verified green; no new regressions, no page JS errors.
+
+### Where
+
+- `templates/index.html`: `_collectViewState`/`_saveViewState`/`_readViewState`/
+  `_restoreInitialView` after `switchTab` (~1460-1580); `switchTab` saves view;
+  `checkAuth`/`doLogin` restore via `_restoreInitialView`; `showDetail` saves
+  view; `bookCardHTML` "Reopen" button; `readAgain` re-scope; PDF restore poll
+  in `loadPdfReader`; "Restart" button in the Reader Menu; `_activateImmersive`
+  menu reset.
+- `test_reader_ui.py`: BL-043 tests + helpers; BL-039 reader-menu test now
+  closes the menu; registrations ~3264-3269.
+
 ---

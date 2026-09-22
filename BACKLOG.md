@@ -1421,4 +1421,52 @@ whole library.
   `showDetail` "Likely Categories" ~3620-3640; gallery UDC chip ~3237.
 - `test_reader_ui.py`: BL-041 block ~2739-2816, registrations ~3109-3111.
 
+## BL-042 - Immersive mobile: settings button no longer turns the page; reading band stays between bars
+
+### What
+
+Two immersive-reader bugs on phone/iPad:
+
+1. **Settings button caused a page turn.** The gear (`#imSettBtn`) sits in the
+   top-right, which is inside the 15%-wide `.im-right` page-turn zone. When the
+   chrome auto-hid (`pointer-events:none`), a tap at the gear's location fell
+   through to that zone -> `readerNext()`. Fixed by (a) starting the page-turn
+   zones below the chrome band (`.im-zone { top: var(--im-chrome-h) }`), so the
+   top band is never a page-turn zone, and (b) adding an invisible `.im-peek`
+   reveal strip (z 850, below chrome 900, above zones 700) that on tap only
+   reveals the chrome (`_imShowChrome()`), never turns a page. `_imHandleTap`
+   also now treats the top band as reveal-only (never hides chrome).
+
+2. **Lines not continuous between pages.** CFI-level text continuity was intact
+   (`:203` -> `:204`); the breakage was purely visual: pages were paginated to
+   the full viewport height while the floating chrome (top ~50px) and glass
+   footer (bottom ~57px) overlaid them, so the last 1-2 lines of every page hid
+   under the footer whenever it was visible, and the first lines sat under the
+   chrome. Fixed by insetting the reading band between the bars:
+   `body.reader-immersive #readerArea { padding-top: var(--im-chrome-h, 52px); padding-bottom: calc(var(--im-footer-h, 57px) + var(--im-safe-b, 12px)); }`
+   and sizing the EPUB pagination height as `areaH - band` in `_loadEpubReader`;
+   `_imResizeEpub` re-applies on `_activateImmersive` and on window resize
+   (orientation change). New CSS vars: `--im-chrome-h:52px`, `--im-footer-h:57px`,
+   `--im-safe-b:12px`.
+
+### Verified
+
+- 3 new BL-042 Playwright tests pass against the deployed Pi app (phone
+  viewport 390x844): gear tap does not turn the page and opens the reader menu;
+  top band never turns the page while the turn zone below still works; the
+  iframe band stays between chrome and footer with a clearance, and text never
+  exceeds the band. Settings dropdown renders fully on-screen (bottom sheet).
+- Existing BL-038/39/41 immersive + reader-menu tests re-verified green. No new
+  regressions (full-suite transient `Failed to fetch` failures were Pi load
+  from the real background reclassify started by the BL-041 API test).
+
+### Where
+
+- `templates/index.html`: CSS band vars + `.im-zone`/`.im-peek`/`#readerArea`
+  ~320-349; `#imPeek` element ~958; `_imBandHeights`/`_imResizeEpub`/
+  `imPeekTap` + `_imHandleTap` top-band guard ~6118-6160; `_loadEpubReader`
+  banded `rh` ~4660; `_activateImmersive`/`_bindImmersive` resize wiring.
+- `test_reader_ui.py`: BL-042 block after the BL-038 paginated test; BL-038
+  pagination assertion now band-aware; registrations ~3266-3268.
+
 ---

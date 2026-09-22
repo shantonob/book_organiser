@@ -2609,16 +2609,167 @@ def test_immersive_paginated_epub_renders(page):
         assert info["format"] == "epub", f"expected epub, got {info['format']}"
         assert info["hasRendition"], "no epub rendition"
         assert info["iframeH"] > 0, "epub iframe not rendered"
-        # Paginated render fills the viewport height (not a tiny scrolled section)
+        # Paginated render fills the reader area (at least 70% of the viewport)
         assert info["areaH"] >= info["vh"] * 0.7, f"reader area too small: {info['areaH']} vs vh {info['vh']}"
-        assert info["iframeH"] >= info["areaH"] * 0.95, f"iframe much shorter than area: {info['iframeH']} vs {info['areaH']}"
-        # The clipping container should match the reader area dims (page fills the viewport)
+        # BL-042: pages are paginated within the band inset between the chrome bar
+        # and the glass footer (52 + 57 + 12 safe) so the last line never runs
+        # under the floating bars — the iframe height must match that inset.
+        band = 52 + 57 + 12
+        # NOTE: #readerArea sits below the always-visible #readerLoadStatus bar
+        # (~33px), so areaH < vh; the band inset is relative to areaH.
+        expected_iframe = info["areaH"] - band
+        assert abs(info["iframeH"] - expected_iframe) <= 10, \
+            f"iframe {info['iframeH']} not band-aligned (expected ~{expected_iframe})"
+        # The clipping container should match the pagination band (single-view page)
         if info["containerW"] > 0:
             assert abs(info["containerW"] - info["areaW"]) <= info["areaW"] * 0.1, \
                 f"container {info['containerW']} not aligned with area {info['areaW']}"
-            assert abs(info["containerH"] - info["areaH"]) <= info["areaH"] * 0.1, \
-                f"container {info['containerH']} not aligned with area {info['areaH']}"
+            assert abs(info["containerH"] - info["iframeH"]) <= max(12, info["iframeH"] * 0.1), \
+                f"container {info['containerH']} not aligned with iframe {info['iframeH']}"
         assert abs(info["bodyScrollH"] - info["vh"]) < 15, f"body scrolls (not immersive fullscreen): {info['bodyScrollH']} vs {info['vh']}"
+    return _t
+
+# ── BL-042: Immersive mobile — settings button vs page-turn zones; band inset ──
+
+def _open_any_epub_immersive(page, wait=1.5):
+    """Open the first available epub in immersive mode on a phone viewport."""
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.evaluate("""async () => {
+        const r = await fetch(API + '/api/reading-home?limit=200');
+        const d = await r.json();
+        const all = (d.in_progress || []).concat(d.completed || []);
+        let epub = all.find(b => b.format === 'epub');
+        if (!epub) {
+            const s = await (await fetch('/api/search?limit=50')).json();
+            epub = (s.results || []).find(b => b.format === 'epub');
+        }
+        if (!epub) throw new Error('no epub available');
+        enterImmersiveReader(epub.id);
+    }""")
+    page.wait_for_function("() => document.body.classList.contains('reader-immersive') && !!readerRendition", timeout=15000)
+    time.sleep(wait)
+
+def _current_cfi(page):
+    return page.evaluate("() => (readerRendition && readerRendition.currentLocation ? readerRendition.currentLocation().start.cfi : '')")
+
+def _restore_desktop(page):
+    page.evaluate("() => { try { if (document.body.classList.contains('reader-immersive')) exitImmersiveReader(); } catch(e) {} }")
+    page.set_viewport_size({"width": 1280, "height": 800})
+    time.sleep(0.4)
+
+def test_bl042_settings_tap_never_turns_page(page):
+    def _t():
+        _refresh_session(page)
+        _open_any_epub_immersive(page)
+        # Simulate the auto-hide state: the chrome (and its gear) is not hittable.
+        page.evaluate("_imHideChrome()")
+        time.sleep(0.3)
+        hidden = page.evaluate("() => document.getElementById('imChrome').classList.contains('im-hidden')")
+        assert hidden, "chrome not hidden"
+        box = page.evaluate("""() => {
+            const b = document.getElementById('imSettBtn').getBoundingClientRect();
+            return {x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2)};
+        }""")
+        before = _current_cfi(page)
+        # Tap where the gear sits while chrome is hidden (top-right band).
+        page.mouse.click(box["x"], box["y"])
+        time.sleep(0.4)
+        after = _current_cfi(page)
+        assert after == before, f"tap on the settings location turned the page ({after} != {before})"
+        shown = page.evaluate("() => !document.getElementById('imChrome').classList.contains('im-hidden')")
+        assert shown, "top-band tap did not reveal the chrome"
+        # Chrome now visible: tapping the gear opens the menu and still never turns a page.
+        page.evaluate("document.getElementById('imSettBtn').click()")
+        time.sleep(0.4)
+        after2 = _current_cfi(page)
+        assert after2 == before, "gear click turned the page"
+        open = page.evaluate("() => document.getElementById('readerSettingsDropdown').style.display !== 'none'")
+        assert open, "gear click did not open the reader menu"
+        _restore_desktop(page)
+    return _t
+
+def test_bl042_top_band_never_turns_page(page):
+    def _t():
+        _refresh_session(page)
+        _open_any_epub_immersive(page)
+        page.evaluate("_imHideChrome()")
+        time.sleep(0.3)
+        before = _current_cfi(page)
+        # Tap inside the top band (above the page-turn zone) at the right edge.
+        page.mouse.click(375, 24)
+        time.sleep(0.4)
+        after = _current_cfi(page)
+        assert after == before, "tap inside the top band turned the page"
+        # The page-turn zone below the chrome band must still work.
+        before2 = _current_cfi(page)
+        page.mouse.click(375, 500)
+        time.sleep(0.6)
+        after2 = _current_cfi(page)
+        assert after2 != before2, "page-turn zone below the chrome band no longer turns the page"
+        _restore_desktop(page)
+    return _t
+
+def test_bl042_pages_stay_between_chrome_and_footer(page):
+    """Line continuity: the pagination band is inset between the chrome bar and the
+    glass footer, so the last line of every page is fully visible (never hidden
+    under a floating bar) — the iframe and its text stop above the footer."""
+    def _t():
+        _refresh_session(page)
+        _open_any_epub_immersive(page)
+        info = page.evaluate("""() => {
+            const ra = document.getElementById('readerArea');
+            const ifr = ra ? ra.querySelector('iframe') : null;
+            const ir = ifr ? ifr.getBoundingClientRect() : null;
+            const ch = document.getElementById('imChrome');
+            const cr = ch ? ch.getBoundingClientRect() : null;
+            const gf = document.getElementById('readerGlassFooter');
+            const gr = gf ? gf.getBoundingClientRect() : null;
+            let maxTextBottom = -1, minTextTop = 1e9;
+            const doc = ifr && ifr.contentDocument ? ifr.contentDocument : null;
+            if (doc) {
+                const ph = ifr.contentWindow.innerWidth; // full laid-out width (columns)
+                const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+                let n;
+                while ((n = walker.nextNode())) {
+                    if (!n.textContent || !n.textContent.trim()) continue;
+                    const rng = doc.createRange(); rng.selectNodeContents(n);
+                    for (const r of Array.from(rng.getClientRects())) {
+                        if (r.width < 2 || r.height < 2) continue;
+                        if (r.left < ph) {  // only the current page column
+                            maxTextBottom = Math.max(maxTextBottom, r.top + r.height);
+                            minTextTop = Math.min(minTextTop, r.top);
+                        }
+                    }
+                }
+            }
+            return {
+                iframeTop: ir ? Math.round(ir.top) : -1,
+                iframeBottom: ir ? Math.round(ir.bottom) : -1,
+                iframeH: ir ? Math.round(ir.height) : -1,
+                chromeBottom: cr ? Math.round(cr.bottom) : -1,
+                footerTop: gr ? Math.round(gr.top) : -1,
+                footerH: gr ? Math.round(gr.height) : -1,
+                vh: window.innerHeight,
+                maxTextBottom: maxTextBottom,
+                minTextTop: minTextTop,
+                iframeOffsetY: ir ? Math.round(window.scrollY + ir.top) : -1,
+                footerVisible: gf ? getComputedStyle(gf).opacity : '?'
+            };
+        }""")
+        assert info["iframeH"] > 0, "no epub iframe"
+        assert info["footerTop"] > 0, "glass footer not present"
+        # Page starts below the chrome band (+small tolerance), so the first line
+        # of each page is never hidden under the top bar.
+        assert info["iframeTop"] >= info["chromeBottom"] - 6, \
+            f"iframe top {info['iframeTop']} overlaps chrome bottom {info['chromeBottom']}"
+        # Pagination ends above the footer with a safety margin — the last line of
+        # a page is fully visible when the footer is shown, so reading flows.
+        assert info["iframeBottom"] <= info["footerTop"] - 8, \
+            f"iframe bottom {info['iframeBottom']} runs under footer top {info['footerTop']}"
+        if info["maxTextBottom"] > 0:
+            # For the debug value: text bottom in iframe-local px, above footer.
+            assert info["maxTextBottom"] < info["iframeH"], "text exceeds page band height"
+        _restore_desktop(page)
     return _t
 
 # ── BL-039: Classic reader removed → immersive-only, reader menu, read-again ──
@@ -3109,6 +3260,11 @@ def main():
 ("BL-041: reclassify API",                test_bl041_reclassify_api(page)),
 ("BL-041: categories top-5 weights",      test_bl041_categories_top5_weights(page)),
 ("BL-041: detail likely categories",      test_bl041_detail_likely_categories(page)),
+
+# BL-042: immersive mobile — settings button vs page-turn zones + band inset
+("BL-042: gear tap never turns page",     test_bl042_settings_tap_never_turns_page(page)),
+("BL-042: top band never turns page",     test_bl042_top_band_never_turns_page(page)),
+("BL-042: pages between chrome & footer", test_bl042_pages_stay_between_chrome_and_footer(page)),
 
             # Final
             ("Close reader",                       test_final_close(page)),

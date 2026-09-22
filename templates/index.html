@@ -317,6 +317,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .fs-glass-footer .gf-time { font-size: 0.7rem; color: #64748b; flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .reader-layout:fullscreen .fs-glass-footer { display: flex; }
   /* ═══ BL-038: Immersive reader (BookOrbit-style — fills browser window) ═══ */
+  /* BL-042: immersive chrome/footer band heights — reading content is inset
+     between these bars so pages never run under them (line continuity) and the
+     top band is never a page-turn zone (settings button reachable). */
+  body.reader-immersive { --im-chrome-h: 52px; --im-footer-h: 57px; --im-safe-b: 12px; }
   .im-chrome { display: none; }
   body.reader-immersive .im-chrome { position: fixed; top: 0; left: 0; right: 0; z-index: 900; display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: linear-gradient(rgba(15,23,42,0.92), rgba(15,23,42,0)); transition: opacity 0.26s ease, transform 0.26s ease; opacity: 1; }
   .im-chrome.im-hidden { opacity: 0; pointer-events: none; transform: translateY(-16px); }
@@ -325,10 +329,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .im-chrome .im-icon:active { background: #0ea5e9; color: #0f172a; }
   .im-chrome .im-icon:focus-visible { outline: 2px solid #0ea5e9; outline-offset: 2px; }
   .im-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 0.95rem; color: #e2e8f0; text-align: center; }
-  .im-zone { position: fixed; top: 0; bottom: 0; width: 15%; z-index: 700; display: none; cursor: pointer; }
+  .im-zone { position: fixed; top: var(--im-chrome-h, 52px); bottom: 0; width: 15%; z-index: 700; display: none; cursor: pointer; }
   .im-zone.im-left { left: 0; }
   .im-zone.im-right { right: 0; }
   body.reader-immersive .im-zone { display: block; }
+  /* BL-042: invisible top-band reveal strip. Sits above the page-turn zones and
+     below the chrome; tapping it (even while the chrome is hidden) only reveals
+     the chrome — it never turns the page. */
+  .im-peek { position: fixed; top: 0; left: 0; right: 0; height: var(--im-chrome-h, 52px); z-index: 850; display: none; cursor: pointer; }
+  body.reader-immersive .im-peek { display: block; }
   body.reader-immersive .fs-edge-trigger { display: block; height: 32px; }
   body.reader-immersive .container > h1,
   body.reader-immersive .tab-bar,
@@ -337,7 +346,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   body.reader-immersive #tab-reader { padding: 0; }
   body.reader-immersive .reader-layout { position: fixed; inset: 0; z-index: 800; width: 100vw; max-width: none; min-height: 0; height: 100vh; margin: 0; padding: 0; gap: 0; border-radius: 0; background: #0f172a; }
   body.reader-immersive .reader-main { padding: 0; max-width: 100%; }
-  body.reader-immersive #readerArea { width: 100% !important; border: none !important; border-radius: 0 !important; }
+  body.reader-immersive #readerArea { width: 100% !important; border: none !important; border-radius: 0 !important; padding-top: var(--im-chrome-h, 52px); padding-bottom: calc(var(--im-footer-h, 57px) + var(--im-safe-b, 12px)); }
   body.reader-immersive #readerToolbar { display: none !important; }
   body.reader-immersive .reader-layout .reading-list-sidebar,
   body.reader-immersive .reader-layout .annotations-sidebar { position: fixed; top: 0; bottom: 0; z-index: 760; width: 260px; max-width: 85vw; max-height: none; margin: 0; border-radius: 0; background: rgba(15,23,42,0.97); padding: 10px; transition: transform 0.24s ease; }
@@ -955,6 +964,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         <button class="im-icon" id="imNotesBtn" onclick="toggleImmersiveAnnotations()" title="Highlights &amp; notes" aria-label="Toggle highlights and notes">&#x1F4DD;&#xFE0E;</button>
         <button class="im-icon" id="imSettBtn" onclick="toggleImmersiveSettings()" title="Reader settings" aria-label="Reader settings">&#x2699;&#xFE0E;</button>
       </div>
+      <!-- BL-042: top-band reveal strip — tapping this area (even with the chrome hidden) reveals the chrome and never turns the page -->
+      <div class="im-peek" id="imPeek" onclick="imPeekTap(event)" aria-hidden="true" tabindex="-1"></div>
       <div class="im-zone im-left" onclick="imTapZone('prev')" aria-hidden="true" tabindex="-1"></div>
       <div class="im-zone im-right" onclick="imTapZone('next')" aria-hidden="true" tabindex="-1"></div>
       <!-- Reading List Sidebar (R1) -->
@@ -4651,9 +4662,15 @@ function _loadEpubReader(bookId, area, restoreCfi) {
 
     readerBook = ePub(dl.buffer);
     var ra = document.getElementById(areaId);
-    var rh = Math.max(ra.offsetHeight || 600, 400);
-    var opts = { width: "100%", height: rh, spread: _readerTwoPage ? "auto" : "none" };
     var imAct = document.body.classList.contains("reader-immersive");
+    var rh = Math.max(ra.offsetHeight || 600, 400);
+    if (imAct) {
+      // BL-042: inset the pagination band between the chrome and glass footer so
+      // the last line of a page is never hidden under the floating bars.
+      var _imB = _imBandHeights();
+      rh = Math.max(400, (ra.offsetHeight || window.innerHeight) - _imB.top - _imB.bottom);
+    }
+    var opts = { width: "100%", height: rh, spread: _readerTwoPage ? "auto" : "none" };
     if (imAct && _readerScrollMode) { opts.flow = "paginated"; opts.spread = "none"; }
     else if (_readerScrollMode) opts.flow = "scrolled-doc";
     ra.innerHTML = "";  // clear any leftover loading/converting panel before mounting
@@ -6010,9 +6027,7 @@ function _activateImmersive() {
   _bindImmersive();
   _imShowChrome();
   if (typeof readerFormat === "string" && isEpubFormat(readerFormat) && readerRendition) {
-    setTimeout(function() {
-      if (_immersiveActive && readerRendition) try { readerRendition.resize(); } catch(e) {}
-    }, 80);
+    setTimeout(_imResizeEpub, 80);
   }
 }
 
@@ -6096,6 +6111,30 @@ function _bindImmersive() {
     bz.addEventListener("mouseenter", function() { if (_immersiveActive) _imShowChrome(); });
     bz.addEventListener("touchstart", function() { if (_immersiveActive) _imShowChrome(); }, { passive: true });
   }
+  // BL-042: re-fit the EPUB band when the viewport changes (orientation change).
+  window.addEventListener("resize", function() { _imResizeEpub(); });
+}
+
+// BL-042: read the immersive band inset heights (chrome top bar + footer + safe
+// bottom margin) from the CSS variables so JS stays in sync with the stylesheet.
+function _imBandHeights() {
+  var cs = getComputedStyle(document.body);
+  var top = parseInt(cs.getPropertyValue("--im-chrome-h"), 10) || 52;
+  var foot = parseInt(cs.getPropertyValue("--im-footer-h"), 10) || 57;
+  var safe = parseInt(cs.getPropertyValue("--im-safe-b"), 10) || 12;
+  return { top: top, bottom: foot + safe };
+}
+
+// BL-042: keep the EPUB pagination band inside the chrome/footer inset on resize
+// (e.g. orientation change) while the immersive reader is active.
+function _imResizeEpub() {
+  if (!_immersiveActive || !readerRendition) return;
+  if (!(typeof isEpubFormat === "function" && isEpubFormat(readerFormat))) return;
+  var ra = document.getElementById("readerArea");
+  if (!ra) return;
+  var b = _imBandHeights();
+  var h = Math.max(400, (ra.offsetHeight || window.innerHeight) - b.top - b.bottom);
+  try { readerRendition.resize("100%", h); } catch(e) {}
 }
 
 function _imHandleTap(x, y) {
@@ -6105,10 +6144,19 @@ function _imHandleTap(x, y) {
   var sel = window.getSelection ? String(window.getSelection()) : "";
   if (sel && sel.trim().length) return;
   var w = window.innerWidth;
+  var bh = _imBandHeights().top;
+  if (y < bh) { _imShowChrome(); return; }  // top band belongs to the chrome, never a page action
   if (x < w * 0.15 || x > w * 0.85) return;  // edge zones do page turns
   var imc = document.getElementById("imChrome");
   var hidden = imc && imc.classList.contains("im-hidden");
   if (hidden) { _imShowChrome(); } else { _imHideChrome(); }
+}
+
+function imPeekTap(e) {
+  if (_immersiveActive) _imShowChrome();
+  if (e && e.preventDefault) e.preventDefault();
+  if (e && e.stopPropagation) e.stopPropagation();
+  return false;
 }
 
 function imTapZone(dir) {

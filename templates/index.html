@@ -491,7 +491,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   .reader-resume-toast .rt-dismiss { background: #334155; color: #94a3b8; }
   @keyframes toastSlideUp { from { opacity: 0; transform: translateX(-50%) translateY(12px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
   /* BL-026: Settings dropdown panel */
-  .reader-settings-dropdown { position: absolute; top: 40px; right: 10px; z-index: 55; display: none; min-width: 220px; background: rgba(15,23,42,0.95); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid #475569; border-radius: 8px; padding: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+  /* BL-043: z-index sits above the page-turn zones (700)/peek (850)/glass
+     footer (900), so taps on the expanded Reader Menu never fall through to a
+     page turn and the panel always renders over the page. */
+  .reader-settings-dropdown { position: absolute; top: 40px; right: 10px; z-index: 950; display: none; min-width: 220px; background: rgba(15,23,42,0.95); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid #475569; border-radius: 8px; padding: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
   .reader-settings-dropdown h4 { margin: 0 0 8px; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
   .reader-settings-dropdown .rs-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
   .reader-settings-dropdown .rs-label { font-size: 0.72rem; color: #64748b; min-width: 60px; }
@@ -959,7 +962,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       </div>
       <!-- BL-038: Immersive reader chrome (BookOrbit-style, tap-center overlay) -->
       <div class="im-chrome" id="imChrome">
-        <button class="im-icon" id="imCloseBtn" onclick="exitImmersiveReader()" title="Close reader (bookmarks saved)" aria-label="Close reader and return">&#x2715;</button>
+        <button class="im-icon" id="imCloseBtn" onclick="exitImmersiveReader()" title="Back / close reader (bookmarks saved)" aria-label="Back and close reader">&#x2190;</button>
         <span class="im-title" id="imTitle" aria-live="polite"></span>
         <button class="im-icon" id="imNotesBtn" onclick="toggleImmersiveAnnotations()" title="Highlights &amp; notes" aria-label="Toggle highlights and notes">&#x1F4DD;&#xFE0E;</button>
         <button class="im-icon" id="imSettBtn" onclick="toggleImmersiveSettings()" title="Reader settings" aria-label="Reader settings">&#x2699;&#xFE0E;</button>
@@ -4402,7 +4405,6 @@ function openReader(bookId, freshStart) {
     document.getElementById("readerPrev").style.display = "";
     document.getElementById("readerNext").style.display = "";
     document.getElementById("readerProgressWrap").style.display = "";
-    _applyReaderProgress(0);
     _showGlassFooter(true);
     _bindFooterScrub();
     _setFooterLocation("");
@@ -4440,16 +4442,23 @@ function openReader(bookId, freshStart) {
       _setReadingListBtn(btn, inList);
     }).catch(function() {});
     switchTab("reader");
-    // BL-025: check for saved reader state and show resume toast
+    // BL-025/43: restore the progress counter from the saved reader state on
+    // reopen (never reset to 0%), and check for saved state to show the toast.
     if (freshStart) {
+      _applyReaderProgress(0);
       dismissResumeToast();
       _resumeLocation = null;
     } else {
       fetch(API + "/api/book/" + bookId + "/reader-state").then(function(r) { return r.json(); }).then(function(state) {
+        if (state && typeof state.progress_pct === "number" && !isNaN(state.progress_pct)) {
+          _applyReaderProgress(state.progress_pct);
+        } else {
+          _applyReaderProgress(0);
+        }
         if (state && state.location && (state.progress_pct || 0) > 2) {
           _showResumeToast(bookId, ext, state);
         }
-      }).catch(function() {});
+      }).catch(function() { _applyReaderProgress(0); });
     }
     if (epubLike) {
       loadReader(bookId, b);

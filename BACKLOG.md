@@ -1524,4 +1524,45 @@ Two navigation/user-experience bugs:
 - `test_reader_ui.py`: BL-043 tests + helpers; BL-039 reader-menu test now
   closes the menu; registrations ~3264-3269.
 
+## BL-043b - Ribbon back arrow; reopen never resets the progress counter; menu layering
+
+Follow-up polish on the immersive reader (feedback while testing BL-043):
+
+1. **Back arrow on the ribbon.** The chrome's close button was an X; it's now a
+   &#8592; back arrow (`#imCloseBtn`, title "Back / close reader (bookmarks
+   saved)") — reads as "return" instead of "close".
+2. **Reopen never resets the progress counter.** `openReader` unconditionally
+   called `_applyReaderProgress(0)`, so every reopen flashed the % counter
+   back to 0% until the restore finished. Progress is now initialized from the
+   saved `/reader-state` `progress_pct` the moment the state arrives (fresh
+   starts and no-state opens still reset to 0); the counter no longer resets
+   on reopen.
+3. **Ribbon / settings always over the page; the click-to-turn stays under
+   every other artifact.** The `.reader-settings-dropdown` was z-index 55 —
+   *below* the `.im-zone` page-turn strips (z 700) — so the open Reader Menu's
+   left/right edges sat under the turn zones and taps fell through to a page
+   turn. Raised the menu to z 950 (above zones 700, peek 850, sidebars 760,
+   glass footer 900). The ribbon (z 900) and glass footer already sat above the
+   zones; now the expanded menu does too.
+
+### Verified
+
+- 12 Playwright tests pass headless against the deployed Pi app (phone
+  viewport 390x844): extended `reopen completed epub` now samples the % chip
+  during a second reopen and asserts it never reads "0%" and settles on the
+  saved position; new `back arrow + reader menu layering` asserts the arrow
+  glyph/title, menu z above zones & peek, `elementFromPoint` at a point inside
+  both the sheet and the left turn-zone returns the menu (not the zone), and a
+  real mouse tap on the open menu does not change the CFI. BL-039/042/038 suites
+  re-verified green; no page JS errors.
+
+### Where
+
+- `templates/index.html`: `#imCloseBtn` arrow ~962; `.reader-settings-dropdown`
+  z-index 55 -> 950 + comment ~494-498; `openReader` progress init from
+  `/reader-state` `progress_pct` (removed the unconditional
+  `_applyReaderProgress(0)`), merged into the resume-toast state handler ~4440.
+- `test_reader_ui.py`: `test_bl043_ribbon_back_arrow_and_menu_layer`; extended
+  `test_bl043_reopen_completed_epub_restores_position`; registration ~3335.
+
 ---

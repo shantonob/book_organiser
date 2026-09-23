@@ -2873,9 +2873,24 @@ def test_bl043_reopen_completed_epub_restores_position(page):
         # Timer should resume (45000 kept), not reset to 0.
         assert info["stored"] == "45000", f"reopen reset the reading timer: {info['stored']}"
         assert info["elapsed"] >= 44000, f"timer did not resume: {info['elapsed']}"
-        # Close promptly and restore the fixture state (unchanged progress).
+        # Close, then reopen: the progress counter must never reset to 0%.
         page.evaluate("exitImmersiveReader()")
-        time.sleep(0.6)
+        time.sleep(0.5)
+        chips = []
+        page.evaluate("enterImmersiveReader(%d)" % seed["id"])
+        for _ in range(25):
+            chips.append(page.evaluate("() => (document.getElementById('gfChip') || {textContent: ''}).textContent || ''"))
+            time.sleep(0.1)
+        assert not [c for c in chips if c.strip() == "0%"], f"progress counter reset to 0% on reopen: {chips}"
+        # The counter settles on the restored position, never on 0.
+        page.wait_for_function("() => document.body.classList.contains('reader-immersive') && !!readerRendition", timeout=20000)
+        time.sleep(1.2)
+        final_chip = page.evaluate("() => (document.getElementById('gfChip') || {textContent: ''}).textContent || ''")
+        final_pct = int(("".join(filter(str.isdigit, final_chip))) or "0")
+        assert final_pct >= max(seed["savedPct"], 1), f"progress counter ended at {final_chip} (saved {seed['savedPct']}%)"
+        page.evaluate("exitImmersiveReader()")
+        time.sleep(0.5)
+        # Restore the fixture state (unchanged progress).
         page.evaluate("""async (o) => {
             await fetch(API + '/api/book/' + o.id + '/reader-state', {
                 method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -2957,6 +2972,63 @@ def test_bl043_refresh_keeps_current_view(page):
         time.sleep(2.5)
         cfi_after = page.evaluate("() => readerRendition.currentLocation().start.cfi")
         assert cfi_after == cfi_before, f"reader not restored to same position after refresh ({cfi_after} vs {cfi_before})"
+        page.evaluate("exitImmersiveReader()")
+        time.sleep(0.5)
+    return _t
+
+def test_bl043_ribbon_back_arrow_and_menu_layer(page):
+    # BL-043 polish: the immersive ribbon closes with a back arrow (not an X);
+    # the Reader Menu always sits above the page and above the page-turn zones,
+    # so taps on the open menu never fall through to a page turn.
+    def _t():
+        _refresh_session(page)
+        page.evaluate("""async () => {
+            const r = await fetch(API + '/api/reading-home?limit=200');
+            const d = await r.json();
+            const all = (d.in_progress || []).concat(d.completed || []);
+            const epub = all.find(b => b.format === 'epub') || all[0];
+            if (!epub) throw new Error('no book');
+            enterImmersiveReader(epub.id);
+        }""")
+        page.wait_for_function("() => document.body.classList.contains('reader-immersive') && !!readerRendition", timeout=20000)
+        time.sleep(1.5)
+        # 1) Ribbon shows a back arrow, not an X.
+        lbl = page.evaluate("() => { const b = document.getElementById('imCloseBtn'); return { txt: b.textContent.trim(), title: b.title, aria: b.getAttribute('aria-label') }; }")
+        assert lbl["txt"] == "\u2190", f"close button glyph is {lbl['txt']!r}, expected \u2190"
+        assert "back" in (lbl["title"] + " " + lbl["aria"]).lower(), f"close button should be described as Back: {lbl}"
+        # 2) Open the Reader Menu and check the stacking order.
+        page.evaluate("toggleImmersiveSettings()")
+        time.sleep(0.5)
+        cfi_before = page.evaluate("() => readerRendition.currentLocation().start.cfi")
+        layer = page.evaluate("""() => {
+            const dd = document.getElementById('readerSettingsDropdown');
+            if (getComputedStyle(dd).display === 'none') return null;
+            const r = dd.getBoundingClientRect();
+            const zone = document.querySelector('.im-zone');
+            const peek = document.querySelector('.im-peek');
+            const x = Math.max(8, r.left + 10);
+            const y = r.bottom - 10;
+            const top = document.elementFromPoint(x, y);
+            return {
+                ddZ: parseInt(getComputedStyle(dd).zIndex, 10),
+                zoneZ: parseInt(getComputedStyle(zone).zIndex, 10),
+                peekZ: parseInt(getComputedStyle(peek).zIndex, 10),
+                px: Math.round(x), py: Math.round(y),
+                topInDropdown: !!(top && top.closest && top.closest('#readerSettingsDropdown')),
+                topIsZone: !!(top && top.classList && top.classList.contains('im-zone'))
+            };
+        }""")
+        assert layer, "reader menu did not open"
+        assert layer["ddZ"] > layer["zoneZ"], f"menu z={layer['ddZ']} not above page-turn zones z={layer['zoneZ']}"
+        assert layer["ddZ"] > layer["peekZ"], f"menu z={layer['ddZ']} not above peek strip z={layer['peekZ']}"
+        assert layer["topInDropdown"] and not layer["topIsZone"], f"page-turn zone still covers the open menu: {layer}"
+        # 3) A real tap over the open menu must NOT turn the page.
+        page.mouse.click(layer["px"], layer["py"])
+        time.sleep(0.4)
+        cfi_after = page.evaluate("() => readerRendition.currentLocation().start.cfi")
+        assert cfi_after == cfi_before, "tap on the open menu turned the page instead of staying in the menu"
+        page.evaluate("toggleImmersiveSettings()")
+        time.sleep(0.2)
         page.evaluate("exitImmersiveReader()")
         time.sleep(0.5)
     return _t
@@ -3333,6 +3405,7 @@ def main():
 ("BL-043: reopen completed epub restores position", test_bl043_reopen_completed_epub_restores_position(page)),
 ("BL-043: PDF reopen restores saved page",          test_bl043_pdf_reopen_restores_saved_page(page)),
 ("BL-043: refresh keeps current view",              test_bl043_refresh_keeps_current_view(page)),
+("BL-043: back arrow + reader menu layering",       test_bl043_ribbon_back_arrow_and_menu_layer(page)),
 
 # BL-041: weighted UDC classification (top-5 categories) + reclassify
 ("BL-041: reclassify API",                test_bl041_reclassify_api(page)),

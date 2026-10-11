@@ -2410,6 +2410,61 @@ def test_bl037_mobile_non_fs_sidebar_fallback(page):
         time.sleep(1)
     return _t
 
+# ── BL-044: metadata integrity (manual edits stick, API never overrides) ──
+
+def _bl044_find_book(page, needle):
+    return page.evaluate("""async (q) => {
+        const d = await (await fetch(API + '/api/search?limit=10&q=' + encodeURIComponent(q))).json();
+        const rs = d.results || [];
+        return rs.length ? rs[0].id : null;
+    }""", needle)
+
+def _bl044_get_book(page, bid):
+    return page.evaluate("""async (id) => {
+        const d = await (await fetch(API + '/api/book/' + id)).json();
+        return d.book || d;
+    }""", bid)
+
+def test_bl044_manual_update_persists_and_survives_reextract(page):
+    """A manual metadata edit is stored (no 500) and is not clobbered by re-extract."""
+    def _t():
+        _refresh_session(page)
+        bid = _bl044_find_book(page, "A First Step to Mathematical Olympiad")
+        if not bid:
+            print("    (skip: sample book not found)", flush=True)
+            return
+        before = _bl044_get_book(page, bid)
+        title = before.get("title")
+        authors = before.get("authors")
+        assert title and authors, f"sample book lacks title/authors: {before}"
+
+        res = page.evaluate("""async ({id, title, authors}) => {
+            const r = await fetch(API + '/api/book/' + id + '/update', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({title: title, authors: authors})
+            });
+            return {status: r.status, body: await r.text()};
+        }""", {"id": bid, "title": title, "authors": authors})
+        assert res["status"] == 200, f"manual update failed: {res}"
+
+        after = _bl044_get_book(page, bid)
+        assert after.get("title") == title, f"title not persisted: {after.get('title')!r}"
+        assert after.get("authors") == authors, f"authors not persisted: {after.get('authors')!r}"
+        assert after.get("enrich_source") == "manual", f"enrich_source={after.get('enrich_source')!r}"
+
+        rex = page.evaluate("""async (id) => {
+            const r = await fetch(API + '/api/book/' + id + '/re-extract', {method: 'POST'});
+            return {status: r.status, body: await r.text()};
+        }""", bid)
+        assert rex["status"] == 200, f"re-extract failed: {rex}"
+
+        final = _bl044_get_book(page, bid)
+        assert final.get("title") == title, f"re-extract clobbered manual title: {final.get('title')!r}"
+        assert final.get("authors") == authors, f"re-extract clobbered manual authors: {final.get('authors')!r}"
+        assert final.get("enrich_source") == "manual", f"re-extract dropped manual flag: {final.get('enrich_source')!r}"
+    return _t
+
 # ── FINAL CLOSE ───────────────────────────────────────────────────────────
 
 def test_final_close(page):
@@ -3416,6 +3471,9 @@ def main():
 ("BL-042: gear tap never turns page",     test_bl042_settings_tap_never_turns_page(page)),
 ("BL-042: top band never turns page",     test_bl042_top_band_never_turns_page(page)),
 ("BL-042: pages between chrome & footer", test_bl042_pages_stay_between_chrome_and_footer(page)),
+
+# BL-044: metadata integrity — manual edits persist and are never clobbered
+("BL-044: manual edit persists + survives re-extract", test_bl044_manual_update_persists_and_survives_reextract(page)),
 
             # Final
             ("Close reader",                       test_final_close(page)),

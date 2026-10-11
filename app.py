@@ -1724,29 +1724,49 @@ def api_book_re_extract(book_id):
         if not raw_meta.get("title") and enriched.get("title"):
             enrich_source = "filename"
 
-        upsert_metadata(conn, book_id,
-                        title=clean_title, authors=clean_authors,
-                        publisher=raw_meta.get("publisher"), isbn=raw_meta.get("isbn"),
-                        language=raw_meta.get("language"), pages=raw_meta.get("pages"),
-                        year=year, description=raw_meta.get("description"),
-                        subjects=raw_meta.get("subjects"),
-                        enrich_source=enrich_source,
-                        enriched_at=datetime.utcnow().isoformat())
+        # Manual corrections are authoritative: keep them verbatim and skip
+        # both the embedded overwrite and any external enrichment.
+        row_existing_row = conn.execute(
+            "SELECT enrich_source, title, authors, year, description, subjects, publisher "
+            "FROM metadata WHERE file_id=?", (book_id,)
+        ).fetchone()
+        row_existing = dict(row_existing_row) if row_existing_row else None
+        is_manual = bool(row_existing) and row_existing["enrich_source"] == "manual"
 
-        # External enrichment
-        need_enrich = (
-            not raw_meta.get("title") or not raw_meta.get("authors")
-            or not raw_meta.get("description") or not raw_meta.get("isbn")
-            or not raw_meta.get("publisher")
-        )
         api_enriched = {}
-        if need_enrich:
-            try:
-                api_enriched = enrich_book(
-                    isbn=raw_meta.get("isbn"),
-                    title=clean_title,
-                    author=clean_authors,
-                )
+        if is_manual:
+            clean_title = row_existing["title"] or clean_title
+            clean_authors = row_existing["authors"] or clean_authors
+            year = row_existing["year"] or year
+            for k in ("description", "subjects", "publisher"):
+                if row_existing.get(k) and not raw_meta.get(k):
+                    raw_meta[k] = row_existing[k]
+        else:
+            upsert_metadata(conn, book_id,
+                            title=clean_title, authors=clean_authors,
+                            publisher=raw_meta.get("publisher"), isbn=raw_meta.get("isbn"),
+                            language=raw_meta.get("language"), pages=raw_meta.get("pages"),
+                            year=year, description=raw_meta.get("description"),
+                            subjects=raw_meta.get("subjects"),
+                            enrich_source=enrich_source,
+                            enriched_at=datetime.utcnow().isoformat())
+
+            # External enrichment is a gap-filler, never an override: only when
+            # the file gives no identity at all, or an ISBN enables an exact lookup.
+            need_enrich = (
+                bool(raw_meta.get("isbn"))
+                or (not raw_meta.get("title") and not clean_authors)
+            )
+            if need_enrich:
+                try:
+                    api_enriched = enrich_book(
+                        isbn=raw_meta.get("isbn"),
+                        title=clean_title,
+                        author=clean_authors,
+                    )
+                except Exception:
+                    pass
+            if api_enriched:
                 api_source = api_enriched.get("source", "openlibrary")
                 upsert_metadata(conn, book_id,
                                 title=api_enriched.get("title") or None,
@@ -1766,14 +1786,12 @@ def api_book_re_extract(book_id):
                     clean_authors = api_enriched["authors"]
                 if api_enriched.get("year"):
                     year = api_enriched["year"]
-            except Exception:
-                pass
 
-        # Classify (use the best available title/subjects: embedded, filename, or API)
+        # Classify (use the best available title/subjects: manual, embedded, filename, or API)
         from db import save_category_scores
 
-        final_title = api_enriched.get("title") or clean_title
-        final_authors = api_enriched.get("authors") or clean_authors
+        final_title = raw_meta.get("title") or api_enriched.get("title") or clean_title
+        final_authors = raw_meta.get("authors") or api_enriched.get("authors") or clean_authors
         final_subjects = api_enriched.get("subjects") or raw_meta.get("subjects")
         final_desc = api_enriched.get("description") or raw_meta.get("description")
         final_publisher = api_enriched.get("publisher") or raw_meta.get("publisher")

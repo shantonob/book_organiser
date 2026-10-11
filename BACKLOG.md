@@ -1566,3 +1566,83 @@ Follow-up polish on the immersive reader (feedback while testing BL-043):
   `test_bl043_reopen_completed_epub_restores_position`; registration ~3335.
 
 ---
+
+## BL-044 — Enrichment corrupts book titles; manual edits don't stick
+
+- **Priority:** High
+- **Status:** done
+- **Reported:** 2026-10-11
+- **Fixed:** 2026-10-11
+
+### Symptom
+
+1. A book's title in the app differs from the title inside the file. Example:
+   uuid `e29a7a88e7ec` / file id 67174 — the PDF is *"A First Step to
+   Mathematical Olympiad Problems: Mathematical Olympiad Series — Vol. 1"* by
+   Derek Holton, but the app showed *"The Pilgrim Of Our Lady Of Martyrs"* by
+   "Apostleship of Prayer (Organization)" (`enrich_source=openlibrary_search`).
+2. Manual metadata edits made in the UI do not stick — the value reverts.
+
+### Root causes
+
+- **External enrichment was an override, not a gap-filler.** `run_phase_metadata`
+  (`pipeline.py`) fired `enrich_book()` whenever *any* of title/authors/
+  description/isbn/publisher was missing (the norm), wrote the API result with
+  `title=enriched.get("title") or None` via `upsert_metadata`, and classified
+  with `final_title = enriched_map.get("title") or raw_meta.get("title")` — so a
+  fuzzy Open Library match outranked the file's own embedded title.
+- **Manual rows were never protected.** `app.py /api/book/<id>/update` sets
+  `enrich_source="manual"`, but nothing checked that flag: the pipeline's
+  embedded upsert and API block, the re-extract endpoint, and `run_phase_enrich`
+  (which re-stamped `enrich_source`) could all overwrite manual values.
+- **Manual edits 500'd and rolled back.** `db.update_fts_for_book` used
+  `INSERT ... ON CONFLICT(rowid) DO UPDATE` on the FTS5 virtual table
+  `books_fts`; SQLite rejects "UPSERT ... for virtual table". The exception fired
+  before `conn.commit()`, so the whole update was discarded — the real reason
+  edits "didn't stick".
+- **UTF-16 PDF titles were mangled.** `extractors/pdf.py` read the raw
+  `/Title (...)` bytes as latin-1, turning a UTF-16BE value into
+  `þÿ\0A\0 \0F...`, so even a correctly-attributed book had a garbled embedded
+  title (which the API then appeared to "fix" with the wrong book).
+
+### Fix
+
+- `extractors/pdf.py`: new `_clean_info_val()` detects the latin-1-misread
+  UTF-16 BOM (`þÿ`/`ÿþ`), re-encodes to bytes and decodes as `utf-16-be`/`-le`,
+  strips BOM + control chars. Applied to `/Title`, `/Author`, `/Subject`.
+- `pipeline.py run_phase_metadata`: read the existing metadata row; if
+  `enrich_source == "manual"` keep its title/authors/year/description/subjects/
+  publisher and skip both the embedded overwrite and all API enrichment.
+  Otherwise `need_enrich` now fires only when the file has **no identity**
+  (no title and no author) or has an ISBN (exact lookup) — never to override a
+  known title. Classification priority is embedded > filename > API.
+- `app.py` re-extract endpoint: same manual guard + same narrowed `need_enrich` +
+  same priority; manual rows are re-classified from their stored values.
+- `pipeline.py run_phase_enrich`: gap-fill only (unchanged), but now preserves
+  `enrich_source` when a row is manual (previously it re-stamped the API source,
+  silently un-protecting the row).
+- `db.py update_fts_for_book`: `INSERT OR REPLACE` instead of the unsupported
+  UPSERT, so manual updates commit.
+
+### Verified
+
+- Reproduced all four causes against the deployed Pi app (book 67174).
+- Restored id 67174 to the correct title/authors via the manual-update API
+  (now 200 + persisted, `enrich_source=manual`); a follow-up `re-extract`
+  returns 200 and no longer changes the title, authors, or the manual flag.
+- In-container transaction test confirms an enrich backfill of a manual row
+  fills the missing field while keeping `enrich_source=manual`.
+- New Playwright test `test_bl044_manual_update_persists_and_survives_reextract`
+  passes (update 200 + persists; re-extract preserves manual values); 0 page JS
+  errors.
+
+### Where
+
+- `extractors/pdf.py`: `_clean_info_val()` + use in the info loop.
+- `pipeline.py`: `run_phase_metadata` manual guard/need_enrich/final_* (~334-425);
+  `run_phase_enrich` manual `enrich_source` preserve (~845-875).
+- `app.py`: `api_book_re_extract` manual guard/need_enrich/priority (~1723-1800).
+- `db.py`: `update_fts_for_book` (~660-678).
+- `test_reader_ui.py`: BL-044 helpers + test, registration ~3476.
+
+---

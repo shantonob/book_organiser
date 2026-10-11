@@ -667,9 +667,7 @@ def update_fts_for_book(conn, book_id):
     """, (book_id,)).fetchone()
     if row and (row["title"] or row["authors"]):
         conn.execute(
-            "INSERT INTO books_fts (rowid, title, authors, description, publisher, isbn) VALUES (?,?,?,?,?,?) "
-            "ON CONFLICT(rowid) DO UPDATE SET title=excluded.title, authors=excluded.authors, "
-            "description=excluded.description, publisher=excluded.publisher, isbn=excluded.isbn",
+            "INSERT OR REPLACE INTO books_fts (rowid, title, authors, description, publisher, isbn) VALUES (?,?,?,?,?,?)",
             (book_id, row["title"] or "", row["authors"] or "", row["description"] or "",
              row["publisher"] or "", row["isbn"] or "")
         )

@@ -334,22 +334,40 @@ def run_phase_metadata(source=None, inbox_files=None):
         subjects = raw_meta.get("subjects")
         if isinstance(subjects, list):
             subjects = "; ".join(subjects)
-        upsert_metadata(conn, file_id,
-                        title=clean_title,
-                        authors=clean_authors,
-                        publisher=raw_meta.get("publisher"),
-                        isbn=raw_meta.get("isbn"),
-                        language=raw_meta.get("language"),
-                        pages=raw_meta.get("pages"),
-                        year=year,
-                        description=raw_meta.get("description"),
-                        subjects=subjects,
-                        series=raw_meta.get("series") or enriched.get("series"),
-                        series_num=raw_meta.get("series_num") or enriched.get("series_num"),
-                        volume=raw_meta.get("volume") or enriched.get("volume"),
-                        issue=raw_meta.get("issue") or enriched.get("issue"),
-                        enrich_source=enrich_source,
-                        enriched_at=datetime.utcnow().isoformat())
+
+        # Manual corrections are authoritative: keep them verbatim and skip
+        # both the embedded overwrite and any external enrichment.
+        row_existing_row = conn.execute(
+            "SELECT enrich_source, title, authors, year, description, subjects, publisher "
+            "FROM metadata WHERE file_id=?", (file_id,)
+        ).fetchone()
+        row_existing = dict(row_existing_row) if row_existing_row else None
+        is_manual = bool(row_existing) and row_existing["enrich_source"] == "manual"
+
+        if is_manual:
+            clean_title = row_existing["title"] or clean_title
+            clean_authors = row_existing["authors"] or clean_authors
+            year = row_existing["year"] or year
+            for k in ("description", "subjects", "publisher"):
+                if row_existing.get(k) and not raw_meta.get(k):
+                    raw_meta[k] = row_existing[k]
+        else:
+            upsert_metadata(conn, file_id,
+                            title=clean_title,
+                            authors=clean_authors,
+                            publisher=raw_meta.get("publisher"),
+                            isbn=raw_meta.get("isbn"),
+                            language=raw_meta.get("language"),
+                            pages=raw_meta.get("pages"),
+                            year=year,
+                            description=raw_meta.get("description"),
+                            subjects=subjects,
+                            series=raw_meta.get("series") or enriched.get("series"),
+                            series_num=raw_meta.get("series_num") or enriched.get("series_num"),
+                            volume=raw_meta.get("volume") or enriched.get("volume"),
+                            issue=raw_meta.get("issue") or enriched.get("issue"),
+                            enrich_source=enrich_source,
+                            enriched_at=datetime.utcnow().isoformat())
         set_stage(conn, file_id, "cleaned")
         conn.commit()
 
@@ -363,12 +381,16 @@ def run_phase_metadata(source=None, inbox_files=None):
 
         state.update(stage="enriching", log_msg=f"  ▶ enriching {fname}")
 
-        # External API enrichment (when key metadata is missing)
+        # External API enrichment is a gap-filler, never an override: run it only
+        # when the file gives no identity at all (no title and no author) or has
+        # an ISBN for an exact lookup, and never for manually-corrected rows.
         enriched = None
         need_enrich = (
-            not raw_meta.get("title") or not raw_meta.get("authors")
-            or not raw_meta.get("description") or not raw_meta.get("isbn")
-            or not raw_meta.get("publisher")
+            not is_manual
+            and (
+                bool(raw_meta.get("isbn"))
+                or (not raw_meta.get("title") and not clean_authors)
+            )
         )
         if need_enrich:
             try:
@@ -417,8 +439,8 @@ def run_phase_metadata(source=None, inbox_files=None):
 
         state.update(log_msg=f"  ▶ classifying {fname}")
         enriched_map = enriched or {}
-        final_title = enriched_map.get("title") or raw_meta.get("title") or clean_title
-        final_authors = enriched_map.get("authors") or raw_meta.get("authors") or clean_authors
+        final_title = raw_meta.get("title") or enriched_map.get("title") or clean_title
+        final_authors = raw_meta.get("authors") or enriched_map.get("authors") or clean_authors
         final_subjects = enriched_map.get("subjects") or raw_meta.get("subjects")
         final_desc = enriched_map.get("description") or raw_meta.get("description")
         final_publisher = enriched_map.get("publisher") or raw_meta.get("publisher")
@@ -801,7 +823,7 @@ def run_phase_enrich(limit=500):
 
         rows = conn.execute("""
             SELECT f.id, f.is_master,
-                   m.title, m.authors, m.isbn, m.description, m.publisher, m.year, m.cover_path
+                   m.enrich_source, m.title, m.authors, m.isbn, m.description, m.publisher, m.year, m.cover_path
             FROM files f
             LEFT JOIN metadata m ON m.file_id = f.id
             WHERE m.file_id IS NULL
@@ -860,10 +882,16 @@ def run_phase_enrich(limit=500):
                         cover_hits += 1
 
                 if kw:
-                    upsert_metadata(conn, r["id"],
-                                    enrich_source=enriched.get("source"),
-                                    enriched_at=datetime.utcnow().isoformat(),
-                                    **kw)
+                    # Manual rows keep their "manual" flag even when backfilled.
+                    if r.get("enrich_source") == "manual":
+                        upsert_metadata(conn, r["id"],
+                                        enriched_at=datetime.utcnow().isoformat(),
+                                        **kw)
+                    else:
+                        upsert_metadata(conn, r["id"],
+                                        enrich_source=enriched.get("source"),
+                                        enriched_at=datetime.utcnow().isoformat(),
+                                        **kw)
                     conn.commit()
                     updated += 1
                 else:
